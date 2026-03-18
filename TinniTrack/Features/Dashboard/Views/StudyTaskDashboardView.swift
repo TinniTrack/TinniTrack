@@ -110,12 +110,12 @@ struct StudyTaskDashboardView: View {
 
             Section("Future Tasks") {
                 Text("No upcoming tasks yet.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
             }
 
             Section("Completed Tasks") {
                 Text("No completed tasks yet.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
             }
         }
         .listStyle(.insetGrouped)
@@ -320,7 +320,7 @@ struct StudyTaskDashboardView: View {
                 .font(.headline)
             Text(message)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color(red: 0.12, green: 0.12, blue: 0.16))
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

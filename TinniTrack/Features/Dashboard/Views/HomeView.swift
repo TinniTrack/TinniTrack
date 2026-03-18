@@ -59,10 +59,10 @@ private struct DashboardTabView: View {
                 header
 
                 Text("CURRENT STUDIES")
-                    .font(.caption)
+                    .font(.subheadline)
                     .fontWeight(.semibold)
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+                    .foregroundStyle(DashboardColors.readableSecondaryText)
 
                 content
             }
@@ -90,7 +90,7 @@ private struct DashboardTabView: View {
                 .foregroundStyle(.primary)
             Text("Welcome to TinniTrack.")
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DashboardColors.readableSecondaryText)
         }
     }
 
@@ -167,9 +167,9 @@ private struct StudyCardView: View {
                 Spacer(minLength: 12)
 
                 Text(studyCard.badgeText)
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .tracking(0.8)
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .tracking(0.5)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -179,7 +179,7 @@ private struct StudyCardView: View {
 
             Text(studyCard.study.description)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DashboardColors.readableSecondaryText)
                 .lineLimit(3)
 
             HStack(spacing: 6) {
@@ -271,7 +271,7 @@ private struct StudyDetailView: View {
                 .font(.headline)
             Text(body)
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DashboardColors.readableSecondaryText)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,7 +289,7 @@ private struct StudyDetailView: View {
                     Text("•")
                     Text(item)
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DashboardColors.readableSecondaryText)
                 .font(.subheadline)
             }
         }
@@ -334,12 +334,22 @@ private struct ProfileTabView: View {
     var body: some View {
         Form {
             Section("Profile") {
-                LabeledContent("First Name", value: sessionStore.state.profile?.firstName ?? "Not set")
-                LabeledContent("Last Name", value: sessionStore.state.profile?.lastName ?? "Not set")
+                LabeledContent("First Name") {
+                    Text(sessionStore.state.profile?.firstName ?? "Not set")
+                        .foregroundStyle(DashboardColors.readableSecondaryText)
+                }
+
+                LabeledContent("Last Name") {
+                    Text(sessionStore.state.profile?.lastName ?? "Not set")
+                        .foregroundStyle(DashboardColors.readableSecondaryText)
+                }
             }
 
             Section("Research") {
-                LabeledContent("Participant ID", value: participantIDText)
+                LabeledContent("Participant ID") {
+                    Text(participantIDText)
+                        .foregroundStyle(DashboardColors.readableSecondaryText)
+                }
             }
 
             Section {
@@ -430,7 +440,8 @@ private struct ShimmerStudyCardView: View {
 }
 
 private enum DashboardColors {
-    static let brandBlue = Color(red: 0.23, green: 0.43, blue: 0.73)
+    static let brandBlue = Color(red: 0.06, green: 0.24, blue: 0.44)
+    static let readableSecondaryText = Color(red: 0.12, green: 0.12, blue: 0.16)
 }
 
 private extension DashboardStudyCard {
