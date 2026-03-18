@@ -19,9 +19,9 @@ struct LoginView: View {
     @FocusState private var focusedField: Field?
 
     private let focusColor = Color(red: 0.0, green: 0.48, blue: 1.0)
-    private let fieldBorderColor = Color(red: 0.82, green: 0.82, blue: 0.84)
+    private let fieldBorderColor = Color(red: 0.40, green: 0.40, blue: 0.45)
     private let actionColor = Color(red: 0.06, green: 0.24, blue: 0.44)
-    private let secondaryTextColor = Color(red: 0.24, green: 0.24, blue: 0.28)
+    private let secondaryTextColor = Color(red: 0.12, green: 0.12, blue: 0.16)
 
     private var normalizedEmail: String {
         email.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -57,8 +57,8 @@ struct LoginView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
 
                     Text("Sign in to begin your tinnitus tracking.")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(secondaryTextColor)
+                        .font(.body)
+                        .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 28)
@@ -119,7 +119,7 @@ struct LoginView: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 54)
-                    .background(actionColor)
+                    .background(sessionStore.state.isBusy || !canSubmit ? Color(red: 0.55, green: 0.55, blue: 0.60) : actionColor)
                     .clipShape(Capsule())
                     .padding(.horizontal, 12)
                     .disabled(sessionStore.state.isBusy || !canSubmit)
@@ -180,7 +180,7 @@ private struct FloatingInputField: View {
     let focusedBorderColor: Color
     var accessibilityIdentifier: String? = nil
     var clearAction: (() -> Void)? = nil
-    private let floatingLabelColor = Color(red: 0.24, green: 0.24, blue: 0.28)
+    private let floatingLabelColor = Color(red: 0.16, green: 0.16, blue: 0.20)
 
     private var shouldFloat: Bool {
         isFocused || !text.isEmpty
@@ -198,7 +198,7 @@ private struct FloatingInputField: View {
 
             Text(label)
                 .font(.system(size: shouldFloat ? 12 : 17, weight: shouldFloat ? .semibold : .regular))
-                .foregroundStyle(shouldFloat ? floatingLabelColor : Color.gray)
+                .foregroundStyle(shouldFloat ? floatingLabelColor : Color(red: 0.25, green: 0.25, blue: 0.30))
                 .padding(.horizontal, 14)
                 .offset(y: shouldFloat ? -18 : 0)
                 .animation(.easeInOut(duration: 0.16), value: shouldFloat)
