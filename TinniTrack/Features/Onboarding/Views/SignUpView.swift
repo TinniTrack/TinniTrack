@@ -12,6 +12,9 @@ struct SignUpView: View {
         case lastName
         case email
         case password
+        case birthMonth
+        case birthDay
+        case birthYear
     }
 
     @EnvironmentObject private var sessionStore: SessionStore
@@ -22,6 +25,10 @@ struct SignUpView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var dateOfBirth = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
+    @State private var birthMonth = ""
+    @State private var birthDay = ""
+    @State private var birthYear = ""
+    
     @FocusState private var focusedField: Field?
 
     private let draftStore: SignupDraftStoring
@@ -40,9 +47,48 @@ struct SignUpView: View {
     }
 
     private var isStepTwoValid: Bool {
-        !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && dateOfBirth <= Date()
+        !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        isDOBValid
+    }
+    private var isDOBValid: Bool {
+        guard
+            birthMonth.count == 2,
+            birthDay.count == 2,
+            birthYear.count == 4,
+            let month = Int(birthMonth),
+            let day = Int(birthDay),
+            let year = Int(birthYear),
+            (1...12).contains(month),
+            (1...31).contains(day),
+            year > 1900
+        else { return false }
+
+        var components = DateComponents()
+        components.calendar = Calendar.current
+        components.year = year
+        components.month = month
+        components.day = day
+
+        guard let date = Calendar.current.date(from: components) else {
+            return false
+        }
+    
+
+        let actual = Calendar.current.dateComponents([.year, .month, .day], from: date)
+
+        return actual.year == year &&
+               actual.month == month &&
+               actual.day == day &&
+               date <= Date()
+    }
+    private var shouldShowDOBError: Bool {
+        let anyFieldFilled =
+            !birthMonth.isEmpty ||
+            !birthDay.isEmpty ||
+            !birthYear.isEmpty
+
+        return anyFieldFilled && !isDOBValid
     }
 
     var body: some View {
@@ -121,7 +167,7 @@ struct SignUpView: View {
                                 accessibilityIdentifier: "signup_first_name_field"
                             )
                             .focused($focusedField, equals: .firstName)
-
+                            
                             FloatingInputField(
                                 label: "Last Name",
                                 text: $lastName,
@@ -132,69 +178,105 @@ struct SignUpView: View {
                                 accessibilityIdentifier: "signup_last_name_field"
                             )
                             .focused($focusedField, equals: .lastName)
-
-                            VStack(alignment: .leading, spacing: 8) {
+                            
+                            VStack(alignment: .leading, spacing: 10) {
                                 Text("Date of Birth")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(secondaryTextColor)
-                                DatePicker(
-                                    "",
-                                    selection: $dateOfBirth,
-                                    in: ...Date(),
-                                    displayedComponents: .date
-                                )
-                                .datePickerStyle(.compact)
-                                .labelsHidden()
-                                .tint(focusColor)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 14)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(fieldBorderColor, lineWidth: 1.2)
-                            )
-                        }
 
-                        HStack(spacing: 10) {
-                            Button("Back") {
-                                currentStep = 1
-                                persistDraft()
-                            }
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(actionColor)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(Color.white)
-                            .clipShape(Capsule())
-
-                            Button("Create Account") {
-                                Task {
-                                    await sessionStore.signUp(
-                                        email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                                        password: password,
-                                        firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-                                        lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-                                        dateOfBirth: dateOfBirth
+                                HStack(spacing: 10) {
+                                    FloatingInputField(
+                                        label: "MM",
+                                        text: $birthMonth,
+                                        isSecure: false,
+                                        isFocused: focusedField == .birthMonth,
+                                        borderColor: fieldBorderColor,
+                                        focusedBorderColor: focusColor,
+                                        keyboardType: .numberPad,
+                                        accessibilityIdentifier: "signup_birth_month_field"
                                     )
+                                    .focused($focusedField, equals: .birthMonth)
+                                    .frame(maxWidth: .infinity)
 
-                                    if !sessionStore.state.isUnauthenticated {
-                                        draftStore.clear()
-                                    }
+                                    FloatingInputField(
+                                        label: "DD",
+                                        text: $birthDay,
+                                        isSecure: false,
+                                        isFocused: focusedField == .birthDay,
+                                        borderColor: fieldBorderColor,
+                                        focusedBorderColor: focusColor,
+                                        keyboardType: .numberPad,
+                                        accessibilityIdentifier: "signup_birth_day_field"
+                                    )
+                                    .focused($focusedField, equals: .birthDay)
+                                    .frame(maxWidth: .infinity)
+
+                                    FloatingInputField(
+                                        label: "YYYY",
+                                        text: $birthYear,
+                                        isSecure: false,
+                                        isFocused: focusedField == .birthYear,
+                                        borderColor: fieldBorderColor,
+                                        focusedBorderColor: focusColor,
+                                        keyboardType: .numberPad,
+                                        accessibilityIdentifier: "signup_birth_year_field"
+                                    )
+                                    .focused($focusedField, equals: .birthYear)
+                                    .frame(maxWidth: .infinity)
+                                }
+
+                                Text("Enter as month, day, and year.")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(secondaryTextColor.opacity(0.9))
+                                if shouldShowDOBError {
+                                    Text("Please enter a valid date of birth")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.red)
                                 }
                             }
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(actionColor)
-                            .clipShape(Capsule())
-                            .disabled(!isStepTwoValid || sessionStore.state.isBusy)
-                            .accessibilityIdentifier("signup_create_account_button")
+                            
+                            HStack(spacing: 10) {
+                                Button("Back") {
+                                    currentStep = 1
+                                    persistDraft()
+                                }
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(actionColor)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(Color.white)
+                                .clipShape(Capsule())
+                                
+                                Button("Create Account") {
+                                    Task {
+                                        await sessionStore.signUp(
+                                            email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                                            password: password,
+                                            firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                            lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                            dateOfBirth: dateOfBirth
+                                        )
+                                        
+                                        if !sessionStore.state.isUnauthenticated {
+                                            draftStore.clear()
+                                        }
+                                    }
+                                }
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(
+                                    isStepTwoValid && !sessionStore.state.isBusy
+                                    ? actionColor
+                                    : Color.gray.opacity(0.4)
+                                )
+                                .clipShape(Capsule())
+                                .disabled(!isStepTwoValid || sessionStore.state.isBusy)
+                                .accessibilityIdentifier("signup_create_account_button")
+                            }
+                            .padding(.top, 8)
                         }
-                        .padding(.top, 8)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -215,24 +297,53 @@ struct SignUpView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear(perform: restoreDraft)
+        .onAppear {
+            restoreDraft()
+        }
         .onChange(of: currentStep) { _ in persistDraft() }
         .onChange(of: email) { _ in persistDraft() }
         .onChange(of: password) { _ in persistDraft() }
         .onChange(of: firstName) { _ in persistDraft() }
         .onChange(of: lastName) { _ in persistDraft() }
+        .onChange(of: birthMonth) { _ in
+            updateDateOfBirthFromFields()
+            persistDraft()
+        }
+        .onChange(of: birthDay) { _ in
+            updateDateOfBirthFromFields()
+            persistDraft()
+        }
+        .onChange(of: birthYear) { _ in
+            updateDateOfBirthFromFields()
+            persistDraft()
+        }
         .onChange(of: dateOfBirth) { _ in persistDraft() }
     }
 
     private func restoreDraft() {
         let defaultDOB = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
         let draft = draftStore.load(defaultDateOfBirth: defaultDOB)
+
         currentStep = min(max(draft.currentStep, 1), 2)
         email = draft.email
         password = draft.password
         firstName = draft.firstName
         lastName = draft.lastName
         dateOfBirth = draft.dateOfBirth
+
+        let hasSavedDraftContent =
+            !draft.email.isEmpty ||
+            !draft.password.isEmpty ||
+            !draft.firstName.isEmpty ||
+            !draft.lastName.isEmpty
+
+        if hasSavedDraftContent {
+            syncBirthFieldsFromDate()
+        } else {
+            birthMonth = ""
+            birthDay = ""
+            birthYear = ""
+        }
     }
 
     private func persistDraft() {
@@ -246,6 +357,41 @@ struct SignUpView: View {
             updatedAt: Date()
         )
         draftStore.save(draft)
+    }
+    
+    private func syncBirthFieldsFromDate() {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.month, .day, .year], from: dateOfBirth)
+
+        birthMonth = components.month.map { String(format: "%02d", $0) } ?? ""
+        birthDay = components.day.map { String(format: "%02d", $0) } ?? ""
+        birthYear = components.year.map(String.init) ?? ""
+    }
+
+    private func sanitizeDOBFields() {
+        birthMonth = String(birthMonth.filter(\.isNumber).prefix(2))
+        birthDay = String(birthDay.filter(\.isNumber).prefix(2))
+        birthYear = String(birthYear.filter(\.isNumber).prefix(4))
+    }
+
+    private func updateDateOfBirthFromFields() {
+        sanitizeDOBFields()
+
+        guard isDOBValid,
+              let month = Int(birthMonth),
+              let day = Int(birthDay),
+              let year = Int(birthYear)
+        else { return }
+
+        var components = DateComponents()
+        components.calendar = Calendar.current
+        components.year = year
+        components.month = month
+        components.day = day
+
+        if let newDate = Calendar.current.date(from: components) {
+            dateOfBirth = newDate
+        }
     }
 }
 
