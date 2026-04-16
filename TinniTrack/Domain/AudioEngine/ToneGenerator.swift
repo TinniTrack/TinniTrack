@@ -7,9 +7,12 @@
 
 
 import AVFoundation
+import OSLog
 
 final class ToneGenerator {
     static let shared = ToneGenerator()
+
+    private let logger = Logger(subsystem: "com.BARScapstone.TinniTrack", category: "AudioEngine")
     
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode!
@@ -60,7 +63,7 @@ final class ToneGenerator {
             try engine.start()
             isRunning = true
         } catch {
-            print("Error starting engine: \(error)")
+            logger.error("Failed to start audio engine: \(error.localizedDescription, privacy: .public)")
         }
     }
     

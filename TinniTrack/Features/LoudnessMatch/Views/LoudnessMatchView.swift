@@ -58,16 +58,14 @@ struct LoudnessMatchView: View {
                 VStack(spacing: 40) {
                     Button {
                         loudness = min(loudness + arrowStep, 1.0)
-                        print("Up tapped - Loudness: \(loudness)")
                     } label: {
                         Image(systemName: "triangle.fill")
                             .font(.system(size: 40))
                             .foregroundColor(.blue)
                     }
-                    
+
                     Button {
                         loudness = max(loudness - arrowStep, 0.0)
-                        print("Down tapped - Loudness: \(loudness)")
                     } label: {
                         Image(systemName: "triangle.fill")
                             .font(.system(size: 40))
@@ -82,7 +80,6 @@ struct LoudnessMatchView: View {
                 
                 // Match button
                 Button {
-                    print("Match tapped - Final Loudness: \(loudness)")
                     // here you could store the matched value
                 } label: {
                     Text("MATCH")
@@ -118,4 +115,3 @@ struct LoudnessMatchView: View {
 #Preview {
     LoudnessMatchView()
 }
-
