@@ -132,6 +132,18 @@ private actor MockStudyService: StudyServiceProtocol {
         }
     }
 
+    func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
+        []
+    }
+
+    func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
+
+    func submitLoudnessMatch(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: LoudnessMatchSubmission
+    ) async throws {}
+
     func setStudiesError(_ error: Error?) {
         studiesError = error
     }

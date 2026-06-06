@@ -61,5 +61,7 @@
 	</array>
 	<key>NSHealthShareUsageDescription</key>
 	<string>We need access to your hearing test data from Apple Health to import and analyze your hearing health information for this research study.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We use the microphone to verify ambient noise is quiet enough during loudness-matching tasks.</string>
 </dict>
 </plist>

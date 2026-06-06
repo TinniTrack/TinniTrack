@@ -12,6 +12,25 @@ struct StudyEnrollment: Identifiable, Equatable {
     let status: StudyEnrollmentStatus
     let enrolledAt: Date?
     let createdAt: Date?
+    let onboardingCompletedAt: Date?
+
+    init(
+        id: UUID,
+        userID: UUID,
+        studyID: UUID,
+        status: StudyEnrollmentStatus,
+        enrolledAt: Date?,
+        createdAt: Date?,
+        onboardingCompletedAt: Date? = nil
+    ) {
+        self.id = id
+        self.userID = userID
+        self.studyID = studyID
+        self.status = status
+        self.enrolledAt = enrolledAt
+        self.createdAt = createdAt
+        self.onboardingCompletedAt = onboardingCompletedAt
+    }
 }
 
 enum StudyEnrollmentStatus: Equatable {

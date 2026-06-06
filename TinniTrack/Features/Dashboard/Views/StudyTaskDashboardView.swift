@@ -14,21 +14,35 @@ struct StudyTaskDashboardView: View {
     }
 
     let study: Study
+    let enrollment: StudyEnrollment
+    let profileTimezone: String?
 
     @Environment(\.openURL) private var openURL
     @StateObject private var viewModel: StudyTaskDashboardViewModel
     @State private var isOrientationPresented = false
     @State private var orientationStep: OrientationStep = .hearingTest
+    @State private var selectedTask: ScheduledTask?
+
+    private let studyService: StudyServiceProtocol
 
     init(
         study: Study,
-        coordinator: AudiogramImportCoordinating = AudiogramImportCoordinator()
+        enrollment: StudyEnrollment,
+        profileTimezone: String? = nil,
+        coordinator: AudiogramImportCoordinating = AudiogramImportCoordinator(),
+        studyService: StudyServiceProtocol? = nil
     ) {
         self.study = study
+        self.enrollment = enrollment
+        self.profileTimezone = profileTimezone
+        self.studyService = studyService ?? SupabaseStudyService()
         _viewModel = StateObject(
             wrappedValue: StudyTaskDashboardViewModel(
                 study: study,
-                coordinator: coordinator
+                enrollment: enrollment,
+                coordinator: coordinator,
+                studyService: studyService ?? SupabaseStudyService(),
+                profileTimezone: profileTimezone
             )
         )
     }
@@ -43,19 +57,46 @@ struct StudyTaskDashboardView: View {
             .sheet(isPresented: $isOrientationPresented, onDismiss: handleOrientationDismissed) {
                 orientationSheet
             }
+            .navigationDestination(item: $selectedTask) { task in
+                LoudnessMatchTaskFlowView(
+                    scheduledTask: task,
+                    enrollment: enrollment,
+                    studyService: studyService
+                ) {
+                    Task { await viewModel.didSubmitTask() }
+                }
+            }
+            .alert("Unable to Continue", isPresented: Binding(
+                get: { viewModel.taskLoadErrorMessage != nil },
+                set: { shouldShow in
+                    if !shouldShow {
+                        viewModel.dismissTaskError()
+                    }
+                }
+            )) {
+                Button("OK", role: .cancel) {
+                    viewModel.dismissTaskError()
+                }
+            } message: {
+                Text(viewModel.taskLoadErrorMessage ?? "")
+            }
     }
 
     @ViewBuilder
     private var content: some View {
-        switch viewModel.contentState {
-        case .loading:
-            ProgressView("Checking study prerequisites…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(uiColor: .systemGroupedBackground))
-        case .blocked:
+        if viewModel.requiresStudyOnboardingCompletion {
             orientationRequiredContent
-        case .ready(let latestAudiogramDate):
-            readyContent(latestAudiogramDate: latestAudiogramDate)
+        } else {
+            switch viewModel.contentState {
+            case .loading:
+                ProgressView("Checking study prerequisites…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(uiColor: .systemGroupedBackground))
+            case .blocked:
+                blockedPrerequisiteContent
+            case .ready(let latestAudiogramDate):
+                readyContent(latestAudiogramDate: latestAudiogramDate)
+            }
         }
     }
 
@@ -64,11 +105,29 @@ struct StudyTaskDashboardView: View {
             VStack(alignment: .leading, spacing: 18) {
                 prerequisiteCard(
                     title: "Welcome. Thanks for choosing to participate in this study!",
-                    message: "Before tasks can start, complete a short orientation to get your hearing-test baseline set up."
+                    message: "Before tasks can start, complete orientation and import your hearing-test baseline."
                 )
 
                 actionButton(title: "Begin Orientation", isPrimary: true) {
                     orientationStep = .hearingTest
+                    isOrientationPresented = true
+                }
+            }
+            .padding(20)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    private var blockedPrerequisiteContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                prerequisiteCard(
+                    title: "Study Tasks Are Temporarily Locked",
+                    message: "A hearing-test baseline is required before you can run loudness tasks."
+                )
+
+                actionButton(title: "Resolve Prerequisites", isPrimary: true) {
+                    orientationStep = .importAudiogram
                     isOrientationPresented = true
                 }
             }
@@ -109,16 +168,82 @@ struct StudyTaskDashboardView: View {
             }
 
             Section("Future Tasks") {
-                Text("No upcoming tasks yet.")
-                    .foregroundStyle(.secondary)
+                if viewModel.isLoadingTasks {
+                    HStack {
+                        ProgressView()
+                        Text("Loading tasks…")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if viewModel.futureTasks.isEmpty {
+                    Text("No upcoming tasks yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.futureTasks) { task in
+                        futureTaskRow(task)
+                    }
+                }
             }
 
             Section("Completed Tasks") {
-                Text("No completed tasks yet.")
-                    .foregroundStyle(.secondary)
+                if viewModel.completedTasks.isEmpty {
+                    Text("No completed tasks yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.completedTasks) { task in
+                        completedTaskRow(task)
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    private func futureTaskRow(_ task: ScheduledTask) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Day \(task.dayIndex + 1), Slot \(task.slotIndex + 1)")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            Text(Self.windowFormatter.string(from: task.windowStart) + " - " + Self.timeFormatter.string(from: task.windowEnd))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Button {
+                selectedTask = task
+            } label: {
+                Text("Start Task")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.canStart(task))
+
+            if !viewModel.canStart(task) {
+                Text(startAvailabilityMessage(for: task))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func completedTaskRow(_ task: ScheduledTask) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Day \(task.dayIndex + 1), Slot \(task.slotIndex + 1)")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            if let completedAt = task.completedAt {
+                Text("Completed \(Self.dateFormatter.string(from: completedAt))")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Completed")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private var orientationSheet: some View {
@@ -131,7 +256,7 @@ struct StudyTaskDashboardView: View {
                     case .importAudiogram:
                         orientationImportStep
                     case .nextSteps:
-                        orientationNextStepsPlaceholder
+                        orientationNextSteps
                     }
                 }
                 .padding(20)
@@ -200,7 +325,7 @@ struct StudyTaskDashboardView: View {
         }
     }
 
-    private var orientationNextStepsPlaceholder: some View {
+    private var orientationNextSteps: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Step 3")
                 .font(.caption)
@@ -209,13 +334,24 @@ struct StudyTaskDashboardView: View {
                 .foregroundStyle(.secondary)
 
             prerequisiteCard(
-                title: "More Orientation Is Coming Next",
-                message: "Your audiogram baseline is ready. We will add the remaining study walkthrough steps in a follow-up update."
+                title: "Finish Orientation",
+                message: "Once you finish, we will generate your full Study No. 1 task schedule."
             )
 
-            actionButton(title: "Finish Orientation", isPrimary: true) {
-                isOrientationPresented = false
+            actionButton(
+                title: viewModel.isCompletingStudyOnboarding ? "Finishing…" : "Finish Orientation",
+                isPrimary: true,
+                isLoading: viewModel.isCompletingStudyOnboarding
+            ) {
+                Task {
+                    await viewModel.completeStudyOnboarding()
+                    if !viewModel.requiresStudyOnboardingCompletion {
+                        isOrientationPresented = false
+                    }
+                }
             }
+            .disabled(!viewModel.isAudiogramPrerequisiteMet || viewModel.isCompletingStudyOnboarding)
+            .opacity((viewModel.isAudiogramPrerequisiteMet && !viewModel.isCompletingStudyOnboarding) ? 1 : 0.5)
         }
     }
 
@@ -248,7 +384,7 @@ struct StudyTaskDashboardView: View {
         case .authorizedNoHearingTest:
             prerequisiteCard(
                 title: "No Hearing Test Found Yet",
-                message: "We can access your health data, but we aren't seeing a hearing test yet."
+                message: "We can access your health data, but we are not seeing a hearing test yet."
             )
 
             hearingTestInstructions
@@ -264,7 +400,7 @@ struct StudyTaskDashboardView: View {
         case .permissionDenied:
             prerequisiteCard(
                 title: "Permission Required",
-                message: "You need to approve access to hearing test data to continue. Open the Health app and enable access for TinniTrack, then come back and check again."
+                message: "Approve hearing-test access in Apple Health, then return here and check again."
             )
 
             actionButton(title: "Open Health App", isPrimary: false) {
@@ -302,11 +438,11 @@ struct StudyTaskDashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             prerequisiteCard(
                 title: "Take an Apple Hearing Test",
-                message: "For this study, we need you to take a hearing test. You must be using a set of Apple AirPods Pro 2 or AirPods Pro 3. With your AirPods in your ears and connected to your paired iPhone, go to Settings > your AirPods. Tap Take a Hearing Test, and come back here when you are done."
+                message: "Use AirPods Pro with your paired iPhone. In Settings > your AirPods, tap Take a Hearing Test. Then come back and continue orientation."
             )
 
             Link(
-                "For further help with how to take an Apple Hearing test, click here.",
+                "Need help taking an Apple Hearing Test?",
                 destination: URL(string: "https://support.apple.com/en-us/120991")!
             )
             .font(.subheadline)
@@ -406,6 +542,19 @@ struct StudyTaskDashboardView: View {
         }
     }
 
+    private func startAvailabilityMessage(for task: ScheduledTask) -> String {
+        let now = Date()
+        if now < task.windowStart {
+            return "Available at \(Self.windowFormatter.string(from: task.windowStart))."
+        }
+
+        if now > task.windowEnd {
+            return "This task window has ended."
+        }
+
+        return "This task is temporarily unavailable."
+    }
+
     private func handleOrientationDismissed() {
         orientationStep = .hearingTest
         Task { await viewModel.refresh() }
@@ -437,6 +586,22 @@ struct StudyTaskDashboardView: View {
         formatter.timeStyle = .none
         return formatter
     }()
+
+    private static let windowFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }
 
 #Preview {
@@ -449,6 +614,15 @@ struct StudyTaskDashboardView: View {
                 description: "Audiogram prerequisite preview",
                 status: .recruiting,
                 createdAt: Date()
+            ),
+            enrollment: StudyEnrollment(
+                id: UUID(),
+                userID: UUID(),
+                studyID: UUID(),
+                status: .enrolled,
+                enrolledAt: Date(),
+                createdAt: Date(),
+                onboardingCompletedAt: Date()
             ),
             coordinator: AudiogramImportCoordinator()
         )

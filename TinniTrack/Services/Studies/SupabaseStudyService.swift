@@ -31,8 +31,20 @@ final class SupabaseStudyService: StudyServiceProtocol {
 
         let rows: [StudyEnrollmentRow] = try await client
             .from("study_enrollments")
-            .select("id,user_id,study_id,status,enrolled_at,created_at")
+            .select("id,user_id,study_id,status,enrolled_at,created_at,onboarding_completed_at")
             .eq("user_id", value: userID.uuidString)
+            .execute()
+            .value
+
+        return rows.map { $0.toDomain() }
+    }
+
+    func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
+        let rows: [ScheduledTaskRow] = try await client
+            .from("scheduled_tasks")
+            .select("id,enrollment_id,task_key,task_version,scheduled_for,window_start,window_end,status,day_index,slot_index,completed_at")
+            .eq("enrollment_id", value: enrollmentID.uuidString)
+            .order("scheduled_for", ascending: true)
             .execute()
             .value
 
@@ -77,6 +89,47 @@ final class SupabaseStudyService: StudyServiceProtocol {
                 ))
                 .execute()
         }
+    }
+
+    func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {
+        let params: [String: String] = [
+            "p_enrollment_id": enrollmentID.uuidString,
+            "p_timezone": timezone
+        ]
+
+        try await client
+            .rpc(
+                "complete_study_no_1_onboarding",
+                params: params
+            )
+            .execute()
+    }
+
+    func submitLoudnessMatch(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: LoudnessMatchSubmission
+    ) async throws {
+        let params: [String: JSONValue] = [
+            "p_scheduled_task_id": .string(scheduledTaskID.uuidString),
+            "p_enrollment_id": .string(enrollmentID.uuidString),
+            "p_started_at": .string(Self.iso8601Formatter.string(from: submission.startedAt)),
+            "p_completed_at": .string(Self.iso8601Formatter.string(from: submission.completedAt)),
+            "p_matched_level": .number(submission.matchedLevel),
+            "p_gating": .object(submission.gating),
+            "p_raw_payload": .object(submission.rawPayload),
+            "p_device_info": .object(submission.deviceInfo),
+            "p_headphone_info": .object(submission.headphoneInfo),
+            "p_app_version": submission.appVersion.map(JSONValue.string) ?? .null,
+            "p_calibration_version": submission.calibrationVersion.map(JSONValue.string) ?? .null
+        ]
+
+        try await client
+            .rpc(
+                "submit_study_no_1_loudness_match",
+                params: params
+            )
+            .execute()
     }
 
     private func currentUserID() async throws -> UUID? {
@@ -141,6 +194,7 @@ private struct StudyEnrollmentRow: Decodable {
     let status: String
     let enrolledAt: String?
     let createdAt: String?
+    let onboardingCompletedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -149,6 +203,7 @@ private struct StudyEnrollmentRow: Decodable {
         case status
         case enrolledAt = "enrolled_at"
         case createdAt = "created_at"
+        case onboardingCompletedAt = "onboarding_completed_at"
     }
 
     func toDomain() -> StudyEnrollment {
@@ -158,7 +213,62 @@ private struct StudyEnrollmentRow: Decodable {
             studyID: studyID,
             status: StudyEnrollmentStatus(rawValue: status),
             enrolledAt: Self.parseTimestamp(enrolledAt),
-            createdAt: Self.parseTimestamp(createdAt)
+            createdAt: Self.parseTimestamp(createdAt),
+            onboardingCompletedAt: Self.parseTimestamp(onboardingCompletedAt)
+        )
+    }
+
+    private static func parseTimestamp(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        if let date = SupabaseStudyService.iso8601Formatter.date(from: value) {
+            return date
+        }
+        let fallback = ISO8601DateFormatter()
+        fallback.formatOptions = [.withInternetDateTime]
+        return fallback.date(from: value)
+    }
+}
+
+private struct ScheduledTaskRow: Decodable {
+    let id: UUID
+    let enrollmentID: UUID
+    let taskKey: String
+    let taskVersion: Int
+    let scheduledFor: String
+    let windowStart: String
+    let windowEnd: String
+    let status: String
+    let dayIndex: Int
+    let slotIndex: Int
+    let completedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case enrollmentID = "enrollment_id"
+        case taskKey = "task_key"
+        case taskVersion = "task_version"
+        case scheduledFor = "scheduled_for"
+        case windowStart = "window_start"
+        case windowEnd = "window_end"
+        case status
+        case dayIndex = "day_index"
+        case slotIndex = "slot_index"
+        case completedAt = "completed_at"
+    }
+
+    func toDomain() -> ScheduledTask {
+        ScheduledTask(
+            id: id,
+            enrollmentID: enrollmentID,
+            taskKey: taskKey,
+            taskVersion: taskVersion,
+            scheduledFor: Self.parseTimestamp(scheduledFor) ?? Date.distantPast,
+            windowStart: Self.parseTimestamp(windowStart) ?? Date.distantPast,
+            windowEnd: Self.parseTimestamp(windowEnd) ?? Date.distantFuture,
+            status: ScheduledTaskStatus(rawValue: status),
+            dayIndex: dayIndex,
+            slotIndex: slotIndex,
+            completedAt: Self.parseTimestamp(completedAt)
         )
     }
 

@@ -10,8 +10,8 @@ struct HomeView: View {
     @StateObject private var dashboardViewModel: HomeDashboardViewModel
     @State private var selectedTab: Tab = .dashboard
 
-    init(studyService: StudyServiceProtocol = SupabaseStudyService()) {
-        _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: studyService))
+    init(studyService: StudyServiceProtocol? = nil) {
+        _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: studyService ?? SupabaseStudyService()))
     }
 
     var body: some View {
@@ -19,6 +19,7 @@ struct HomeView: View {
             NavigationStack {
                 DashboardTabView(
                     firstName: displayFirstName,
+                    profileTimezone: sessionStore.state.profile?.timezone,
                     viewModel: dashboardViewModel
                 )
             }
@@ -51,6 +52,7 @@ private enum Tab {
 private struct DashboardTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     let firstName: String
+    let profileTimezone: String?
     @ObservedObject var viewModel: HomeDashboardViewModel
 
     var body: some View {
@@ -142,8 +144,12 @@ private struct DashboardTabView: View {
 
     @ViewBuilder
     private func destination(for studyCard: DashboardStudyCard) -> some View {
-        if studyCard.isEnrolledActive {
-            StudyTaskDashboardView(study: studyCard.study)
+        if studyCard.isEnrolledActive, let enrollment = studyCard.enrollment {
+            StudyTaskDashboardView(
+                study: studyCard.study,
+                enrollment: enrollment,
+                profileTimezone: profileTimezone
+            )
         } else {
             StudyDetailView(studyCard: studyCard) {
                 try await viewModel.enroll(studyID: studyCard.study.id)
