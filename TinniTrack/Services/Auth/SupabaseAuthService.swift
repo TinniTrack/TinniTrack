@@ -60,7 +60,7 @@ final class SupabaseAuthService: AuthServiceProtocol {
     func currentSession() async throws -> AuthSession? {
         do {
             let session = try await client.auth.session
-            return AuthSession(userID: session.user.id)
+            return AuthSession(userID: session.user.id, email: session.user.email)
         } catch {
             let mapped = Self.mapAuthError(error)
             if case .noActiveSession = mapped {
@@ -77,7 +77,7 @@ final class SupabaseAuthService: AuthServiceProtocol {
                     continuation.yield(
                         AuthStateChange(
                             event: Self.mapEvent(description: String(describing: event)),
-                            session: session.map { AuthSession(userID: $0.user.id) }
+                            session: session.map { AuthSession(userID: $0.user.id, email: $0.user.email) }
                         )
                     )
                 }
@@ -145,6 +145,29 @@ final class SupabaseAuthService: AuthServiceProtocol {
             try await client.auth.update(
                 user: UserAttributes(password: newPassword)
             )
+        } catch {
+            throw Self.mapAuthError(error)
+        }
+    }
+
+    func updateEmail(_ email: String, redirectURL: URL) async throws {
+        do {
+            try await client.auth.update(
+                user: UserAttributes(email: email),
+                redirectTo: redirectURL
+            )
+        } catch {
+            throw Self.mapAuthError(error)
+        }
+    }
+
+    func deleteCurrentUser() async throws {
+        do {
+            try await client.functions.invoke(
+                "delete-account",
+                options: FunctionInvokeOptions(method: .delete)
+            )
+            try? await client.auth.signOut()
         } catch {
             throw Self.mapAuthError(error)
         }

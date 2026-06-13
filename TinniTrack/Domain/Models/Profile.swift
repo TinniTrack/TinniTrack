@@ -22,6 +22,12 @@ struct Profile: Codable, Equatable {
             && dateOfBirth != nil
     }
 
+    func age(asOf date: Date = Date(), calendar: Calendar = Calendar(identifier: .gregorian)) -> Int? {
+        guard let dateOfBirth else { return nil }
+        let components = calendar.dateComponents([.year], from: dateOfBirth, to: date)
+        return components.year
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case participantID = "participant_id"

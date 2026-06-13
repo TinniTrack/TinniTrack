@@ -23,6 +23,9 @@ final class SessionStore: ObservableObject {
             case signingUp
             case completingOnboarding
             case signingOut
+            case updatingProfile
+            case updatingEmail
+            case deletingAccount
             case requestingPasswordReset
             case handlingAuthCallback
             case updatingPassword
@@ -62,12 +65,14 @@ final class SessionStore: ObservableObject {
         var activity: Activity
         var banner: Banner?
         var passwordResetPresented: Bool
+        var loginEmail: String? = nil
 
         static let bootstrapping = SessionState(
             route: .bootstrapping,
             activity: .idle,
             banner: nil,
-            passwordResetPresented: false
+            passwordResetPresented: false,
+            loginEmail: nil
         )
 
         var isBusy: Bool {
@@ -117,7 +122,8 @@ final class SessionStore: ObservableObject {
             route: .bootstrapping,
             activity: .idle,
             banner: nil,
-            passwordResetPresented: false
+            passwordResetPresented: false,
+            loginEmail: nil
         ),
         hasStarted: Bool = false
     ) {
@@ -217,7 +223,53 @@ final class SessionStore: ObservableObject {
             do {
                 try await authService.signOut()
                 clearPendingEmailVerification()
+                state.loginEmail = nil
                 state.route = routeForNoSession()
+            } catch {
+                setErrorBanner(from: error)
+            }
+        }
+    }
+
+    func updateProfile(firstName: String, lastName: String, dateOfBirth: Date) async {
+        await execute(activity: .updatingProfile) { [self] in
+            do {
+                let updatedProfile = try await profileService.updateMyProfile(
+                    firstName: firstName,
+                    lastName: lastName,
+                    dateOfBirth: dateOfBirth
+                )
+                state.route = updatedProfile.isOnboardingComplete ? .ready(profile: updatedProfile) : .needsOnboarding(profile: updatedProfile)
+                state.banner = .info("Profile updated.")
+            } catch {
+                setErrorBanner(from: error)
+            }
+        }
+    }
+
+    func updateLoginEmail(_ email: String) async {
+        guard let redirectURL = URL(string: "tinnitrack://auth/confirm") else { return }
+
+        await execute(activity: .updatingEmail) { [self] in
+            do {
+                let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                try await authService.updateEmail(normalizedEmail, redirectURL: redirectURL)
+                state.banner = .info("Check your current and new inboxes to confirm this email change.")
+            } catch {
+                setErrorBanner(from: error)
+            }
+        }
+    }
+
+    func deleteAccount() async {
+        await execute(activity: .deletingAccount) { [self] in
+            do {
+                try await authService.deleteCurrentUser()
+                clearPendingEmailVerification()
+                state.loginEmail = nil
+                state.passwordResetPresented = false
+                state.route = .unauthenticated
+                state.banner = nil
             } catch {
                 setErrorBanner(from: error)
             }
@@ -341,10 +393,12 @@ final class SessionStore: ObservableObject {
         do {
             let session = try await authService.currentSession()
             guard session != nil else {
+                state.loginEmail = nil
                 state.route = routeForNoSession()
                 return
             }
 
+            state.loginEmail = session?.email
             clearPendingEmailVerification()
             let latestProfile = try await profileService.fetchMyProfile()
 

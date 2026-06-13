@@ -29,7 +29,7 @@ struct HomeView: View {
             .tag(Tab.dashboard)
 
             NavigationStack {
-                ProfileTabView()
+                ProfileView()
             }
             .tabItem {
                 Label("Profile", systemImage: "person.circle")
@@ -331,51 +331,6 @@ private struct StudyDetailView: View {
         "No compatible headphones for calibration workflows.",
         "Medical conditions that make headphone listening unsafe."
     ]
-}
-
-private struct ProfileTabView: View {
-    @EnvironmentObject private var sessionStore: SessionStore
-    @State private var isSigningOut = false
-
-    var body: some View {
-        Form {
-            Section("Profile") {
-                LabeledContent("First Name", value: sessionStore.state.profile?.firstName ?? "Not set")
-                LabeledContent("Last Name", value: sessionStore.state.profile?.lastName ?? "Not set")
-            }
-
-            Section("Research") {
-                LabeledContent("Participant ID", value: participantIDText)
-            }
-
-            Section {
-                Button(role: .destructive) {
-                    Task { await signOut() }
-                } label: {
-                    if isSigningOut {
-                        ProgressView()
-                    } else {
-                        Text("Log Out")
-                    }
-                }
-                .disabled(isSigningOut)
-            }
-        }
-        .navigationTitle("Profile")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var participantIDText: String {
-        guard let participantID = sessionStore.state.profile?.participantID else { return "Unavailable" }
-        return String(participantID)
-    }
-
-    @MainActor
-    private func signOut() async {
-        isSigningOut = true
-        defer { isSigningOut = false }
-        await sessionStore.signOut()
-    }
 }
 
 private struct ShimmerStudyCardView: View {

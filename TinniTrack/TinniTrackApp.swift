@@ -56,7 +56,7 @@ enum SessionStoreFactory {
 
             return SessionStore(
                 authService: NoopAuthService(processInfo: processInfo),
-                profileService: NoopProfileService(),
+                profileService: NoopProfileService(processInfo: processInfo),
                 emailVerificationPendingStore: pendingStore
             )
         }
@@ -100,7 +100,7 @@ enum SessionStoreFactory {
             route = .awaitingEmailVerification(email: safeEmail)
         case .authenticatedNeedsOnboarding:
             pending = nil
-            session = AuthSession(userID: previewUserID)
+            session = AuthSession(userID: previewUserID, email: "taylor@example.com")
             profile = Profile(
                 id: previewUserID,
                 participantID: nil,
@@ -114,7 +114,7 @@ enum SessionStoreFactory {
             route = .needsOnboarding(profile: profile)
         case .authenticatedReady:
             pending = nil
-            session = AuthSession(userID: previewUserID)
+            session = AuthSession(userID: previewUserID, email: "taylor@example.com")
             profile = Profile(
                 id: previewUserID,
                 participantID: 1001,
@@ -136,7 +136,8 @@ enum SessionStoreFactory {
                 route: route,
                 activity: .idle,
                 banner: nil,
-                passwordResetPresented: false
+                passwordResetPresented: false,
+                loginEmail: session?.email
             ),
             hasStarted: true
         )
@@ -147,6 +148,7 @@ enum SessionStoreFactory {
 private final class NoopAuthService: AuthServiceProtocol {
     private var currentSessionCallCount = 0
     private let verifyAfterSessionChecks: Int?
+    private var storedSession: AuthSession?
 
     init(processInfo: ProcessInfo = .processInfo) {
         if let raw = processInfo.environment["UITEST_NOOP_VERIFY_AFTER_SESSION_CHECKS"] {
@@ -154,21 +156,44 @@ private final class NoopAuthService: AuthServiceProtocol {
         } else {
             verifyAfterSessionChecks = nil
         }
+
+        if processInfo.environment["UITEST_READY_PROFILE"] == "1" {
+            let email = processInfo.environment["UITEST_PROFILE_EMAIL"] ?? "profile@example.com"
+            storedSession = AuthSession(
+                userID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                email: email
+            )
+        } else {
+            storedSession = nil
+        }
     }
 
     func signUp(email: String, password: String, metadata: SignUpMetadata) async throws -> SignUpResult {
         .awaitingEmailVerification
     }
 
-    func signIn(email: String, password: String) async throws {}
+    func signIn(email: String, password: String) async throws {
+        storedSession = AuthSession(
+            userID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            email: email
+        )
+    }
 
-    func signOut() async throws {}
+    func signOut() async throws {
+        storedSession = nil
+    }
 
     func currentSession() async throws -> AuthSession? {
         currentSessionCallCount += 1
-        guard let verifyAfterSessionChecks else { return nil }
+        guard let verifyAfterSessionChecks else { return storedSession }
         guard currentSessionCallCount >= verifyAfterSessionChecks else { return nil }
-        return AuthSession(userID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!)
+        if storedSession == nil {
+            storedSession = AuthSession(
+                userID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                email: "verified@example.com"
+            )
+        }
+        return storedSession
     }
 
     func authStateStream() -> AsyncStream<AuthStateChange> {
@@ -184,12 +209,64 @@ private final class NoopAuthService: AuthServiceProtocol {
     func handleAuthCallback(url: URL) async throws -> AuthCallbackResult { .none }
 
     func updatePassword(newPassword: String) async throws {}
+
+    func updateEmail(_ email: String, redirectURL: URL) async throws {}
+
+    func deleteCurrentUser() async throws {
+        storedSession = nil
+    }
 }
 
 private final class NoopProfileService: ProfileServiceProtocol {
-    func fetchMyProfile() async throws -> Profile? { nil }
+    private var profile: Profile?
 
-    func completeOnboarding(firstName: String, lastName: String, dateOfBirth: Date) async throws {}
+    init(processInfo: ProcessInfo = .processInfo) {
+        guard processInfo.environment["UITEST_READY_PROFILE"] == "1" else {
+            profile = nil
+            return
+        }
+
+        profile = Profile(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            participantID: 1001,
+            firstName: processInfo.environment["UITEST_PROFILE_FIRST_NAME"] ?? "Taylor",
+            lastName: processInfo.environment["UITEST_PROFILE_LAST_NAME"] ?? "Rivers",
+            dateOfBirth: Calendar(identifier: .gregorian).date(from: DateComponents(year: 1990, month: 6, day: 1)),
+            timezone: "America/Chicago",
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            onboardingCompletedAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+    }
+
+    func fetchMyProfile() async throws -> Profile? { profile }
+
+    func completeOnboarding(firstName: String, lastName: String, dateOfBirth: Date) async throws {
+        profile = Profile(
+            id: profile?.id ?? UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            participantID: profile?.participantID,
+            firstName: firstName,
+            lastName: lastName,
+            dateOfBirth: dateOfBirth,
+            timezone: profile?.timezone,
+            createdAt: profile?.createdAt,
+            onboardingCompletedAt: Date()
+        )
+    }
+
+    func updateMyProfile(firstName: String, lastName: String, dateOfBirth: Date) async throws -> Profile {
+        let updated = Profile(
+            id: profile?.id ?? UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            participantID: profile?.participantID,
+            firstName: firstName,
+            lastName: lastName,
+            dateOfBirth: dateOfBirth,
+            timezone: profile?.timezone,
+            createdAt: profile?.createdAt,
+            onboardingCompletedAt: profile?.onboardingCompletedAt ?? Date()
+        )
+        profile = updated
+        return updated
+    }
 }
 
 #if DEBUG
@@ -230,6 +307,12 @@ private final class PreviewAuthService: AuthServiceProtocol {
     func handleAuthCallback(url: URL) async throws -> AuthCallbackResult { .none }
 
     func updatePassword(newPassword: String) async throws {}
+
+    func updateEmail(_ email: String, redirectURL: URL) async throws {}
+
+    func deleteCurrentUser() async throws {
+        session = nil
+    }
 }
 
 private final class StaticProfileService: ProfileServiceProtocol {
@@ -254,6 +337,21 @@ private final class StaticProfileService: ProfileServiceProtocol {
             createdAt: profile?.createdAt,
             onboardingCompletedAt: Date()
         )
+    }
+
+    func updateMyProfile(firstName: String, lastName: String, dateOfBirth: Date) async throws -> Profile {
+        let updated = Profile(
+            id: profile?.id ?? UUID(),
+            participantID: profile?.participantID,
+            firstName: firstName,
+            lastName: lastName,
+            dateOfBirth: dateOfBirth,
+            timezone: profile?.timezone,
+            createdAt: profile?.createdAt,
+            onboardingCompletedAt: profile?.onboardingCompletedAt ?? Date()
+        )
+        profile = updated
+        return updated
     }
 }
 

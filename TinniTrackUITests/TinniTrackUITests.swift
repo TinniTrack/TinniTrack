@@ -101,6 +101,54 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
+    func testProfileEditingShowsSavedStateAndEmailConfirmationMessage() throws {
+        let app = makeAuthenticatedProfileApp()
+        app.launch()
+
+        openProfileTab(in: app)
+
+        let firstNameField = app.textFields["profile_first_name_field"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 3))
+        replaceText(in: firstNameField, with: "Jordan")
+
+        let saveButton = app.buttons["profile_save_button"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(saveButton.isEnabled)
+        saveButton.tap()
+
+        XCTAssertTrue(app.alerts["Info"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.alerts["Info"].staticTexts["Profile updated."].exists)
+        app.alerts["Info"].buttons["OK"].tap()
+
+        let emailField = app.textFields["profile_email_field"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 2))
+        replaceText(in: emailField, with: "new-profile@example.com")
+        saveButton.tap()
+
+        XCTAssertTrue(app.alerts["Info"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.alerts["Info"].staticTexts["Check your current and new inboxes to confirm this email change."].exists)
+    }
+
+    @MainActor
+    func testProfileDeleteAccountShowsConfirmationAndRoutesToLogin() throws {
+        let app = makeAuthenticatedProfileApp()
+        app.launch()
+
+        openProfileTab(in: app)
+
+        let deleteButton = app.buttons["profile_delete_account_button"]
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 3))
+        deleteButton.tap()
+
+        let confirmation = app.alerts["Delete Account?"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 2))
+        XCTAssertTrue(confirmation.staticTexts["This permanently deletes your TinniTrack account and study data."].exists)
+        confirmation.buttons["Delete Account"].tap()
+
+        XCTAssertTrue(app.buttons["Sign Up"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
@@ -113,5 +161,31 @@ final class TinniTrackUITests: XCTestCase {
         app.launchEnvironment["UITEST_CLEAR_PENDING_VERIFICATION"] = "1"
         app.launchEnvironment["UITEST_CLEAR_SIGNUP_DRAFT"] = "1"
         return app
+    }
+
+    private func makeAuthenticatedProfileApp() -> XCUIApplication {
+        let app = makeApp()
+        app.launchEnvironment["UITEST_READY_PROFILE"] = "1"
+        app.launchEnvironment["UITEST_PROFILE_EMAIL"] = "profile@example.com"
+        return app
+    }
+
+    @MainActor
+    private func openProfileTab(in app: XCUIApplication) {
+        let profileTab = app.tabBars.buttons["Profile"]
+        XCTAssertTrue(profileTab.waitForExistence(timeout: 3))
+        profileTab.tap()
+        XCTAssertTrue(app.navigationBars["Profile"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    private func replaceText(in field: XCUIElement, with text: String) {
+        field.tap()
+        if let currentValue = field.value as? String,
+           currentValue != text,
+           !currentValue.isEmpty {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count))
+        }
+        field.typeText(text)
     }
 }
