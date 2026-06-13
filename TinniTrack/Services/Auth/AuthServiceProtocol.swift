@@ -10,6 +10,8 @@ struct AuthSession: Equatable {
 }
 
 enum AuthServiceError: Equatable, LocalizedError {
+    static let serviceUnavailableMessage = "We couldn't reach TinniTrack's servers. Please check your connection or try again later."
+
     case emailNotConfirmed
     case noActiveSession
     case callbackFailed(String)
@@ -24,8 +26,8 @@ enum AuthServiceError: Equatable, LocalizedError {
             return "No active session."
         case .callbackFailed(let message):
             return message
-        case .transport(let message):
-            return message
+        case .transport:
+            return Self.serviceUnavailableMessage
         case .unknown(let message):
             return message
         }

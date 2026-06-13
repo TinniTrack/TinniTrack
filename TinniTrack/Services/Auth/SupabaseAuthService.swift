@@ -25,14 +25,17 @@ final class SupabaseAuthService: AuthServiceProtocol {
             data["date_of_birth"] = .string(Self.dateOnlyFormatter.string(from: dateOfBirth))
         }
 
-        let response = try await client.auth.signUp(
-            email: email,
-            password: password,
-            data: data,
-            redirectTo: Self.confirmEmailRedirectURL
-        )
-
-        return response.session == nil ? .awaitingEmailVerification : .signedIn
+        do {
+            let response = try await client.auth.signUp(
+                email: email,
+                password: password,
+                data: data,
+                redirectTo: Self.confirmEmailRedirectURL
+            )
+            return response.session == nil ? .awaitingEmailVerification : .signedIn
+        } catch {
+            throw Self.mapAuthError(error)
+        }
     }
 
     func signIn(email: String, password: String) async throws {
@@ -47,7 +50,11 @@ final class SupabaseAuthService: AuthServiceProtocol {
     }
 
     func signOut() async throws {
-        try await client.auth.signOut()
+        do {
+            try await client.auth.signOut()
+        } catch {
+            throw Self.mapAuthError(error)
+        }
     }
 
     func currentSession() async throws -> AuthSession? {
@@ -163,6 +170,10 @@ final class SupabaseAuthService: AuthServiceProtocol {
     }
 
     private static func mapAuthError(_ error: Error) -> AuthServiceError {
+        if let authError = error as? AuthServiceError {
+            return authError
+        }
+
         let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercased = message.lowercased()
 
@@ -180,10 +191,15 @@ final class SupabaseAuthService: AuthServiceProtocol {
             return .noActiveSession
         }
 
-        if lowercased.contains("network")
+        if Self.isTransportError(error)
+            || lowercased.contains("network")
             || lowercased.contains("offline")
             || lowercased.contains("timed out")
-            || lowercased.contains("connection") {
+            || lowercased.contains("connection")
+            || lowercased.contains("hostname")
+            || lowercased.contains("host name")
+            || lowercased.contains("server could not be found")
+            || lowercased.contains("could not connect to the server") {
             return .transport(message.isEmpty ? "Network request failed." : message)
         }
 
@@ -191,6 +207,45 @@ final class SupabaseAuthService: AuthServiceProtocol {
             return .unknown("Authentication failed.")
         }
         return .unknown(message)
+    }
+
+    private static func isTransportError(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            return Self.isTransportCode(urlError.code)
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return Self.isTransportCode(URLError.Code(rawValue: nsError.code))
+        }
+
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+            return Self.isTransportError(underlying)
+        }
+
+        return false
+    }
+
+    private static func isTransportCode(_ code: URLError.Code) -> Bool {
+        switch code {
+        case .badServerResponse,
+             .cannotConnectToHost,
+             .cannotFindHost,
+             .dataNotAllowed,
+             .dnsLookupFailed,
+             .internationalRoamingOff,
+             .networkConnectionLost,
+             .notConnectedToInternet,
+             .secureConnectionFailed,
+             .serverCertificateHasBadDate,
+             .serverCertificateHasUnknownRoot,
+             .serverCertificateNotYetValid,
+             .serverCertificateUntrusted,
+             .timedOut:
+            return true
+        default:
+            return false
+        }
     }
 
     private static func isRecoveryURL(_ url: URL) -> Bool {

@@ -17,6 +17,22 @@ struct SessionStoreTests {
     }
 
     @Test
+    func startSuppressesInitialBackendFailureBanner() async {
+        let auth = MockAuthService(
+            currentSession: nil,
+            currentSessionError: AuthServiceError.transport("A server with the specified hostname could not be found.")
+        )
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+
+        #expect(store.state.route == .unauthenticated)
+        #expect(store.state.banner == nil)
+    }
+
+    @Test
     func startMovesToAwaitingVerificationWhenPendingEmailExists() async {
         let auth = MockAuthService(currentSession: nil)
         let profile = MockProfileService(profile: nil)
@@ -214,8 +230,9 @@ struct SessionStoreTests {
             #expect(Bool(false), "Expected existing .ready route to be preserved")
         }
 
-        if case .error(let message)? = store.state.banner {
-            #expect(message == "Network unavailable")
+        if case .titledError(let title, let message)? = store.state.banner {
+            #expect(title == "Unable to Connect")
+            #expect(message == AuthServiceError.serviceUnavailableMessage)
         } else {
             #expect(Bool(false), "Expected error banner after refresh failure")
         }
@@ -240,10 +257,33 @@ struct SessionStoreTests {
         await store.checkEmailVerificationStatus()
 
         #expect(store.state.route == .awaitingEmailVerification(email: "pending@example.com"))
-        if case .error(let message)? = store.state.banner {
-            #expect(message == "Network unavailable")
+        if case .titledError(let title, let message)? = store.state.banner {
+            #expect(title == "Unable to Connect")
+            #expect(message == AuthServiceError.serviceUnavailableMessage)
         } else {
             #expect(Bool(false), "Expected refresh error banner to remain visible")
+        }
+    }
+
+    @Test
+    func signInTransportFailureShowsUnableToConnectMessage() async {
+        let auth = MockAuthService(
+            currentSession: nil,
+            signInError: AuthServiceError.transport("A server with the specified hostname could not be found.")
+        )
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+        await store.signIn(email: "person@example.com", password: "password123")
+
+        #expect(store.state.route == .unauthenticated)
+        if case .titledError(let title, let message)? = store.state.banner {
+            #expect(title == "Unable to Connect")
+            #expect(message == AuthServiceError.serviceUnavailableMessage)
+        } else {
+            #expect(Bool(false), "Expected unable-to-connect banner after sign-in transport failure")
         }
     }
 
