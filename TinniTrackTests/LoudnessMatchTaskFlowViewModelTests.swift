@@ -107,6 +107,10 @@ struct LoudnessMatchTaskFlowViewModelTests {
 
         #expect(submitted)
         #expect(await service.submitCallCount() == 1)
+        #expect(await service.lastSubmittedSubmission()?.rawPayload["matched_level_unit"] == .string("normalizedAmplitude"))
+        #expect(await service.lastSubmittedSubmission()?.rawPayload["measurement_metadata"] != nil)
+        #expect(await service.lastSubmittedSubmission()?.headphoneInfo["route_gate"] == .string("study-no-1-route-name-gate"))
+        #expect(await service.lastSubmittedSubmission()?.calibrationVersion == "study-no-1-unvalidated-normalized-output")
     }
 
     private func makeViewModel(
@@ -143,7 +147,11 @@ struct LoudnessMatchTaskFlowViewModelTests {
             enrollment: enrollment,
             studyService: service,
             routeMonitor: routeMonitor,
-            ambientNoiseMonitor: ambientMonitor
+            ambientNoiseMonitor: ambientMonitor,
+            tonePlayer: MockTonePlayer(),
+            routeGate: StudyNo1RouteGate(),
+            deviceMetadataProvider: MockDeviceMetadataProvider(),
+            resultBuilder: StudyNo1LoudnessMatchResultBuilder()
         )
     }
 }
@@ -200,8 +208,44 @@ private final class MockAmbientNoiseMonitor: AmbientNoiseMonitoring {
     }
 }
 
+private final class MockTonePlayer: TonePlaying {
+    private(set) var isStarted = false
+    private(set) var latestVolume: Double?
+
+    func start() {
+        isStarted = true
+    }
+
+    func stop() {
+        isStarted = false
+    }
+
+    func setVolume(_ volume: Double) {
+        latestVolume = volume
+    }
+}
+
+private struct MockDeviceMetadataProvider: DeviceMetadataProviding {
+    func currentDeviceInfo() -> [String: JSONValue] {
+        [
+            "model": .string("Test Device"),
+            "system_name": .string("iOS"),
+            "system_version": .string("18.1")
+        ]
+    }
+
+    func outputDeviceInfo(for route: AudioOutputRoute?) -> [String: JSONValue] {
+        [
+            "route_name": .string(route?.name ?? ""),
+            "route_port_type": .string(route?.portType ?? ""),
+            "route_gate": .string("study-no-1-route-name-gate")
+        ]
+    }
+}
+
 private actor MockLoudnessStudyService: StudyServiceProtocol {
     private var submitCount = 0
+    private var submittedSubmission: LoudnessMatchSubmission?
 
     func fetchStudies() async throws -> [Study] {
         []
@@ -225,9 +269,14 @@ private actor MockLoudnessStudyService: StudyServiceProtocol {
         submission: LoudnessMatchSubmission
     ) async throws {
         submitCount += 1
+        submittedSubmission = submission
     }
 
     func submitCallCount() -> Int {
         submitCount
+    }
+
+    func lastSubmittedSubmission() -> LoudnessMatchSubmission? {
+        submittedSubmission
     }
 }

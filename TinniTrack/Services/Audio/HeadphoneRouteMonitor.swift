@@ -12,6 +12,17 @@ protocol HeadphoneRouteMonitoring: AnyObject {
     func stopMonitoring()
 }
 
+protocol AudioRouteGating {
+    func isRouteSupported(_ route: AudioOutputRoute?) -> Bool
+}
+
+struct StudyNo1RouteGate: AudioRouteGating {
+    func isRouteSupported(_ route: AudioOutputRoute?) -> Bool {
+        guard let routeName = route?.name else { return false }
+        return StudyNo1Configuration.isSupportedHeadphoneRouteName(routeName)
+    }
+}
+
 final class HeadphoneRouteMonitor: HeadphoneRouteMonitoring {
     private let audioSession: AVAudioSession
     private var observer: NSObjectProtocol?

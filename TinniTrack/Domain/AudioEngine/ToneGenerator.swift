@@ -1,31 +1,29 @@
-//
-//  ToneGenerator.swift
-//  Tinnitus Capstone
-//
-//  Created by iiyam112156 on 12/4/25.
-//
-
-
 import AVFoundation
 import OSLog
 
-final class ToneGenerator {
+protocol TonePlaying: AnyObject {
+    func start()
+    func stop()
+    func setVolume(_ volume: Double)
+}
+
+final class ToneGenerator: TonePlaying {
     static let shared = ToneGenerator()
 
     private let logger = Logger(subsystem: "com.BARScapstone.TinniTrack", category: "AudioEngine")
-    
+
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode!
-    
-    private let frequency: Double = 1000.0          // 1000 Hz pure tone
-    private var theta: Double = 0.0                 // phase
-    private var currentVolume: Float = 0.0          // 0.0 ... 1.0
+
+    private let frequency: Double = 1000.0
+    private var theta: Double = 0.0
+    private var currentVolume: Float = 0.0
     private var isRunning = false
-    
+
     private init() {
         setupEngine()
     }
-    
+
     private func setupEngine() {
         let main = engine.mainMixerNode
         let output = engine.outputNode
@@ -52,11 +50,11 @@ final class ToneGenerator {
             }
             return noErr
         }
-        
+
         engine.attach(sourceNode)
         engine.connect(sourceNode, to: main, format: format)
     }
-    
+
     func start() {
         guard !isRunning else { return }
         do {
@@ -66,13 +64,12 @@ final class ToneGenerator {
             logger.error("Failed to start audio engine: \(error.localizedDescription, privacy: .public)")
         }
     }
-    
+
     func stop() {
         engine.stop()
         isRunning = false
     }
-    
-    /// volume: 0.0 (silent) ... 1.0 (max)
+
     func setVolume(_ volume: Double) {
         currentVolume = max(0.0, min(1.0, Float(volume)))
     }

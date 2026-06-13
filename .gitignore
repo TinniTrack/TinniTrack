@@ -13,6 +13,12 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+## Signing/provisioning
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.developerprofile
+
 ## Playgrounds
 timeline.xctimeline
 playground.xcworkspace

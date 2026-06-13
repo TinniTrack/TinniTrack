@@ -3,6 +3,9 @@
 ## 1. Project Overview
 We are building an iOS research app that measures tinnitus loudness using calibrated headphone-based psychoacoustic tasks. Participants complete pitch-matching and loudness-matching tasks that produce scientifically interpretable, repeatable data.
 
+**Current implementation status:**
+The app is an iOS research-app prototype for tinnitus study workflows. It currently supports account onboarding, study enrollment state, HealthKit audiogram import, scheduled Study No. 1 tasks, headphone/ambient gates, and a 1 kHz loudness-match prototype. The current loudness-match implementation is **not scientifically valid end-to-end yet**; it records normalized playback level and protocol/device/gating metadata so future calibrated work can map results to validated dB SPL, dB HL, or dB SL units.
+
 **Data collection:**
 *   Baseline hearing thresholds (via HealthKit Audiograms).
 *   Longitudinal Tinnitus Loudness-Match (LM) and Pitch-Match (PM) measurements.
@@ -99,20 +102,39 @@ Users complete loudness-matching tasks at specific times of day.
             *   The user may resume the task.
     4.  **Loudness-matching procedure:**
         *   The user adjusts the volume of a **1,000 Hz pure tone** until it matches their tinnitus loudness.
-        *   The match is recorded in calibrated units (dB HL and/or dB SL).
+        *   The current prototype records normalized amplitude, loudness trace, ambient trace, route/device metadata, and protocol metadata.
+        *   Validated dB SPL, dB HL, and/or dB SL values are deferred until calibration and device validation work is complete.
         *   The user submits the match and receives a confirmation that the task has been completed.
 
 ## 4. Scientific & Engineering Core
 *   **Calibration:** Implements RETSPL tables to convert generic dB SPL to clinical dB HL (Hearing Level) and dB SL (Sensation Level).
 *   **Hardware Gating:** Allow-list enforcement for headphones with known sensitivity profiles to prevent uncalibrated data collection.
+*   **Measurement Metadata:** Study protocols, audio task definitions, calibration profile metadata, output device metadata, and task result payload metadata are modeled so future calibrated measurements can be reproduced and audited.
+*   **Boundary Cleanup:** Playback, route gating, ambient monitoring, device metadata, and result packaging are separated behind small interfaces to reduce direct singleton coupling in feature code.
 
 ## 5. System Architecture
 
 ### Frontend (iOS)
+*   **Deployment target:** iOS 18.1+
 *   **UI/UX:** SwiftUI
 *   **Frameworks:**
     *   **HealthKit:** For audiogram retrieval.
-    *   **ResearchKit (StanfordBDHG Fork):** We use [StanfordBDHG’s SPM fork of Apple ResearchKit](https://github.com/StanfordBDHG/ResearchKit).
+    *   **ResearchKit (StanfordBDHG Fork):** We use [StanfordBDHG’s SPM fork of Apple ResearchKit](https://github.com/StanfordBDHG/ResearchKit), resolved through SwiftPM and pinned in `Package.resolved`.
+
+### ResearchKit Direction
+
+ResearchKit is integrated for continued hearing-study development, but feature views should not import ResearchKit directly as the default path. Use `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift` as the thin boundary for task presentation/result handling so ResearchKit choices remain isolated from feature UI.
+
+See `docs/adr/0001-researchkit-and-measurement-architecture.md` for the short architecture decision note covering ResearchKit use, measurement-readiness boundaries, and deferred scientific-validation work.
+
+Relevant ResearchKit surfaces for future work:
+
+*   **Consent / instruction steps:** `ORKInstructionStep` for consent and participant instruction flows.
+*   **Forms / surveys:** `ORKFormStep` and `ORKFormItem` for demographics, screening, EMA, and questionnaires.
+*   **Tone Audiometry:** `ORKToneAudiometryStep` or `ORKOrderedTask.toneAudiometryTask(...)` for non-HL tone threshold workflows.
+*   **dBHL Tone Audiometry:** `ORKdBHLToneAudiometryStep` or `ORKOrderedTask.dBHLToneAudiometryTask(...)` for future calibrated threshold work, after validation.
+*   **SPL / environmental noise:** `ORKEnvironmentSPLMeterStep` is available for ResearchKit-backed environmental SPL checks.
+*   **Speech-in-Noise:** `ORKSpeechInNoiseStep` or `ORKOrderedTask.speechInNoiseTask(...)` is relevant for later hearing studies, not current Study No. 1 readiness.
 
 ### Backend
 *   **Supabase:** PostgreSQL + Auth.
@@ -123,16 +145,13 @@ We use a **feature-first** structure in a single app target for V1, with clear s
 
 *   `TinniTrack/Features/`
     *   UI screens and flow state organized by product area.
-    *   Current areas: `Onboarding`, `Dashboard`, `HearingTest`, `LoudnessMatch`.
+    *   Current areas: `Onboarding`, `Dashboard`, `LoudnessMatch`.
 *   `TinniTrack/Domain/`
     *   Pure domain logic and models (no direct UI dependencies).
-    *   Includes audio engine, calibration logic, and study/task data models.
+    *   Includes audio engine protocols, calibration metadata, study/task definitions, and result payload builders.
 *   `TinniTrack/Services/`
-    *   Integration boundaries for external systems (`Supabase`, `HealthKit`).
+    *   Integration boundaries for external systems (`Supabase`, `HealthKit`, `ResearchKit`) and device/audio services.
     *   Prefer protocol-based interfaces so features depend on abstractions.
-*   `TinniTrack/Modules/`
-    *   Reusable protocol engines intended to support future studies (e.g., Study No. 2).
-    *   Keep in-app for now; extract to SPM modules when workflows stabilize.
 *   `TinniTrack/Shared/`
     *   Cross-feature app infrastructure (app root, navigation shell, shared UI primitives).
 
@@ -141,6 +160,8 @@ Dependency direction for maintainability:
 *   `Features` → depends on `Domain` and service protocols.
 *   `Services` implements protocol contracts used by `Features`.
 *   `Domain` should not depend on `Features`.
+
+The unused prototype/placeholders that were not referenced by the app target have been removed so the active code is easier to distinguish from future study work.
 
 ## 6. Backend Responsibilities
 *   **Authentication:** Email/password login and account signup via Supabase Auth. Users authenticate by logging in to an existing account or signing up for a new account (collecting name and DOB during signup).
@@ -152,6 +173,8 @@ The backend database lives in **Supabase (PostgreSQL)**. We treat the database s
 
 *   **All schema changes must be made via SQL migration files** (no “click ops” in the Supabase UI for anything that affects tables/columns/constraints). This keeps the schema reproducible across environments and makes review/rollback possible.
 *   Migrations should be **additive and explicit** (create/alter/drop with clear intent) and committed to the repo alongside the code that depends on them.
+*   Do **not** rewrite migrations that may have already been applied remotely; add a new migration for schema changes.
+*   Do **not** commit secrets, service-role keys, real participant data, or private seed data. Client code should only use anon/public credentials.
 
 #### Current Schema:
 
@@ -249,8 +272,10 @@ Constraints:
 *   `device_info` (`jsonb`): Model / iOS version / etc.
 *   `headphone_info` (`jsonb`): Route name, model id, firmware if available.
 *   `gating` (`jsonb`): Persist outputs of gating logic (computed in app code).
-*   `raw_payload` (`jsonb`): The full task payload (trials, slider moves, responses, etc.).
+*   `raw_payload` (`jsonb`): The full task payload (trials, slider moves, responses, measurement metadata, validity notice, etc.).
 *   `created_at`: Server timestamp.
+
+Current Study No. 1 task run payloads include normalized `matched_level`, `loudness_trace`, `ambient_trace`, route/device metadata, gating outputs, protocol metadata, calibration-profile metadata, and an explicit validity notice. They do **not** yet include validated dB HL, dB SL, or calibrated dB SPL.
 
 #### Data Flow Summary
 *   **Sign up / login:** `auth.users` is created by Supabase Auth → we insert a matching `public.profiles` row.
@@ -293,6 +318,24 @@ RLS policies are required on all user-scoped tables (`profiles`, `consents`, `au
 *   EMA Questionnaires.
 *   Researcher dashboard to access participant data.
 *   In-app hearing test (bypassing Apple native test).
+*   Production ResearchKit consent/instruction flow.
+*   Model-aware headphone metadata collection and gating.
+*   Calibration-validation plan before any dB HL/dB SL claims.
+*   Export/analysis documentation for `task_runs.raw_payload`.
+
+## 8. Local Development
+
+Open `TinniTrack.xcodeproj` in Xcode, or build from the command line:
+
+```sh
+xcodebuild -project TinniTrack.xcodeproj -scheme TinniTrack -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+```
+
+Run unit tests:
+
+```sh
+xcodebuild test -project TinniTrack.xcodeproj -scheme TinniTrack -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:TinniTrackTests CODE_SIGNING_ALLOWED=NO
+```
 
 ---
 

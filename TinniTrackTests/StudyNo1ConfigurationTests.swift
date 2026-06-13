@@ -35,4 +35,14 @@ struct StudyNo1ConfigurationTests {
         #expect(StudyNo1Configuration.windowMinutes == 60)
         #expect(StudyNo1Configuration.ambientThresholdDB == 45)
     }
+
+    @Test
+    func protocolMetadataKeepsPrototypeValidityExplicit() {
+        let protocolDefinition = StudyProtocolCatalog.studyNo1
+
+        #expect(protocolDefinition.version == "lm_v1")
+        #expect(protocolDefinition.tasks.first?.measurementUnit == .normalizedAmplitude)
+        #expect(protocolDefinition.calibrationProfile.validationStatus == .unvalidatedPrototype)
+        #expect(protocolDefinition.resultPayload.resultUnits == [.normalizedAmplitude, .estimatedDBA])
+    }
 }
