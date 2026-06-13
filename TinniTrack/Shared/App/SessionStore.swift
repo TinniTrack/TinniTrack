@@ -33,6 +33,7 @@ final class SessionStore: ObservableObject {
         enum Banner: Equatable {
             case info(String)
             case error(String)
+            case titledError(title: String, message: String)
 
             var title: String {
                 switch self {
@@ -40,6 +41,8 @@ final class SessionStore: ObservableObject {
                     return "Info"
                 case .error:
                     return "Error"
+                case .titledError(let title, _):
+                    return title
                 }
             }
 
@@ -48,6 +51,8 @@ final class SessionStore: ObservableObject {
                 case .info(let message):
                     return message
                 case .error(let message):
+                    return message
+                case .titledError(_, let message):
                     return message
                 }
             }
@@ -133,7 +138,7 @@ final class SessionStore: ObservableObject {
             hasStarted = true
             startAuthStateListener()
             state = .bootstrapping
-            await refreshRoute(preserveRouteOnFailure: false)
+            await refreshRoute(preserveRouteOnFailure: false, showErrorBanner: false)
         }
     }
 
@@ -144,7 +149,7 @@ final class SessionStore: ObservableObject {
             do {
                 try await authService.signIn(email: normalizedEmail, password: password)
                 clearPendingEmailVerification()
-                await refreshRoute(preserveRouteOnFailure: true)
+                await refreshRoute(preserveRouteOnFailure: true, showErrorBanner: true)
             } catch let authError as AuthServiceError {
                 if case .emailNotConfirmed = authError {
                     setPendingEmailVerification(normalizedEmail)
@@ -185,7 +190,7 @@ final class SessionStore: ObservableObject {
                     state.banner = .info("Check your email to verify your account.")
                 }
 
-                await refreshRoute(preserveRouteOnFailure: true)
+                await refreshRoute(preserveRouteOnFailure: true, showErrorBanner: true)
             } catch {
                 setErrorBanner(from: error)
             }
@@ -200,7 +205,7 @@ final class SessionStore: ObservableObject {
                     lastName: lastName,
                     dateOfBirth: dateOfBirth
                 )
-                await refreshRoute(preserveRouteOnFailure: true)
+                await refreshRoute(preserveRouteOnFailure: true, showErrorBanner: true)
             } catch {
                 setErrorBanner(from: error)
             }
@@ -244,7 +249,7 @@ final class SessionStore: ObservableObject {
                 case .none:
                     break
                 }
-                await refreshRoute(preserveRouteOnFailure: true)
+                await refreshRoute(preserveRouteOnFailure: true, showErrorBanner: true)
             } catch {
                 setErrorBanner(from: error)
             }
@@ -257,7 +262,7 @@ final class SessionStore: ObservableObject {
                 try await authService.updatePassword(newPassword: newPassword)
                 state.passwordResetPresented = false
                 state.banner = .info("Password updated.")
-                await refreshRoute(preserveRouteOnFailure: true)
+                await refreshRoute(preserveRouteOnFailure: true, showErrorBanner: true)
             } catch {
                 setErrorBanner(from: error)
             }
@@ -291,7 +296,7 @@ final class SessionStore: ObservableObject {
 
     func checkEmailVerificationStatus() async {
         await execute(activity: .checkingVerificationStatus) { [self] in
-            await refreshRoute(preserveRouteOnFailure: true)
+            await refreshRoute(preserveRouteOnFailure: true, showErrorBanner: true)
             if case .awaitingEmailVerification = state.route, state.banner == nil {
                 state.banner = .info("Still waiting for verification. Open the email link on this device.")
             }
@@ -309,7 +314,7 @@ final class SessionStore: ObservableObject {
             guard let self else { return }
             for await _ in self.authService.authStateStream() {
                 await self.engine.run { [self] in
-                    await self.refreshRoute(preserveRouteOnFailure: true)
+                    await self.refreshRoute(preserveRouteOnFailure: true, showErrorBanner: false)
                 }
             }
         }
@@ -330,7 +335,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private func refreshRoute(preserveRouteOnFailure: Bool) async {
+    private func refreshRoute(preserveRouteOnFailure: Bool, showErrorBanner: Bool) async {
         let previousRoute = state.route
 
         do {
@@ -349,7 +354,9 @@ final class SessionStore: ObservableObject {
                 state.route = .needsOnboarding(profile: latestProfile)
             }
         } catch {
-            setErrorBanner(from: error)
+            if showErrorBanner {
+                setErrorBanner(from: error)
+            }
             if preserveRouteOnFailure {
                 state.route = previousRoute
             } else {
@@ -385,7 +392,12 @@ final class SessionStore: ObservableObject {
         if let authError = error as? AuthServiceError,
            let description = authError.errorDescription,
            !description.isEmpty {
-            state.banner = .error(description)
+            switch authError {
+            case .transport:
+                state.banner = .titledError(title: "Unable to Connect", message: description)
+            case .emailNotConfirmed, .noActiveSession, .callbackFailed, .unknown:
+                state.banner = .error(description)
+            }
         } else {
             state.banner = .error(error.localizedDescription)
         }
