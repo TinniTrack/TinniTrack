@@ -7,6 +7,12 @@ import Foundation
 
 struct AuthSession: Equatable {
     let userID: UUID
+    let email: String?
+
+    init(userID: UUID, email: String? = nil) {
+        self.userID = userID
+        self.email = email
+    }
 }
 
 enum AuthServiceError: Equatable, LocalizedError {
@@ -82,4 +88,6 @@ protocol AuthServiceProtocol {
     func requestPasswordReset(email: String, redirectURL: URL) async throws
     func handleAuthCallback(url: URL) async throws -> AuthCallbackResult
     func updatePassword(newPassword: String) async throws
+    func updateEmail(_ email: String, redirectURL: URL) async throws
+    func deleteCurrentUser() async throws
 }

@@ -50,6 +50,29 @@ final class SupabaseProfileService: ProfileServiceProtocol {
             .execute()
     }
 
+    func updateMyProfile(firstName: String, lastName: String, dateOfBirth: Date) async throws -> Profile {
+        guard let userID = try await currentUserID() else {
+            throw NSError(domain: "ProfileService", code: 401, userInfo: [NSLocalizedDescriptionKey: "No active session."])
+        }
+
+        let payload = ProfileUpdatePayload(
+            firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+            lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+            dateOfBirth: Self.dateOnlyFormatter.string(from: dateOfBirth)
+        )
+
+        try await client
+            .from("profiles")
+            .update(payload)
+            .eq("id", value: userID.uuidString)
+            .execute()
+
+        guard let updatedProfile = try await fetchMyProfile() else {
+            throw NSError(domain: "ProfileService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Profile was not found after saving."])
+        }
+        return updatedProfile
+    }
+
     private func currentUserID() async throws -> UUID? {
         do {
             let session = try await client.auth.session
@@ -86,6 +109,18 @@ private struct OnboardingPayload: Encodable {
         case lastName = "last_name"
         case dateOfBirth = "date_of_birth"
         case onboardingCompletedAt = "onboarding_completed_at"
+    }
+}
+
+private struct ProfileUpdatePayload: Encodable {
+    let firstName: String
+    let lastName: String
+    let dateOfBirth: String
+
+    enum CodingKeys: String, CodingKey {
+        case firstName = "first_name"
+        case lastName = "last_name"
+        case dateOfBirth = "date_of_birth"
     }
 }
 
