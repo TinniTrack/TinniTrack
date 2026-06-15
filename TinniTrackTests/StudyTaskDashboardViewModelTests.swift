@@ -470,6 +470,10 @@ private actor MockTaskStudyService: StudyServiceProtocol {
         submission: LoudnessMatchSubmission
     ) async throws {}
 
+    func fetchStudyNo1LoudnessMatchExports() async throws -> [StudyNo1LoudnessMatchExportRecord] {
+        []
+    }
+
     func setScheduledTasks(_ tasks: [ScheduledTask], for enrollmentID: UUID) {
         scheduledTasksByEnrollment[enrollmentID] = tasks
     }

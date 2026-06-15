@@ -12,6 +12,21 @@ struct AudiogramRecord: Identifiable, Equatable {
     let headphoneName: String?
     let healthKitSampleUUID: UUID?
     let points: [AudiogramPoint]
+
+    func exactThreshold(at frequencyHz: Double) -> AudiogramThresholdAtFrequency? {
+        guard let point = points.first(where: { abs($0.frequencyHz - frequencyHz) < 0.001 }) else {
+            return nil
+        }
+
+        return AudiogramThresholdAtFrequency(
+            frequencyHz: point.frequencyHz,
+            leftDBHL: point.leftEarDBHL,
+            rightDBHL: point.rightEarDBHL,
+            sourceAudiogramID: id,
+            measuredAt: measuredAt,
+            derivation: "exact_\(Int(frequencyHz))hz_no_interpolation"
+        )
+    }
 }
 
 struct AudiogramPoint: Codable, Equatable {

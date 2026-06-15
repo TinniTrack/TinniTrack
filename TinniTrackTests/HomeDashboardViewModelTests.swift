@@ -144,6 +144,10 @@ private actor MockStudyService: StudyServiceProtocol {
         submission: LoudnessMatchSubmission
     ) async throws {}
 
+    func fetchStudyNo1LoudnessMatchExports() async throws -> [StudyNo1LoudnessMatchExportRecord] {
+        []
+    }
+
     func setStudiesError(_ error: Error?) {
         studiesError = error
     }

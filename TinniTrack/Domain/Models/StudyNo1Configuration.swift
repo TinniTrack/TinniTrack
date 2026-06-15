@@ -6,6 +6,8 @@ enum StudyNo1Configuration {
     static let ambientThresholdDB: Double = 45
     static let toneFrequencyHz: Double = 1_000
     static let outputVolumeChangeTolerance: Double = 0.005
+    static let minimumMatchedNormalizedAmplitude: Double = 0.001
+    static let maximumSafeNormalizedAmplitude: Double = 0.95
 
     static func isSupportedHeadphoneRouteName(_ routeName: String) -> Bool {
         let normalized = routeName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -25,6 +27,32 @@ enum StudyNo1Configuration {
         ]
 
         return (secondGenerationMarkers + thirdGenerationMarkers).contains { normalized.contains($0) }
+    }
+
+    static func supportedHeadphoneGeneration(for routeName: String?) -> String? {
+        guard let routeName else { return nil }
+        let normalized = routeName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalized.contains("airpods pro") else { return nil }
+
+        if [
+            "airpods pro 2",
+            "airpods pro (2",
+            "2nd generation",
+            "second generation"
+        ].contains(where: { normalized.contains($0) }) {
+            return "AirPods Pro 2"
+        }
+
+        if [
+            "airpods pro 3",
+            "airpods pro (3",
+            "3rd generation",
+            "third generation"
+        ].contains(where: { normalized.contains($0) }) {
+            return "AirPods Pro 3"
+        }
+
+        return nil
     }
 
     static func firstScheduleLocalDate(

@@ -27,7 +27,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func ambientGateRequiresQuietThresholdBeforeStart() {
+    func ambientGateRequiresQuietThresholdBeforeStart() async {
         let routeMonitor = MockRouteMonitor()
         let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .granted)
         let service = MockLoudnessStudyService()
@@ -38,6 +38,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             service: service
         )
 
+        await viewModel.loadAudiogramThreshold()
         viewModel.start()
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
 
@@ -66,6 +67,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             service: service
         )
 
+        await viewModel.loadAudiogramThreshold()
         viewModel.start()
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         await viewModel.requestAmbientPermission()
@@ -79,7 +81,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func matchingDisablesDialWhenAmbientTooLoudAndReenablesWhenQuiet() {
+    func matchingDisablesDialWhenAmbientTooLoudAndReenablesWhenQuiet() async {
         let routeMonitor = MockRouteMonitor()
         let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .granted)
         let tonePlayer = MockTonePlayer()
@@ -92,6 +94,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             service: service
         )
 
+        await viewModel.loadAudiogramThreshold()
         viewModel.start()
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         ambientMonitor.emit(db: 28)
@@ -131,6 +134,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             service: service
         )
 
+        await viewModel.loadAudiogramThreshold()
         viewModel.start()
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         ambientMonitor.emit(db: 28)
@@ -152,6 +156,14 @@ struct LoudnessMatchTaskFlowViewModelTests {
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 3", portType: "BluetoothA2DPOutput"))
 
         #expect(viewModel.isSupportedRoute)
+        #expect(viewModel.isCalibrationAvailable == false)
+        #expect(viewModel.canAdjustLoudness == false)
+        #expect(tonePlayer.isStarted == false)
+        #expect(tonePlayer.latestVolume == 0)
+
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
+
+        #expect(viewModel.isCalibrationAvailable)
         #expect(viewModel.canAdjustLoudness)
         #expect(tonePlayer.isStarted)
         #expect(tonePlayer.latestVolume == 0.7)
@@ -173,6 +185,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             service: service
         )
 
+        await viewModel.loadAudiogramThreshold()
         viewModel.start()
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         ambientMonitor.emit(db: 28)
@@ -223,18 +236,19 @@ struct LoudnessMatchTaskFlowViewModelTests {
             service: service
         )
 
+        await viewModel.loadAudiogramThreshold()
         viewModel.start()
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         ambientMonitor.emit(db: 28)
         viewModel.startMatching()
 
         viewModel.updateLoudness(1.5)
-        #expect(viewModel.loudnessLevel == 1)
-        #expect(tonePlayer.latestVolume == 1)
+        #expect(viewModel.loudnessLevel == StudyNo1Configuration.maximumSafeNormalizedAmplitude)
+        #expect(tonePlayer.latestVolume == StudyNo1Configuration.maximumSafeNormalizedAmplitude)
 
         viewModel.updateLoudness(-0.2)
-        #expect(viewModel.loudnessLevel == 0)
-        #expect(tonePlayer.latestVolume == 0)
+        #expect(viewModel.loudnessLevel == StudyNo1Configuration.minimumMatchedNormalizedAmplitude)
+        #expect(tonePlayer.latestVolume == StudyNo1Configuration.minimumMatchedNormalizedAmplitude)
 
         let submitted = await viewModel.submitMatch()
         #expect(submitted)
@@ -252,8 +266,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
             }
             return value
         }
-        #expect(traceValues.contains(1))
-        #expect(traceValues.contains(0))
+        #expect(traceValues.contains(StudyNo1Configuration.maximumSafeNormalizedAmplitude))
+        #expect(traceValues.contains(StudyNo1Configuration.minimumMatchedNormalizedAmplitude))
     }
 
     @Test
@@ -268,6 +282,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             service: service
         )
 
+        await viewModel.loadAudiogramThreshold()
         viewModel.start()
         routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         ambientMonitor.emit(db: 20)
@@ -281,7 +296,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(await service.lastSubmittedSubmission()?.rawPayload["matched_level_unit"] == .string("normalizedAmplitude"))
         #expect(await service.lastSubmittedSubmission()?.rawPayload["measurement_metadata"] != nil)
         #expect(await service.lastSubmittedSubmission()?.headphoneInfo["route_gate"] == .string("study-no-1-airpods-pro-2-3-route-name-gate"))
-        #expect(await service.lastSubmittedSubmission()?.calibrationVersion == "study-no-1-unvalidated-normalized-output")
+        #expect(await service.lastSubmittedSubmission()?.calibrationVersion == "ork-airpods-pro-2-1khz-v1")
+        #expect(await service.lastSubmittedSubmission()?.validationStatus == .acceptedValid)
     }
 
     private func makeViewModel(
@@ -325,6 +341,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             tonePlayer: tonePlayer,
             routeGate: StudyNo1RouteGate(),
             deviceMetadataProvider: MockDeviceMetadataProvider(),
+            audiogramRepository: MockAudiogramRepository(),
             resultBuilder: StudyNo1LoudnessMatchResultBuilder()
         )
     }
@@ -444,6 +461,32 @@ private struct MockDeviceMetadataProvider: DeviceMetadataProviding {
     }
 }
 
+private final class MockAudiogramRepository: AudiogramRepositoryProtocol {
+    var latestAudiogram: AudiogramRecord? = AudiogramRecord(
+        id: UUID(),
+        measuredAt: Date(timeIntervalSince1970: 1_740_000_000),
+        source: "healthkit",
+        headphoneName: "AirPods Pro 2",
+        healthKitSampleUUID: UUID(),
+        points: [
+            AudiogramPoint(
+                frequencyHz: 1_000,
+                leftEarDBHL: 10,
+                rightEarDBHL: 15,
+                tests: []
+            )
+        ]
+    )
+
+    func fetchLatestAudiogram() async throws -> AudiogramRecord? {
+        latestAudiogram
+    }
+
+    func saveHealthKitAudiograms(_ samples: [HealthKitAudiogramSample]) async throws -> Int {
+        0
+    }
+}
+
 private actor MockLoudnessStudyService: StudyServiceProtocol {
     private var submitCount = 0
     private var submittedSubmission: LoudnessMatchSubmission?
@@ -471,6 +514,10 @@ private actor MockLoudnessStudyService: StudyServiceProtocol {
     ) async throws {
         submitCount += 1
         submittedSubmission = submission
+    }
+
+    func fetchStudyNo1LoudnessMatchExports() async throws -> [StudyNo1LoudnessMatchExportRecord] {
+        []
     }
 
     func submitCallCount() -> Int {

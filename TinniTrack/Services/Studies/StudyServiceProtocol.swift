@@ -16,4 +16,5 @@ protocol StudyServiceProtocol {
         enrollmentID: UUID,
         submission: LoudnessMatchSubmission
     ) async throws
+    func fetchStudyNo1LoudnessMatchExports() async throws -> [StudyNo1LoudnessMatchExportRecord]
 }

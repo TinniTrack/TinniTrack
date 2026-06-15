@@ -4,6 +4,8 @@ struct LoudnessMatchSubmission: Equatable {
     let startedAt: Date
     let completedAt: Date
     let matchedLevel: Double
+    let validationStatus: LoudnessMatchValidationStatus
+    let qualityFlags: [LoudnessMatchQualityFlag]
     let gating: [String: JSONValue]
     let rawPayload: [String: JSONValue]
     let deviceInfo: [String: JSONValue]

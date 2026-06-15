@@ -16,6 +16,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var currentOutputVolume: Double?
     @Published private(set) var outputVolumeAtStart: Double?
     @Published private(set) var hasOutputVolumeChanged = false
+    @Published private(set) var audiogramThreshold: AudiogramThresholdAtFrequency?
+    @Published private(set) var isLoadingAudiogramThreshold = false
     @Published private(set) var isSubmitting = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var loudnessLevel: Double = 0.3
@@ -29,6 +31,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let tonePlayer: TonePlaying
     private let routeGate: AudioRouteGating
     private let deviceMetadataProvider: DeviceMetadataProviding
+    private let audiogramRepository: AudiogramRepositoryProtocol
     private let resultBuilder: LoudnessMatchResultBuilding
 
     private var hasStarted = false
@@ -47,6 +50,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         tonePlayer: TonePlaying,
         routeGate: AudioRouteGating,
         deviceMetadataProvider: DeviceMetadataProviding,
+        audiogramRepository: AudiogramRepositoryProtocol,
         resultBuilder: LoudnessMatchResultBuilding
     ) {
         self.scheduledTask = scheduledTask
@@ -58,6 +62,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         self.tonePlayer = tonePlayer
         self.routeGate = routeGate
         self.deviceMetadataProvider = deviceMetadataProvider
+        self.audiogramRepository = audiogramRepository
         self.resultBuilder = resultBuilder
     }
 
@@ -70,8 +75,21 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         return ambientDB <= StudyNo1Configuration.ambientThresholdDB
     }
 
+    var isCalibrationAvailable: Bool {
+        CalibrationProfileCatalog.profile(for: currentRoute)?.supportStatus == .supported
+    }
+
+    var hasRequiredAudiogramThreshold: Bool {
+        audiogramThreshold?.hasAnyThreshold == true
+    }
+
     var canAdjustLoudness: Bool {
-        step == .matching && isSupportedRoute && isAmbientQuiet && isOutputVolumeStable
+        step == .matching
+        && isSupportedRoute
+        && isCalibrationAvailable
+        && hasRequiredAudiogramThreshold
+        && isAmbientQuiet
+        && isOutputVolumeStable
     }
 
     var canSubmit: Bool {
@@ -96,11 +114,39 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         )
     }
 
+    var calibrationDisplayText: String {
+        guard let profile = CalibrationProfileCatalog.profile(for: currentRoute) else {
+            return "No calibration profile for the current route."
+        }
+
+        return "\(profile.displayName) · \(profile.version)"
+    }
+
+    var audiogramThresholdDisplayText: String {
+        if isLoadingAudiogramThreshold {
+            return "Loading 1 kHz threshold..."
+        }
+
+        guard let threshold = audiogramThreshold, threshold.hasAnyThreshold else {
+            return "Exact 1 kHz audiogram threshold unavailable."
+        }
+
+        let left = threshold.leftDBHL.map { String(format: "L %.1f dB HL", $0) }
+        let right = threshold.rightDBHL.map { String(format: "R %.1f dB HL", $0) }
+        return [left, right].compactMap { $0 }.joined(separator: " · ")
+    }
+
     var matchingPauseMessage: String? {
         guard step == .matching else { return nil }
 
         if !isSupportedRoute {
             return "Reconnect AirPods Pro 2 or AirPods Pro 3 to continue."
+        }
+        if !isCalibrationAvailable {
+            return "This headphone route does not have a calibration table for Study No. 1."
+        }
+        if !hasRequiredAudiogramThreshold {
+            return "Sync an audiogram with an exact 1 kHz threshold before matching."
         }
         if !isAmbientQuiet {
             return "Adjustment is paused until ambient noise returns below the threshold."
@@ -113,6 +159,20 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
 
         return nil
+    }
+
+    func loadAudiogramThreshold() async {
+        guard !isLoadingAudiogramThreshold else { return }
+
+        isLoadingAudiogramThreshold = true
+        defer { isLoadingAudiogramThreshold = false }
+
+        do {
+            let latestAudiogram = try await audiogramRepository.fetchLatestAudiogram()
+            audiogramThreshold = latestAudiogram?.exactThreshold(at: StudyNo1Configuration.toneFrequencyHz)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func start() {
@@ -161,6 +221,14 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     func startMatching() {
         guard step == .ambientGate else { return }
         guard isSupportedRoute else { return }
+        guard isCalibrationAvailable else {
+            errorMessage = "This headphone route does not have a calibration table for Study No. 1."
+            return
+        }
+        guard hasRequiredAudiogramThreshold else {
+            errorMessage = "Sync an audiogram with an exact 1 kHz threshold before starting."
+            return
+        }
         guard isAmbientQuiet else { return }
         guard let baselineOutputVolume = currentOutputVolume ?? outputVolumeMonitor.currentOutputVolume() else {
             errorMessage = "Device volume monitoring is unavailable."
@@ -182,7 +250,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     func updateLoudness(_ newValue: Double) {
         guard canAdjustLoudness else { return }
 
-        loudnessLevel = min(max(newValue, 0), 1)
+        loudnessLevel = min(
+            max(newValue, StudyNo1Configuration.minimumMatchedNormalizedAmplitude),
+            StudyNo1Configuration.maximumSafeNormalizedAmplitude
+        )
         applyTonePlaybackState()
         loudnessEvents.append(MeasurementTraceEvent(timestamp: Date(), value: loudnessLevel))
     }
@@ -214,6 +285,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 systemOutputVolumeAtStart: outputVolumeAtStart,
                 systemOutputVolumeAtSubmit: currentOutputVolume,
                 didSystemOutputVolumeChange: hasOutputVolumeChanged,
+                audiogramThreshold: audiogramThreshold,
                 loudnessEvents: loudnessEvents,
                 ambientEvents: ambientEvents,
                 systemOutputVolumeEvents: outputVolumeEvents,

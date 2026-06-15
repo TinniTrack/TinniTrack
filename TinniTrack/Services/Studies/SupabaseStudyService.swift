@@ -110,6 +110,14 @@ final class SupabaseStudyService: StudyServiceProtocol {
         enrollmentID: UUID,
         submission: LoudnessMatchSubmission
     ) async throws {
+        guard submission.validationStatus == .acceptedValid else {
+            throw NSError(
+                domain: "StudyService",
+                code: 422,
+                userInfo: [NSLocalizedDescriptionKey: "Loudness-match submission is invalid and was not sent."]
+            )
+        }
+
         let params: [String: JSONValue] = [
             "p_scheduled_task_id": .string(scheduledTaskID.uuidString),
             "p_enrollment_id": .string(enrollmentID.uuidString),
@@ -130,6 +138,15 @@ final class SupabaseStudyService: StudyServiceProtocol {
                 params: params
             )
             .execute()
+    }
+
+    func fetchStudyNo1LoudnessMatchExports() async throws -> [StudyNo1LoudnessMatchExportRecord] {
+        let rows: [StudyNo1LoudnessMatchExportRow] = try await client
+            .rpc("export_study_no_1_loudness_matches")
+            .execute()
+            .value
+
+        return rows.map { $0.toDomain() }
     }
 
     private func currentUserID() async throws -> UUID? {
@@ -269,6 +286,138 @@ private struct ScheduledTaskRow: Decodable {
             dayIndex: dayIndex,
             slotIndex: slotIndex,
             completedAt: Self.parseTimestamp(completedAt)
+        )
+    }
+
+    private static func parseTimestamp(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        if let date = SupabaseStudyService.iso8601Formatter.date(from: value) {
+            return date
+        }
+        let fallback = ISO8601DateFormatter()
+        fallback.formatOptions = [.withInternetDateTime]
+        return fallback.date(from: value)
+    }
+}
+
+private struct StudyNo1LoudnessMatchExportRow: Decodable {
+    let taskRunID: UUID?
+    let scheduledTaskID: UUID?
+    let enrollmentID: UUID?
+    let userID: UUID?
+    let participantID: Int?
+    let submittedAt: String?
+    let scheduledFor: String?
+    let dayIndex: Int?
+    let slotIndex: Int?
+    let startedAt: String?
+    let completedAt: String?
+    let schemaVersion: String
+    let validationStatus: String
+    let qualityFlags: String
+    let taskKey: String
+    let taskVersion: Int
+    let matchedNormalizedAmplitude: Double
+    let peakDBFS: Double?
+    let rmsDBFS: Double?
+    let estimatedDBSPL: Double?
+    let estimatedDBHL: Double?
+    let estimatedDBSLLeft: Double?
+    let estimatedDBSLRight: Double?
+    let estimatedDBSLBilateralMean: Double?
+    let calibrationProfileID: String?
+    let calibrationProfileVersion: String?
+    let calibrationSourceTableVersion: String?
+    let routeName: String?
+    let routePortType: String?
+    let systemOutputVolume: Double?
+    let volumeCurveOffsetDB: Double?
+    let audiogramThresholdLeftDBHL: Double?
+    let audiogramThresholdRightDBHL: Double?
+    let audiogramThresholdDerivation: String?
+    let ambientDBAtSubmit: Double?
+    let trialCount: Int
+    let trialStandardDeviation: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case taskRunID = "task_run_id"
+        case scheduledTaskID = "scheduled_task_id"
+        case enrollmentID = "enrollment_id"
+        case userID = "user_id"
+        case participantID = "participant_id"
+        case submittedAt = "submitted_at"
+        case scheduledFor = "scheduled_for"
+        case dayIndex = "day_index"
+        case slotIndex = "slot_index"
+        case startedAt = "started_at"
+        case completedAt = "completed_at"
+        case schemaVersion = "schema_version"
+        case validationStatus = "validation_status"
+        case qualityFlags = "quality_flags"
+        case taskKey = "task_key"
+        case taskVersion = "task_version"
+        case matchedNormalizedAmplitude = "matched_normalized_amplitude"
+        case peakDBFS = "peak_dbfs"
+        case rmsDBFS = "rms_dbfs"
+        case estimatedDBSPL = "estimated_db_spl"
+        case estimatedDBHL = "estimated_db_hl"
+        case estimatedDBSLLeft = "estimated_db_sl_left"
+        case estimatedDBSLRight = "estimated_db_sl_right"
+        case estimatedDBSLBilateralMean = "estimated_db_sl_bilateral_mean"
+        case calibrationProfileID = "calibration_profile_id"
+        case calibrationProfileVersion = "calibration_profile_version"
+        case calibrationSourceTableVersion = "calibration_source_table_version"
+        case routeName = "route_name"
+        case routePortType = "route_port_type"
+        case systemOutputVolume = "system_output_volume"
+        case volumeCurveOffsetDB = "volume_curve_offset_db"
+        case audiogramThresholdLeftDBHL = "audiogram_threshold_left_db_hl"
+        case audiogramThresholdRightDBHL = "audiogram_threshold_right_db_hl"
+        case audiogramThresholdDerivation = "audiogram_threshold_derivation"
+        case ambientDBAtSubmit = "ambient_db_at_submit"
+        case trialCount = "trial_count"
+        case trialStandardDeviation = "trial_standard_deviation"
+    }
+
+    func toDomain() -> StudyNo1LoudnessMatchExportRecord {
+        StudyNo1LoudnessMatchExportRecord(
+            taskRunID: taskRunID,
+            scheduledTaskID: scheduledTaskID,
+            enrollmentID: enrollmentID,
+            userID: userID,
+            participantID: participantID,
+            submittedAt: Self.parseTimestamp(submittedAt),
+            scheduledFor: Self.parseTimestamp(scheduledFor),
+            dayIndex: dayIndex,
+            slotIndex: slotIndex,
+            schemaVersion: schemaVersion,
+            validationStatus: validationStatus,
+            qualityFlags: qualityFlags,
+            taskKey: taskKey,
+            taskVersion: taskVersion,
+            startedAt: Self.parseTimestamp(startedAt) ?? Date(timeIntervalSince1970: 0),
+            completedAt: Self.parseTimestamp(completedAt) ?? Date(timeIntervalSince1970: 0),
+            matchedNormalizedAmplitude: matchedNormalizedAmplitude,
+            peakDBFS: peakDBFS,
+            rmsDBFS: rmsDBFS,
+            estimatedDBSPL: estimatedDBSPL,
+            estimatedDBHL: estimatedDBHL,
+            estimatedDBSLLeft: estimatedDBSLLeft,
+            estimatedDBSLRight: estimatedDBSLRight,
+            estimatedDBSLBilateralMean: estimatedDBSLBilateralMean,
+            calibrationProfileID: calibrationProfileID,
+            calibrationProfileVersion: calibrationProfileVersion,
+            calibrationSourceTableVersion: calibrationSourceTableVersion,
+            routeName: routeName,
+            routePortType: routePortType,
+            systemOutputVolume: systemOutputVolume,
+            volumeCurveOffsetDB: volumeCurveOffsetDB,
+            audiogramThresholdLeftDBHL: audiogramThresholdLeftDBHL,
+            audiogramThresholdRightDBHL: audiogramThresholdRightDBHL,
+            audiogramThresholdDerivation: audiogramThresholdDerivation,
+            ambientDBAtSubmit: ambientDBAtSubmit,
+            trialCount: trialCount,
+            trialStandardDeviation: trialStandardDeviation
         )
     }
 

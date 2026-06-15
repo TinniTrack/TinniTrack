@@ -47,17 +47,23 @@ struct StudyNo1ConfigurationTests {
         #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods Pro") == false)
         #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods") == false)
         #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("iPhone") == false)
+
+        #expect(StudyNo1Configuration.supportedHeadphoneGeneration(for: "AirPods Pro (2nd generation)") == "AirPods Pro 2")
+        #expect(StudyNo1Configuration.supportedHeadphoneGeneration(for: "AirPods Pro (third generation)") == "AirPods Pro 3")
     }
 
     @Test
-    func protocolMetadataKeepsPrototypeValidityExplicit() {
+    func protocolMetadataKeepsCalibrationReadinessExplicit() {
         let protocolDefinition = StudyProtocolCatalog.studyNo1
 
         #expect(protocolDefinition.version == "lm_v1")
         #expect(protocolDefinition.tasks.first?.stimulus?.frequencyHz == 1_000)
-        #expect(protocolDefinition.tasks.first?.measurementUnit == .normalizedAmplitude)
+        #expect(protocolDefinition.tasks.first?.measurementUnit == .dBHL)
+        #expect(protocolDefinition.tasks.first?.requiresCalibratedOutput == true)
         #expect(protocolDefinition.tasks.first?.outputDeviceRequirement.allowedDevices.map(\.displayName) == ["AirPods Pro 2", "AirPods Pro 3"])
-        #expect(protocolDefinition.calibrationProfile.validationStatus == .unvalidatedPrototype)
-        #expect(protocolDefinition.resultPayload.resultUnits == [.normalizedAmplitude, .estimatedDBA])
+        #expect(protocolDefinition.calibrationProfile.validationStatus == .researchKitReferenceAvailable)
+        #expect(protocolDefinition.resultPayload.schemaVersion == "study-no-1-lm-payload-v2")
+        #expect(protocolDefinition.resultPayload.resultUnits == [.normalizedAmplitude, .dBFS, .estimatedDBA, .systemOutputVolume, .dBSPL, .dBHL, .dBSL])
+        #expect(CalibrationProfileCatalog.airPodsPro2OneKilohertz.frequencyCalibration?.retsplDBSPL == 9.27)
     }
 }

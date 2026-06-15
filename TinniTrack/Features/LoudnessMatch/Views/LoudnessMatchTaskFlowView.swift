@@ -22,6 +22,7 @@ struct LoudnessMatchTaskFlowView: View {
         tonePlayer: TonePlaying = ToneGenerator.shared,
         routeGate: AudioRouteGating = StudyNo1RouteGate(),
         deviceMetadataProvider: DeviceMetadataProviding = SystemDeviceMetadataProvider(),
+        audiogramRepository: AudiogramRepositoryProtocol = SupabaseAudiogramRepository(),
         resultBuilder: LoudnessMatchResultBuilding = StudyNo1LoudnessMatchResultBuilder(),
         onSubmitted: @escaping () -> Void
     ) {
@@ -41,6 +42,7 @@ struct LoudnessMatchTaskFlowView: View {
                 tonePlayer: tonePlayer,
                 routeGate: routeGate,
                 deviceMetadataProvider: deviceMetadataProvider,
+                audiogramRepository: audiogramRepository,
                 resultBuilder: resultBuilder
             )
         )
@@ -72,6 +74,7 @@ struct LoudnessMatchTaskFlowView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             viewModel.start()
+            await viewModel.loadAudiogramThreshold()
         }
         .onDisappear {
             viewModel.stop()
@@ -152,6 +155,14 @@ private struct HeadphoneGateSection: View {
                 isGood: viewModel.isSupportedRoute
             )
 
+            if viewModel.isSupportedRoute {
+                LoudnessStatusPill(
+                    title: viewModel.isCalibrationAvailable ? "Calibration Ready" : "Calibration Unavailable",
+                    subtitle: viewModel.calibrationDisplayText,
+                    isGood: viewModel.isCalibrationAvailable
+                )
+            }
+
             if !viewModel.isSupportedRoute {
                 Text("Connect your AirPods Pro 2 or AirPods Pro 3. We will continue automatically once detected.")
                     .font(.footnote)
@@ -196,6 +207,18 @@ private struct AmbientGateSection: View {
                     isGood: viewModel.isAmbientQuiet
                 )
 
+                LoudnessStatusPill(
+                    title: viewModel.hasRequiredAudiogramThreshold ? "Audiogram Ready" : "Audiogram Threshold Missing",
+                    subtitle: viewModel.audiogramThresholdDisplayText,
+                    isGood: viewModel.hasRequiredAudiogramThreshold
+                )
+
+                LoudnessStatusPill(
+                    title: viewModel.isCalibrationAvailable ? "Calibration Ready" : "Calibration Unavailable",
+                    subtitle: viewModel.calibrationDisplayText,
+                    isGood: viewModel.isCalibrationAvailable
+                )
+
                 Text(viewModel.isAmbientQuiet
                      ? "Environment check passed."
                      : "Move to a quieter location and wait for the reading to drop.")
@@ -206,7 +229,7 @@ private struct AmbientGateSection: View {
                     viewModel.startMatching()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.isAmbientQuiet)
+                .disabled(!viewModel.isAmbientQuiet || !viewModel.isCalibrationAvailable || !viewModel.hasRequiredAudiogramThreshold)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -239,6 +262,18 @@ private struct MatchingSection: View {
                 title: viewModel.hasOutputVolumeChanged ? "Device Volume Changed" : "Device Volume Stable",
                 subtitle: viewModel.outputVolumeDisplayText,
                 isGood: !viewModel.hasOutputVolumeChanged
+            )
+
+            LoudnessStatusPill(
+                title: viewModel.isCalibrationAvailable ? "Calibration Ready" : "Calibration Unavailable",
+                subtitle: viewModel.calibrationDisplayText,
+                isGood: viewModel.isCalibrationAvailable
+            )
+
+            LoudnessStatusPill(
+                title: viewModel.hasRequiredAudiogramThreshold ? "Audiogram Ready" : "Audiogram Threshold Missing",
+                subtitle: viewModel.audiogramThresholdDisplayText,
+                isGood: viewModel.hasRequiredAudiogramThreshold
             )
 
             if let matchingPauseMessage = viewModel.matchingPauseMessage {

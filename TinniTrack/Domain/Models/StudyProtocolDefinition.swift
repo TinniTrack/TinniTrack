@@ -22,6 +22,7 @@ enum StudyTaskKind: String, Equatable {
 
 enum MeasurementUnit: String, Equatable {
     case normalizedAmplitude
+    case dBFS
     case estimatedDBA
     case systemOutputVolume
     case dBSPL
@@ -96,8 +97,8 @@ enum StudyProtocolCatalog {
                 ),
                 outputDeviceRequirement: OutputDeviceRequirement(
                     allowedDevices: [
-                        CalibrationProfileCatalog.airPodsPro2Prototype,
-                        CalibrationProfileCatalog.airPodsPro3Prototype
+                        CalibrationProfileCatalog.airPodsPro2,
+                        CalibrationProfileCatalog.airPodsPro3
                     ],
                     enforcement: "route-name generation marker gate"
                 ),
@@ -106,33 +107,36 @@ enum StudyProtocolCatalog {
                     unit: .estimatedDBA,
                     source: "AVAudioRecorder metering heuristic"
                 ),
-                measurementUnit: .normalizedAmplitude,
+                measurementUnit: .dBHL,
                 researchKitModule: nil,
-                requiresCalibratedOutput: false,
-                notes: "Current implementation stores normalized playback level and traces only."
+                requiresCalibratedOutput: true,
+                notes: "Stores raw normalized amplitude, dBFS, estimated dB SPL, dB HL, and exact-threshold dB SL when available."
             )
         ],
-        calibrationProfile: CalibrationProfileCatalog.studyNo1Prototype,
+        calibrationProfile: CalibrationProfileCatalog.studyNo1CalibrationReady,
         resultPayload: MeasurementPayloadMetadata(
-            schemaVersion: "study-no-1-lm-payload-v1",
+            schemaVersion: "study-no-1-lm-payload-v2",
             protocolVersion: "lm_v1",
             rawPayloadKeys: [
                 "task_key",
                 "task_version",
                 "stimulus",
-                "matched_level",
-                "matched_level_unit",
+                "raw_inputs",
+                "derived_outputs",
+                "trial_summary",
+                "trials",
                 "loudness_trace",
                 "ambient_trace",
                 "system_output_volume_trace",
                 "gating",
+                "quality",
                 "device_info",
                 "headphone_info",
                 "measurement_metadata"
             ],
-            resultUnits: [.normalizedAmplitude, .estimatedDBA],
-            validityNotice: "Prototype payload is not yet calibrated to dB HL, dB SL, or verified dB SPL."
+            resultUnits: [.normalizedAmplitude, .dBFS, .estimatedDBA, .systemOutputVolume, .dBSPL, .dBHL, .dBSL],
+            validityNotice: "Estimated SPL/HL values are reproducible from recorded inputs and ORKAudiometry table provenance. dB SL is present only for exact 1,000 Hz audiogram thresholds. Lab validation is still required before clinical claims."
         ),
-        notes: "Defines the current app protocol without claiming scientific validity."
+        notes: "Defines Study No. 1 loudness matching with reproducible AirPods Pro 2 calibration metadata and explicit validity flags."
     )
 }
