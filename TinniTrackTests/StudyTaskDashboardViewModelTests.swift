@@ -326,6 +326,53 @@ struct StudyTaskDashboardViewModelTests {
         )
     }
 
+    @Test
+    func didSubmitTaskRefreshesScheduledTaskBuckets() async {
+        let hearingTestDate = Date(timeIntervalSince1970: 1_710_000_000)
+        let coordinator = MockAudiogramImportCoordinator()
+        coordinator.enqueuePrerequisite(.met(latestMeasuredAt: hearingTestDate))
+
+        let enrollment = sampleEnrollment(onboardingCompletedAt: Date())
+        let service = MockTaskStudyService()
+        let taskID = UUID()
+        let scheduled = sampleScheduledTask(
+            id: taskID,
+            enrollmentID: enrollment.id,
+            status: .scheduled,
+            scheduledFor: Date(timeIntervalSince1970: 1_750_100_000),
+            windowStart: Date(timeIntervalSince1970: 1_750_100_000),
+            windowEnd: Date(timeIntervalSince1970: 1_750_103_600)
+        )
+        let completed = sampleScheduledTask(
+            id: taskID,
+            enrollmentID: enrollment.id,
+            status: .completed,
+            scheduledFor: scheduled.scheduledFor,
+            windowStart: scheduled.windowStart,
+            windowEnd: scheduled.windowEnd,
+            completedAt: Date(timeIntervalSince1970: 1_750_100_120)
+        )
+        await service.setScheduledTasks([scheduled], for: enrollment.id)
+
+        let viewModel = StudyTaskDashboardViewModel(
+            study: Self.sampleStudyNo1(),
+            enrollment: enrollment,
+            coordinator: coordinator,
+            studyService: service
+        )
+
+        await viewModel.refresh()
+        #expect(viewModel.futureTasks.map(\.id) == [taskID])
+        #expect(viewModel.completedTasks.isEmpty)
+
+        await service.setScheduledTasks([completed], for: enrollment.id)
+        await viewModel.didSubmitTask()
+
+        #expect(viewModel.futureTasks.isEmpty)
+        #expect(viewModel.completedTasks.map(\.id) == [taskID])
+        #expect(await service.fetchScheduledTasksCallCount() == 2)
+    }
+
     private static func sampleStudyNo1() -> Study {
         Study(
             id: UUID(),
@@ -350,6 +397,7 @@ struct StudyTaskDashboardViewModelTests {
     }
 
     private func sampleScheduledTask(
+        id: UUID = UUID(),
         enrollmentID: UUID,
         status: ScheduledTaskStatus,
         scheduledFor: Date,
@@ -360,7 +408,7 @@ struct StudyTaskDashboardViewModelTests {
         completedAt: Date? = nil
     ) -> ScheduledTask {
         ScheduledTask(
-            id: UUID(),
+            id: id,
             enrollmentID: enrollmentID,
             taskKey: "lm_1khz_v1",
             taskVersion: 1,
@@ -399,13 +447,15 @@ private final class MockAudiogramImportCoordinator: AudiogramImportCoordinating 
 private actor MockTaskStudyService: StudyServiceProtocol {
     private var scheduledTasksByEnrollment: [UUID: [ScheduledTask]] = [:]
     private var completeOnboardingCalls: [(enrollmentID: UUID, timezone: String)] = []
+    private var fetchScheduledTasksCalls = 0
 
     func fetchStudies() async throws -> [Study] { [] }
 
     func fetchMyEnrollments() async throws -> [StudyEnrollment] { [] }
 
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
-        scheduledTasksByEnrollment[enrollmentID] ?? []
+        fetchScheduledTasksCalls += 1
+        return scheduledTasksByEnrollment[enrollmentID] ?? []
     }
 
     func enroll(studyID: UUID) async throws {}
@@ -426,5 +476,9 @@ private actor MockTaskStudyService: StudyServiceProtocol {
 
     func completeOnboardingCallCount() -> Int {
         completeOnboardingCalls.count
+    }
+
+    func fetchScheduledTasksCallCount() -> Int {
+        fetchScheduledTasksCalls
     }
 }

@@ -34,6 +34,19 @@ struct StudyNo1ConfigurationTests {
         #expect(StudyNo1Configuration.slotHours == [9, 13, 17, 21])
         #expect(StudyNo1Configuration.windowMinutes == 60)
         #expect(StudyNo1Configuration.ambientThresholdDB == 45)
+        #expect(StudyNo1Configuration.toneFrequencyHz == 1_000)
+    }
+
+    @Test
+    func routeGateAllowsOnlyExplicitAirPodsProTwoAndThreeRoutes() {
+        #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods Pro 2"))
+        #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods Pro (2nd generation)"))
+        #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods Pro 3"))
+        #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods Pro (third generation)"))
+
+        #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods Pro") == false)
+        #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("AirPods") == false)
+        #expect(StudyNo1Configuration.isSupportedHeadphoneRouteName("iPhone") == false)
     }
 
     @Test
@@ -41,7 +54,9 @@ struct StudyNo1ConfigurationTests {
         let protocolDefinition = StudyProtocolCatalog.studyNo1
 
         #expect(protocolDefinition.version == "lm_v1")
+        #expect(protocolDefinition.tasks.first?.stimulus?.frequencyHz == 1_000)
         #expect(protocolDefinition.tasks.first?.measurementUnit == .normalizedAmplitude)
+        #expect(protocolDefinition.tasks.first?.outputDeviceRequirement.allowedDevices.map(\.displayName) == ["AirPods Pro 2", "AirPods Pro 3"])
         #expect(protocolDefinition.calibrationProfile.validationStatus == .unvalidatedPrototype)
         #expect(protocolDefinition.resultPayload.resultUnits == [.normalizedAmplitude, .estimatedDBA])
     }

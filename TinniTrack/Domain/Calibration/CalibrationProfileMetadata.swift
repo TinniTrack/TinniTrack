@@ -23,19 +23,36 @@ struct OutputDeviceMetadata: Equatable {
 }
 
 enum CalibrationProfileCatalog {
-    static let airPodsProPrototype = OutputDeviceMetadata(
-        displayName: "AirPods Pro family",
-        routeNameMatchers: ["airpods pro"],
+    static let airPodsPro2Prototype = OutputDeviceMetadata(
+        displayName: "AirPods Pro 2",
+        routeNameMatchers: [
+            "airpods pro 2",
+            "airpods pro (2",
+            "2nd generation",
+            "second generation"
+        ],
         researchKitHeadphoneTypeIdentifier: "AirPodsProV2",
-        notes: "Current app gate is broad route-name matching. Exact model/firmware verification remains future work."
+        notes: "Current app gate uses route-name generation markers until exact model and firmware APIs are available."
+    )
+
+    static let airPodsPro3Prototype = OutputDeviceMetadata(
+        displayName: "AirPods Pro 3",
+        routeNameMatchers: [
+            "airpods pro 3",
+            "airpods pro (3",
+            "3rd generation",
+            "third generation"
+        ],
+        researchKitHeadphoneTypeIdentifier: nil,
+        notes: "Allowed for Study No. 1 V1 as route-name metadata; calibrated reference validation remains future work."
     )
 
     static let studyNo1Prototype = CalibrationProfileMetadata(
         identifier: "study-no-1-unvalidated-normalized-output",
-        version: "2026-06-06",
-        source: "TinniTrack prototype tone generator plus route and ambient gates",
+        version: "2026-06-15",
+        source: "TinniTrack 1 kHz tone generator plus route, ambient, and system-volume guards",
         validationStatus: .unvalidatedPrototype,
-        supportedOutputDevices: [airPodsProPrototype],
+        supportedOutputDevices: [airPodsPro2Prototype, airPodsPro3Prototype],
         notes: "Stores normalized amplitude and metadata for future calibration; not valid dB HL or dB SL."
     )
 }

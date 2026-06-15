@@ -22,7 +22,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         routeMonitor.emit(route: AudioOutputRoute(name: "iPhone", portType: "Built-In Speaker"))
         #expect(viewModel.step == .headphoneGate)
 
-        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro", portType: "BluetoothA2DPOutput"))
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         #expect(viewModel.step == .ambientGate)
     }
 
@@ -39,7 +39,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
 
         viewModel.start()
-        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro", portType: "BluetoothA2DPOutput"))
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
 
         ambientMonitor.emit(db: 46)
         #expect(viewModel.isAmbientQuiet == false)
@@ -55,9 +55,9 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func matchingDisablesDialWhenAmbientTooLoudAndReenablesWhenQuiet() {
+    func deniedAmbientPermissionKeepsMatchingBlocked() async {
         let routeMonitor = MockRouteMonitor()
-        let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .granted)
+        let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .denied)
         let service = MockLoudnessStudyService()
 
         let viewModel = makeViewModel(
@@ -67,22 +67,193 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
 
         viewModel.start()
-        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro", portType: "BluetoothA2DPOutput"))
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
+        await viewModel.requestAmbientPermission()
+        ambientMonitor.emit(db: 20)
+
+        viewModel.startMatching()
+
+        #expect(viewModel.ambientPermissionStatus == .denied)
+        #expect(viewModel.step == .ambientGate)
+        #expect(viewModel.canSubmit == false)
+    }
+
+    @Test
+    func matchingDisablesDialWhenAmbientTooLoudAndReenablesWhenQuiet() {
+        let routeMonitor = MockRouteMonitor()
+        let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .granted)
+        let tonePlayer = MockTonePlayer()
+        let service = MockLoudnessStudyService()
+
+        let viewModel = makeViewModel(
+            routeMonitor: routeMonitor,
+            ambientMonitor: ambientMonitor,
+            tonePlayer: tonePlayer,
+            service: service
+        )
+
+        viewModel.start()
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         ambientMonitor.emit(db: 28)
         viewModel.startMatching()
+        #expect(tonePlayer.isStarted)
+        #expect(tonePlayer.latestVolume == 0.3)
 
         viewModel.updateLoudness(0.75)
         #expect(viewModel.loudnessLevel == 0.75)
+        #expect(tonePlayer.latestVolume == 0.75)
 
         ambientMonitor.emit(db: 50)
         #expect(viewModel.isAmbientQuiet == false)
+        #expect(viewModel.canSubmit == false)
+        #expect(tonePlayer.latestVolume == 0)
         viewModel.updateLoudness(0.2)
         #expect(viewModel.loudnessLevel == 0.75)
 
         ambientMonitor.emit(db: 25)
         #expect(viewModel.isAmbientQuiet)
+        #expect(tonePlayer.latestVolume == 0.75)
         viewModel.updateLoudness(0.2)
         #expect(viewModel.loudnessLevel == 0.2)
+    }
+
+    @Test
+    func unsupportedRouteDuringMatchingStopsToneAndBlocksSubmissionUntilSupportedRouteReturns() async {
+        let routeMonitor = MockRouteMonitor()
+        let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .granted)
+        let tonePlayer = MockTonePlayer()
+        let service = MockLoudnessStudyService()
+
+        let viewModel = makeViewModel(
+            routeMonitor: routeMonitor,
+            ambientMonitor: ambientMonitor,
+            tonePlayer: tonePlayer,
+            service: service
+        )
+
+        viewModel.start()
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
+        ambientMonitor.emit(db: 28)
+        viewModel.startMatching()
+        viewModel.updateLoudness(0.7)
+
+        routeMonitor.emit(route: AudioOutputRoute(name: "iPhone", portType: "Built-In Speaker"))
+
+        #expect(viewModel.isSupportedRoute == false)
+        #expect(viewModel.canAdjustLoudness == false)
+        #expect(viewModel.canSubmit == false)
+        #expect(tonePlayer.isStarted == false)
+        #expect(tonePlayer.latestVolume == 0)
+
+        let blockedSubmission = await viewModel.submitMatch()
+        #expect(blockedSubmission == false)
+        #expect(await service.submitCallCount() == 0)
+
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 3", portType: "BluetoothA2DPOutput"))
+
+        #expect(viewModel.isSupportedRoute)
+        #expect(viewModel.canAdjustLoudness)
+        #expect(tonePlayer.isStarted)
+        #expect(tonePlayer.latestVolume == 0.7)
+    }
+
+    @Test
+    func systemOutputVolumeChangeMutesToneBlocksAdjustmentAndSubmissionUntilRestored() async {
+        let routeMonitor = MockRouteMonitor()
+        let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .granted)
+        let outputVolumeMonitor = MockOutputVolumeMonitor(initialVolume: 0.5)
+        let tonePlayer = MockTonePlayer()
+        let service = MockLoudnessStudyService()
+
+        let viewModel = makeViewModel(
+            routeMonitor: routeMonitor,
+            ambientMonitor: ambientMonitor,
+            outputVolumeMonitor: outputVolumeMonitor,
+            tonePlayer: tonePlayer,
+            service: service
+        )
+
+        viewModel.start()
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
+        ambientMonitor.emit(db: 28)
+        viewModel.startMatching()
+
+        outputVolumeMonitor.emit(volume: 0.8)
+        #expect(viewModel.hasOutputVolumeChanged)
+        #expect(viewModel.canAdjustLoudness == false)
+        #expect(viewModel.canSubmit == false)
+        #expect(tonePlayer.latestVolume == 0)
+
+        viewModel.updateLoudness(0.9)
+        #expect(viewModel.loudnessLevel == 0.3)
+
+        let blockedSubmission = await viewModel.submitMatch()
+        #expect(blockedSubmission == false)
+        #expect(await service.submitCallCount() == 0)
+
+        outputVolumeMonitor.emit(volume: 0.5)
+        #expect(viewModel.hasOutputVolumeChanged == false)
+        #expect(viewModel.canAdjustLoudness)
+        #expect(tonePlayer.latestVolume == 0.3)
+
+        viewModel.updateLoudness(0.6)
+        let submitted = await viewModel.submitMatch()
+
+        #expect(submitted)
+        #expect(await service.submitCallCount() == 1)
+        let submission = await service.lastSubmittedSubmission()
+        guard case .array(let volumeTrace)? = submission?.rawPayload["system_output_volume_trace"] else {
+            Issue.record("Expected system output volume trace")
+            return
+        }
+        #expect(volumeTrace.count >= 3)
+    }
+
+    @Test
+    func loudnessUpdatesClampAndPersistTraceValues() async {
+        let routeMonitor = MockRouteMonitor()
+        let ambientMonitor = MockAmbientNoiseMonitor(permissionStatus: .granted)
+        let tonePlayer = MockTonePlayer()
+        let service = MockLoudnessStudyService()
+
+        let viewModel = makeViewModel(
+            routeMonitor: routeMonitor,
+            ambientMonitor: ambientMonitor,
+            tonePlayer: tonePlayer,
+            service: service
+        )
+
+        viewModel.start()
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
+        ambientMonitor.emit(db: 28)
+        viewModel.startMatching()
+
+        viewModel.updateLoudness(1.5)
+        #expect(viewModel.loudnessLevel == 1)
+        #expect(tonePlayer.latestVolume == 1)
+
+        viewModel.updateLoudness(-0.2)
+        #expect(viewModel.loudnessLevel == 0)
+        #expect(tonePlayer.latestVolume == 0)
+
+        let submitted = await viewModel.submitMatch()
+        #expect(submitted)
+
+        let submission = await service.lastSubmittedSubmission()
+        guard case .array(let loudnessTrace)? = submission?.rawPayload["loudness_trace"] else {
+            Issue.record("Expected loudness trace")
+            return
+        }
+        #expect(loudnessTrace.count >= 3)
+        let traceValues = loudnessTrace.compactMap { event -> Double? in
+            guard case .object(let object) = event,
+                  case .number(let value)? = object["value"] else {
+                return nil
+            }
+            return value
+        }
+        #expect(traceValues.contains(1))
+        #expect(traceValues.contains(0))
     }
 
     @Test
@@ -98,7 +269,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
 
         viewModel.start()
-        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro", portType: "BluetoothA2DPOutput"))
+        routeMonitor.emit(route: AudioOutputRoute(name: "AirPods Pro 2", portType: "BluetoothA2DPOutput"))
         ambientMonitor.emit(db: 20)
         viewModel.startMatching()
         viewModel.updateLoudness(0.64)
@@ -109,13 +280,15 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(await service.submitCallCount() == 1)
         #expect(await service.lastSubmittedSubmission()?.rawPayload["matched_level_unit"] == .string("normalizedAmplitude"))
         #expect(await service.lastSubmittedSubmission()?.rawPayload["measurement_metadata"] != nil)
-        #expect(await service.lastSubmittedSubmission()?.headphoneInfo["route_gate"] == .string("study-no-1-route-name-gate"))
+        #expect(await service.lastSubmittedSubmission()?.headphoneInfo["route_gate"] == .string("study-no-1-airpods-pro-2-3-route-name-gate"))
         #expect(await service.lastSubmittedSubmission()?.calibrationVersion == "study-no-1-unvalidated-normalized-output")
     }
 
     private func makeViewModel(
         routeMonitor: MockRouteMonitor,
         ambientMonitor: MockAmbientNoiseMonitor,
+        outputVolumeMonitor: MockOutputVolumeMonitor = MockOutputVolumeMonitor(initialVolume: 0.5),
+        tonePlayer: MockTonePlayer = MockTonePlayer(),
         service: MockLoudnessStudyService
     ) -> LoudnessMatchTaskFlowViewModel {
         let enrollment = StudyEnrollment(
@@ -148,7 +321,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
             studyService: service,
             routeMonitor: routeMonitor,
             ambientNoiseMonitor: ambientMonitor,
-            tonePlayer: MockTonePlayer(),
+            outputVolumeMonitor: outputVolumeMonitor,
+            tonePlayer: tonePlayer,
             routeGate: StudyNo1RouteGate(),
             deviceMetadataProvider: MockDeviceMetadataProvider(),
             resultBuilder: StudyNo1LoudnessMatchResultBuilder()
@@ -208,6 +382,33 @@ private final class MockAmbientNoiseMonitor: AmbientNoiseMonitoring {
     }
 }
 
+private final class MockOutputVolumeMonitor: OutputVolumeMonitoring {
+    private var callback: ((Double) -> Void)?
+    private var volume: Double
+
+    init(initialVolume: Double) {
+        self.volume = initialVolume
+    }
+
+    func currentOutputVolume() -> Double? {
+        volume
+    }
+
+    func startMonitoring(_ onChange: @escaping (Double) -> Void) {
+        callback = onChange
+        onChange(volume)
+    }
+
+    func stopMonitoring() {
+        callback = nil
+    }
+
+    func emit(volume: Double) {
+        self.volume = volume
+        callback?(volume)
+    }
+}
+
 private final class MockTonePlayer: TonePlaying {
     private(set) var isStarted = false
     private(set) var latestVolume: Double?
@@ -238,7 +439,7 @@ private struct MockDeviceMetadataProvider: DeviceMetadataProviding {
         [
             "route_name": .string(route?.name ?? ""),
             "route_port_type": .string(route?.portType ?? ""),
-            "route_gate": .string("study-no-1-route-name-gate")
+            "route_gate": .string("study-no-1-airpods-pro-2-3-route-name-gate")
         ]
     }
 }

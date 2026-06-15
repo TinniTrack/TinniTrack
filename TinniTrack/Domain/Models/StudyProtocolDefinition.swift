@@ -23,6 +23,7 @@ enum StudyTaskKind: String, Equatable {
 enum MeasurementUnit: String, Equatable {
     case normalizedAmplitude
     case estimatedDBA
+    case systemOutputVolume
     case dBSPL
     case dBHL
     case dBSL
@@ -90,12 +91,15 @@ enum StudyProtocolCatalog {
                 displayName: "1 kHz loudness match",
                 stimulus: AudioStimulusDefinition(
                     waveform: "sine",
-                    frequencyHz: 1_000,
+                    frequencyHz: StudyNo1Configuration.toneFrequencyHz,
                     channel: "current output route"
                 ),
                 outputDeviceRequirement: OutputDeviceRequirement(
-                    allowedDevices: [CalibrationProfileCatalog.airPodsProPrototype],
-                    enforcement: "route-name gate"
+                    allowedDevices: [
+                        CalibrationProfileCatalog.airPodsPro2Prototype,
+                        CalibrationProfileCatalog.airPodsPro3Prototype
+                    ],
+                    enforcement: "route-name generation marker gate"
                 ),
                 ambientRequirement: AmbientNoiseRequirement(
                     threshold: StudyNo1Configuration.ambientThresholdDB,
@@ -115,9 +119,15 @@ enum StudyProtocolCatalog {
             rawPayloadKeys: [
                 "task_key",
                 "task_version",
+                "stimulus",
                 "matched_level",
+                "matched_level_unit",
                 "loudness_trace",
                 "ambient_trace",
+                "system_output_volume_trace",
+                "gating",
+                "device_info",
+                "headphone_info",
                 "measurement_metadata"
             ],
             resultUnits: [.normalizedAmplitude, .estimatedDBA],

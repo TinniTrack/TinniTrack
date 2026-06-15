@@ -18,6 +18,7 @@ struct LoudnessMatchTaskFlowView: View {
         studyService: StudyServiceProtocol,
         routeMonitor: HeadphoneRouteMonitoring = HeadphoneRouteMonitor(),
         ambientNoiseMonitor: AmbientNoiseMonitoring = AmbientNoiseMonitor(),
+        outputVolumeMonitor: OutputVolumeMonitoring = SystemOutputVolumeMonitor(),
         tonePlayer: TonePlaying = ToneGenerator.shared,
         routeGate: AudioRouteGating = StudyNo1RouteGate(),
         deviceMetadataProvider: DeviceMetadataProviding = SystemDeviceMetadataProvider(),
@@ -36,6 +37,7 @@ struct LoudnessMatchTaskFlowView: View {
                 studyService: studyService,
                 routeMonitor: routeMonitor,
                 ambientNoiseMonitor: ambientNoiseMonitor,
+                outputVolumeMonitor: outputVolumeMonitor,
                 tonePlayer: tonePlayer,
                 routeGate: routeGate,
                 deviceMetadataProvider: deviceMetadataProvider,
@@ -141,7 +143,7 @@ private struct HeadphoneGateSection: View {
                 .font(.title3)
                 .fontWeight(.semibold)
 
-            Text("We only allow loudness matching when AirPods Pro are connected.")
+            Text("We only allow loudness matching when AirPods Pro 2 or AirPods Pro 3 are connected.")
                 .foregroundStyle(.secondary)
 
             LoudnessStatusPill(
@@ -222,13 +224,25 @@ private struct MatchingSection: View {
                 .fontWeight(.semibold)
 
             LoudnessStatusPill(
+                title: viewModel.isSupportedRoute ? "Headphones Connected" : "Headphones Disconnected",
+                subtitle: viewModel.currentRoute?.name ?? "No supported route detected",
+                isGood: viewModel.isSupportedRoute
+            )
+
+            LoudnessStatusPill(
                 title: viewModel.isAmbientQuiet ? "Quiet Enough" : "Environment Too Loud",
                 subtitle: viewModel.ambientDisplayText,
                 isGood: viewModel.isAmbientQuiet
             )
 
-            if !viewModel.isAmbientQuiet {
-                Text("Adjustment is paused until ambient noise returns below the threshold.")
+            LoudnessStatusPill(
+                title: viewModel.hasOutputVolumeChanged ? "Device Volume Changed" : "Device Volume Stable",
+                subtitle: viewModel.outputVolumeDisplayText,
+                isGood: !viewModel.hasOutputVolumeChanged
+            )
+
+            if let matchingPauseMessage = viewModel.matchingPauseMessage {
+                Text(matchingPauseMessage)
                     .font(.footnote)
                     .foregroundStyle(.red)
             }
@@ -238,7 +252,7 @@ private struct MatchingSection: View {
                     get: { viewModel.loudnessLevel },
                     set: { viewModel.updateLoudness($0) }
                 ),
-                isEnabled: viewModel.isAmbientQuiet
+                isEnabled: viewModel.canAdjustLoudness
             )
             .frame(height: 280)
 
@@ -254,10 +268,10 @@ private struct MatchingSection: View {
                 .padding(.vertical, 14)
             }
             .buttonStyle(.plain)
-            .background(Color.blue)
+            .background(viewModel.canSubmit ? Color.blue : Color.gray)
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .disabled(viewModel.isSubmitting)
+            .disabled(!viewModel.canSubmit)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

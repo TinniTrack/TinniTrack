@@ -19,7 +19,11 @@ struct SystemDeviceMetadataProvider: DeviceMetadataProviding {
         [
             "route_name": .string(route?.name ?? ""),
             "route_port_type": .string(route?.portType ?? ""),
-            "route_gate": .string("study-no-1-route-name-gate")
+            "route_gate": .string("study-no-1-airpods-pro-2-3-route-name-gate"),
+            "route_gate_supported_generations": .array([
+                .string("AirPods Pro 2"),
+                .string("AirPods Pro 3")
+            ])
         ]
     }
 }

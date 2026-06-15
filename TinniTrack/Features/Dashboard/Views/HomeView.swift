@@ -322,7 +322,7 @@ private struct StudyDetailView: View {
 
     private static let inclusionCriteria = [
         "Adults (18+) with self-reported tinnitus.",
-        "Access to an iPhone and AirPods Pro (2nd generation).",
+        "Access to an iPhone and AirPods Pro 2 or AirPods Pro 3.",
         "Able to complete scheduled loudness-matching tasks."
     ]
 
