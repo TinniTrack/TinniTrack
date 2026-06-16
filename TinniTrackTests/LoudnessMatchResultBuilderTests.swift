@@ -138,7 +138,7 @@ struct LoudnessMatchResultBuilderTests {
         }
         #expect(profile["profile_id"] == .string("ork-airpods-pro-2-1khz-v1"))
         #expect(profile["retspl_db_spl"] == .number(9.27))
-        #expect(profile["source_table_version"] == .string("ResearchKit/ResearchKit main commit daba8c9f103477bd0279cc52a924a85b480df601, verified 2026-06-15"))
+        #expect(profile["source_table_version"] == .string("ResearchKit/ResearchKit commit daba8c9f103477bd0279cc52a924a85b480df601, retrieved 2026-06-15"))
     }
 
     @Test

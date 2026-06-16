@@ -15,7 +15,7 @@ struct StudyNo1LoudnessMatchExportTests {
         #expect(record.validationStatus == "acceptedValid")
         #expect(record.qualityFlags == "routeNameCalibrationInferred")
         #expect(record.calibrationProfileID == "ork-airpods-pro-2-1khz-v1")
-        #expect(record.calibrationSourceTableVersion?.contains("ResearchKit/ResearchKit main commit") == true)
+        #expect(record.calibrationSourceTableVersion?.contains("ResearchKit/ResearchKit commit") == true)
         #expect(record.audiogramThresholdDerivation == "exact_1000hz_no_interpolation")
         #expect(csv.contains("task_run_id,scheduled_task_id,enrollment_id,user_id,participant_id"))
         #expect(csv.contains("study-no-1-lm-payload-v2,acceptedValid,routeNameCalibrationInferred"))

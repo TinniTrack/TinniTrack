@@ -1,0 +1,28 @@
+{
+  "profile_id": "ork-airpods-pro-2-1khz-v1",
+  "headphone_type": "AIRPODSPROV2",
+  "source_repository": "https://github.com/ResearchKit/ResearchKit",
+  "source_commit": "daba8c9f103477bd0279cc52a924a85b480df601",
+  "source_path": "ResearchKitActiveTask/dBHL Tone Audiometry/ORKAudiometry",
+  "source_tree_url": "https://github.com/ResearchKit/ResearchKit/tree/daba8c9f103477bd0279cc52a924a85b480df601/ResearchKitActiveTask/dBHL%20Tone%20Audiometry/ORKAudiometry",
+  "retrieved_at": "2026-06-15",
+  "notes": "Pinned local copies of official ResearchKit ORKAudiometry AirPods Pro 2 tables used for Study No. 1 1,000 Hz loudness-match derivations.",
+  "files": [
+    {
+      "name": "frequency_dBSPL_AIRPODSPROV2.plist",
+      "sha256": "3ffef0599ef4307def00636be337ac08a5511b183357ad692eb111c2f0ee5c0b"
+    },
+    {
+      "name": "volume_curve_AIRPODSPROV2.plist",
+      "sha256": "2acbc3ef3e4f4ea3bde15c2a757262c4261b6a1234a3752bd118173f4ec0fb1b"
+    },
+    {
+      "name": "retspl_AIRPODSPROV2.plist",
+      "sha256": "75d47cf85b72f1b0efb95cf570f5a954733cb5e6c975848d3fa17e075eb4b4d2"
+    },
+    {
+      "name": "retspl_dBFS_AIRPODSPROV2.plist",
+      "sha256": "979ac2cc96afcdd1159e98549b4f4717bd0e1feaddc3cdc0994c5ed733c7240f"
+    }
+  ]
+}

@@ -7,8 +7,10 @@ This contract describes the 1,000 Hz loudness-match payload used for calibrated 
 - Active supported profile: `ork-airpods-pro-2-1khz-v1`
 - Output route: AirPods Pro 2
 - Source: Apple/ResearchKit ORKAudiometry AirPods Pro 2 tables
-- Source table version: `ResearchKit/ResearchKit main commit daba8c9f103477bd0279cc52a924a85b480df601, verified 2026-06-15`
+- Source table version: `ResearchKit/ResearchKit commit daba8c9f103477bd0279cc52a924a85b480df601, retrieved 2026-06-15`
+- Local table copies: `TinniTrack/Domain/Calibration/Resources/ORKAudiometry/AIRPODSPROV2/`
 - Source files: `frequency_dBSPL_AIRPODSPROV2.plist`, `volume_curve_AIRPODSPROV2.plist`, `retspl_AIRPODSPROV2.plist`, `retspl_dBFS_AIRPODSPROV2.plist`
+- Integrity metadata: `manifest.json` stores the upstream commit, source path, retrieval date, and SHA-256 checksum for each copied table.
 - 1,000 Hz values: `frequency_dBSPL = 83.67`, `RETSPL = 9.27 dB SPL`, `RETSPL dBFS = -97`
 
 AirPods Pro 3 remains route-allowed for participant gating but is not an accepted calibrated submission route until a real calibration profile is added.

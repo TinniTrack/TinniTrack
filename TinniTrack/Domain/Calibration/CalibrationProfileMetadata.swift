@@ -97,41 +97,24 @@ enum CalibrationProfileCatalog {
         notes: "Route allowed for Study No. 1, but no ORKAudiometry AirPods Pro 3 calibration table is available in the pinned ResearchKit revision."
     )
 
-    static let airPodsPro2OneKilohertz = HeadphoneCalibrationProfile(
-        identifier: "ork-airpods-pro-2-1khz-v1",
-        version: "researchkit-3.1.4-d1d523e-2026-06-15",
-        displayName: "AirPods Pro 2 1 kHz",
-        outputDevice: airPodsPro2,
-        supportStatus: .supported,
-        validationStatus: .researchKitReferenceAvailable,
-        sourceTableVersion: "ResearchKit/ResearchKit main commit daba8c9f103477bd0279cc52a924a85b480df601, verified 2026-06-15",
-        sourceProvenance: "https://github.com/ResearchKit/ResearchKit/tree/main/ResearchKitActiveTask/dBHL%20Tone%20Audiometry/ORKAudiometry: frequency_dBSPL_AIRPODSPROV2.plist, volume_curve_AIRPODSPROV2.plist, retspl_AIRPODSPROV2.plist, retspl_dBFS_AIRPODSPROV2.plist.",
-        frequencyCalibration: HeadphoneFrequencyCalibration(
-            frequencyHz: 1_000,
-            frequencyDBSPL: 83.67,
-            retsplDBSPL: 9.27,
-            retsplDBFS: -97
-        ),
-        volumeCurve: [
-            0.0625: -65.5,
-            0.1250: -58.5,
-            0.1875: -52.5,
-            0.2500: -47,
-            0.3125: -42,
-            0.3750: -37.5,
-            0.4375: -33,
-            0.5000: -29,
-            0.5625: -25,
-            0.6250: -21,
-            0.6875: -17,
-            0.7500: -13.5,
-            0.8125: -10,
-            0.8750: -6.5,
-            0.9375: -3,
-            1.0000: 0
-        ],
-        notes: "Frequency dB SPL and RETSPL values are table lookups for 1,000 Hz. The app converts its peak-normalized sine amplitude to both peak and RMS dBFS, and uses RMS dBFS for estimated dB SPL."
-    )
+    static let airPodsPro2OneKilohertz: HeadphoneCalibrationProfile = {
+        let tableSet = ResearchKitAudiometryTableStore.airPodsPro2
+        let manifest = tableSet.manifest
+
+        return HeadphoneCalibrationProfile(
+            identifier: manifest.profileID,
+            version: "researchkit-\(manifest.sourceCommit.prefix(7))-\(manifest.retrievedAt)",
+            displayName: "AirPods Pro 2 1 kHz",
+            outputDevice: airPodsPro2,
+            supportStatus: .supported,
+            validationStatus: .researchKitReferenceAvailable,
+            sourceTableVersion: "ResearchKit/ResearchKit commit \(manifest.sourceCommit), retrieved \(manifest.retrievedAt)",
+            sourceProvenance: "\(manifest.sourceTreeURL): \(manifest.files.map(\.name).joined(separator: ", ")).",
+            frequencyCalibration: tableSet.frequencyCalibration(at: StudyNo1Configuration.toneFrequencyHz),
+            volumeCurve: tableSet.volumeCurve,
+            notes: "Frequency dB SPL and RETSPL values are table lookups for 1,000 Hz from vendored ResearchKit plists. The app converts its peak-normalized sine amplitude to both peak and RMS dBFS, and uses RMS dBFS for estimated dB SPL."
+        )
+    }()
 
     static let airPodsPro3CalibrationUnavailable = HeadphoneCalibrationProfile(
         identifier: "airpods-pro-3-calibration-unavailable",
