@@ -10,7 +10,7 @@ ResearchKit has a directly relevant hearing module: `ORKdBHLToneAudiometryStep`.
 - RETSPL conversion from dB HL to dB SPL,
 - iOS volume-position correction.
 
-The best implementation path is not to use ResearchKit's predefined dB HL audiometry task as-is, because its interaction is Hughson-Westlake threshold finding, not tinnitus loudness matching. Instead, reuse or adapt its calibrated tone generation model:
+The best implementation path is not to use ResearchKit's predefined dB HL audiometry task as-is, because its interaction is Hughson-Westlake threshold finding, not tinnitus loudness matching. It is also not ideal to depend directly on `ORKdBHLToneAudiometryAudioGenerator`: in the inspected source it is a private ResearchKitActiveTask header, not part of the public umbrella header. Instead, reuse or port its calibrated tone generation model behind an app-owned API:
 
 1. verify route, headphone model, system volume, fit, quiet-room state, and app/audio settings;
 2. generate a pure tone at the patient's matched tinnitus pitch;
@@ -185,6 +185,19 @@ sample = sin(theta) * amplitudeGain * fadeEnvelope
 ```
 
 where `amplitudeGain` is the output of the dB HL calibration conversion.
+
+#### API visibility
+
+`ORKdBHLToneAudiometryAudioGenerator` is not exposed through the public `ResearchKitActiveTask.h` umbrella header. In the inspected Xcode project it is marked as a private header and imported through `ResearchKitActiveTask_Private.h`.
+
+That distinction matters for app architecture:
+
+- The stock `ORKdBHLToneAudiometryStepViewController` can use the generator because it is inside the ResearchKitActiveTask module.
+- App code that imports normal `ResearchKitActiveTask` should not treat the generator as a stable public API.
+- Depending on the private header is technically possible when building ResearchKit from source, but it couples the app to ResearchKit internals.
+- The generator's public-ish Objective-C surface is very small: initialize with a headphone type, play frequency/channel/dB HL, stop, and receive clipping callbacks. It does not expose calibration metadata, target dB SPL, attenuation, table versions, or detailed diagnostics that a tinnitus research app should record.
+
+This makes the generator more useful as a reference implementation than as the direct long-term dependency for a custom loudness-match UI.
 
 ### 5. Environment SPL meter
 
@@ -524,6 +537,29 @@ The main frequency and RETSPL tables are defined at discrete frequencies. If you
 
 For tinnitus, arbitrary pitch matching may be tempting, but calibrated measurement is stronger if the final loudness match is done at supported/calibrated frequencies or at well-validated interpolated frequencies.
 
+## Custom UI integration options
+
+Because the app needs a tinnitus-specific loudness-match UI rather than the stock threshold UI, there must be an alternative approach.
+
+### Option: Hybrid ResearchKit + custom audio. Port the calibration and playback into an app-owned Swift module
+
+Use ResearchKit for consent, instructions, surveys, environment SPL gating, and result collection, but run the tinnitus loudness-match screen with your app-owned calibrated tone service.
+
+This keeps the useful research workflow scaffolding while avoiding the stock dB HL threshold UI.
+
+This is the most pragmatic app architecture. Treat ResearchKit's generator and plists as a reference, preserve the relevant licenses and source attribution, and build an app-owned calibrated tone service using `AVAudioEngine` or `AVAudioSourceNode`.
+
+Advantages:
+
+- fully custom SwiftUI/UIKit tinnitus workflow;
+- no dependency on private ResearchKit headers;
+- calibration math can be unit-tested directly;
+- easier to log target dB SPL, dB HL, dB SL, attenuation, clipping margins, output volume, route, and table versions;
+- easier to fix or validate the volume-bucketing behavior;
+- easier to support repeated matches and study-specific result models.
+
+
+
 ## Recommended implementation strategy
 
 ### Phase 1: Build a calibration abstraction
@@ -552,7 +588,7 @@ Do not let a session silently continue if the route or volume changes.
 
 ### Phase 3: Build calibrated tone playback
 
-Use `AVAudioEngine`/`AVAudioSourceNode` or adapt ResearchKit's Audio Unit graph. Requirements:
+Use an app-owned `AVAudioEngine`/`AVAudioSourceNode` player, or expose a deliberate public player from a ResearchKit fork. Avoid depending on `ORKdBHLToneAudiometryAudioGenerator` as a private runtime API except for prototyping. Requirements:
 
 - fixed sample rate or explicitly captured hardware sample rate;
 - sine generation with stable phase;
