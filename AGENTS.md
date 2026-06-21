@@ -2,7 +2,7 @@
 
 ## Project Context
 
-- This is an iOS research app for tinnitus study workflows, built with SwiftUI, HealthKit, Apple ResearchKit embedded dynamic frameworks, and Supabase.
+- This is an iOS research app for tinnitus study workflows, built with SwiftUI, HealthKit, Apple ResearchKit framework, and Supabase.
 
 - Preserve the feature-first structure:
   - `TinniTrack/Features/` for product flows, UI, and flow view models.
