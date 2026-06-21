@@ -1,7 +1,7 @@
 # Tinnitus Research and Tracking App
 
 ## 1. Project Overview
-We are building an iOS research app for tinnitus loudness measurement using controlled headphone-based psychoacoustic tasks. The long-term goal is to support pitch-matching and loudness-matching workflows that produce scientifically interpretable, repeatable data after calibration and validation.
+We are building an iOS research app for tinnitus loudness measurement using controlled headphone-based psychoacoustic tasks. The long-term goal is to support pitch-matching and loudness-matching workflows that produce scientifically interpretable, repeatable data.
 
 **Current implementation status:**
 The app is an iOS research-app prototype for tinnitus study workflows. It currently supports account onboarding, study enrollment state, HealthKit audiogram import, scheduled Study No. 1 tasks, headphone/ambient gates, and a 1 kHz loudness-match prototype. The current loudness-match implementation is **not scientifically valid end-to-end yet**; it records normalized playback level and protocol/device/gating metadata so future calibrated work can map results to validated dB SPL, dB HL, or dB SL units.
@@ -33,8 +33,8 @@ git -C Frameworks/ResearchKit lfs pull --include='LFS-Files/**' --exclude=''
 Then drag `Frameworks/ResearchKit/ResearchKit.xcodeproj` into `TinniTrack.xcodeproj` in Xcode and embed `ResearchKit.framework`, `ResearchKitUI.framework`, and `ResearchKitActiveTask.framework` in the app target.
 
 ## 2. Why we’re building it
-*   **Objectivity:** Tinnitus is subjective; standardized calibration (estimated dB SPL/dB HL and dB SL relative to participant threshold) can support inter-subject and longitudinal comparison after validation.
-*   **Hardware Consistency:** AirPods Pro (2nd generation) have ResearchKit calibration tables that can support model-calibrated output estimates under controlled conditions. Public iOS APIs do not expose exact individual in-ear SPL, so acoustic validation is required before clinical or research claims.
+*   **Objectivity:** Tinnitus is subjective; standardized calibration (dB SPL/dB HL and dB SL relative to participant threshold) can support inter-subject and longitudinal comparison.
+*   **Hardware Consistency:** AirPods Pro (2nd generation) have ResearchKit calibration tables that can support model-calibrated output estimates under controlled conditions.
 *   **Temporal Resolution:** Daily measurements could capture the volatile nature of tinnitus, revealing patterns missed in infrequent clinical visits.
 
 ## 3. V1 User Journey
@@ -129,8 +129,6 @@ Users complete loudness-matching tasks at specific times of day.
             *   The user may resume the task.
     5.  **Loudness-matching procedure:**
         *   The user adjusts the volume of a **1,000 Hz pure tone** until it matches their tinnitus loudness.
-        *   A validated calibrated protocol should first measure or retrieve the participant's threshold at the tested frequency and ear so dB SL can be computed.
-        *   Future calibrated Study No. 1 should repeat the loudness match across multiple trials and summarize the median matched level and within-session variability.
         *   The current prototype records normalized amplitude, loudness trace, ambient trace, route/device metadata, and protocol metadata.
         *   Validated dB SPL, dB HL, and/or dB SL values are deferred until calibration and device validation work is complete.
         *   The user submits the match and receives a confirmation that the task has been completed.
