@@ -1,14 +1,15 @@
 # Tinnitus Research and Tracking App
 
 ## 1. Project Overview
-We are building an iOS research app that measures tinnitus loudness using calibrated headphone-based psychoacoustic tasks. Participants complete pitch-matching and loudness-matching tasks that produce scientifically interpretable, repeatable data.
+We are building an iOS research app for tinnitus loudness measurement using controlled headphone-based psychoacoustic tasks. The long-term goal is to support pitch-matching and loudness-matching workflows that produce scientifically interpretable, repeatable data after calibration and validation.
 
 **Current implementation status:**
 The app is an iOS research-app prototype for tinnitus study workflows. It currently supports account onboarding, study enrollment state, HealthKit audiogram import, scheduled Study No. 1 tasks, headphone/ambient gates, and a 1 kHz loudness-match prototype. The current loudness-match implementation is **not scientifically valid end-to-end yet**; it records normalized playback level and protocol/device/gating metadata so future calibrated work can map results to validated dB SPL, dB HL, or dB SL units.
 
 **Data collection:**
 *   Baseline hearing thresholds (via HealthKit Audiograms).
-*   Longitudinal Tinnitus Loudness-Match (LM) and Pitch-Match (PM) measurements.
+*   Longitudinal Tinnitus Loudness-Match (LM) measurements.
+*   Future Pitch-Match (PM) measurements for protocols that estimate tinnitus pitch before loudness matching.
 
 ## Local Setup
 
@@ -32,8 +33,8 @@ git -C Frameworks/ResearchKit lfs pull --include='LFS-Files/**' --exclude=''
 Then drag `Frameworks/ResearchKit/ResearchKit.xcodeproj` into `TinniTrack.xcodeproj` in Xcode and embed `ResearchKit.framework`, `ResearchKitUI.framework`, and `ResearchKitActiveTask.framework` in the app target.
 
 ## 2. Why we’re building it
-*   **Objectivity:** Tinnitus is subjective; standardized calibration (dB SL/HL) allows for inter-subject and longitudinal comparison.
-*   **Hardware Consistency:** Apple devices (specifically AirPods Pro) provide known acoustic profiles, enabling clinical-grade accuracy outside a sound booth.
+*   **Objectivity:** Tinnitus is subjective; standardized calibration (estimated dB SPL/dB HL and dB SL relative to participant threshold) can support inter-subject and longitudinal comparison after validation.
+*   **Hardware Consistency:** AirPods Pro (2nd generation) have ResearchKit calibration tables that can support model-calibrated output estimates under controlled conditions. Public iOS APIs do not expose exact individual in-ear SPL, so acoustic validation is required before clinical or research claims.
 *   **Temporal Resolution:** Daily measurements could capture the volatile nature of tinnitus, revealing patterns missed in infrequent clinical visits.
 
 ## 3. V1 User Journey
@@ -103,17 +104,22 @@ Users complete loudness-matching tasks at specific times of day.
             *   The user is shown a blocking message instructing them to connect AirPods Pro (2nd generation).
             *   The task remains locked until the correct headphones are detected.
         *   If the correct headphones are connected, the app proceeds to environmental validation.
-    2.  **Quiet-room gating (environmental noise check):**
+    2.  **Volume, fit, and audio-state checks:**
+        *   The calibrated protocol should require a stable, known system output volume, preferably maximum volume.
+        *   The app records `AVAudioSession.outputVolume` and should abort, restart, or recalculate if volume changes during the task.
+        *   Participants should confirm AirPods fit/seal before testing; a study-specific fit check is future validation work.
+        *   The app should avoid audio modes or settings that alter generated tones, including voice processing, EQ, loudness normalization, compressors, and unintended mixing.
+    3.  **Quiet-room gating (environmental noise check):**
         *   The user is prompted to confirm they are in a quiet environment.
         *   The app measures ambient environmental noise using the device microphone.
-        *   A predefined environmental threshold (X dB SPL, to be finalized during validation testing) determines acceptability.
+        *   A predefined environmental threshold (study-defined dBA; ResearchKit's dB HL audiometry task uses 45 dBA) determines acceptability and must be finalized during validation testing.
         *   If environmental noise exceeds the threshold:
             *   The task cannot begin.
             *   The user is instructed to move to a quieter location.
             *   Ambient noise is continuously monitored.
         *   Once environmental noise falls below the threshold:
             *   The task becomes available to start.
-    3.  **Continuous monitoring during task:**
+    4.  **Continuous monitoring during task:**
         *   Environmental noise continues to be monitored throughout the Loudness-Match task.
         *   If ambient noise rises above the allowed threshold at any point:
             *   A visible on-screen alert indicates that the environment is too loud.
@@ -121,15 +127,17 @@ Users complete loudness-matching tasks at specific times of day.
         *   When environmental noise returns below the threshold:
             *   The alert automatically disappears.
             *   The user may resume the task.
-    4.  **Loudness-matching procedure:**
+    5.  **Loudness-matching procedure:**
         *   The user adjusts the volume of a **1,000 Hz pure tone** until it matches their tinnitus loudness.
+        *   A validated calibrated protocol should first measure or retrieve the participant's threshold at the tested frequency and ear so dB SL can be computed.
+        *   Future calibrated Study No. 1 should repeat the loudness match across multiple trials and summarize the median matched level and within-session variability.
         *   The current prototype records normalized amplitude, loudness trace, ambient trace, route/device metadata, and protocol metadata.
         *   Validated dB SPL, dB HL, and/or dB SL values are deferred until calibration and device validation work is complete.
         *   The user submits the match and receives a confirmation that the task has been completed.
 
 ## 4. Scientific & Engineering Core
-*   **Calibration:** Implements RETSPL tables to convert generic dB SPL to clinical dB HL (Hearing Level) and dB SL (Sensation Level).
-*   **Hardware Gating:** Allow-list enforcement for headphones with known sensitivity profiles to prevent uncalibrated data collection.
+*   **Calibration:** Planned calibrated output uses ResearchKit-style AirPods Pro 2 frequency sensitivity, RETSPL, and iOS volume-curve tables to estimate dB SPL and dB HL. dB SL requires a participant threshold at the same frequency and ear (`dB SL = matched dB HL - threshold dB HL`).
+*   **Hardware Gating:** Allow-list enforcement for AirPods Pro (2nd generation) prevents unsupported routes from being treated as calibrated data sources.
 *   **Measurement Metadata:** Study protocols, audio task definitions, calibration profile metadata, output device metadata, and task result payload metadata are modeled so future calibrated measurements can be reproduced and audited.
 *   **Boundary Cleanup:** Playback, route gating, ambient monitoring, device metadata, and result packaging are separated behind small interfaces to reduce direct singleton coupling in feature code.
 
@@ -153,9 +161,10 @@ Relevant ResearchKit surfaces for future work:
 *   **Consent / instruction steps:** `ORKInstructionStep` for consent and participant instruction flows.
 *   **Forms / surveys:** `ORKFormStep` and `ORKFormItem` for demographics, screening, EMA, and questionnaires.
 *   **Tone Audiometry:** `ORKToneAudiometryStep` or `ORKOrderedTask.toneAudiometryTask(...)` for non-HL tone threshold workflows.
-*   **dBHL Tone Audiometry:** `ORKdBHLToneAudiometryStep` or `ORKOrderedTask.dBHLToneAudiometryTask(...)` for future calibrated threshold work, after validation.
+*   **dBHL Tone Audiometry:** `ORKdBHLToneAudiometryStep` is useful as a template and for future calibrated threshold work after validation. Do not rely on `ORKOrderedTask.dBHLToneAudiometryTask(...)` unchanged for Study No. 1 because the inspected predefined task is threshold-oriented and defaults to older AirPods identifiers rather than AirPods Pro 2.
 *   **SPL / environmental noise:** `ORKEnvironmentSPLMeterStep` is available for ResearchKit-backed environmental SPL checks.
 *   **Speech-in-Noise:** `ORKSpeechInNoiseStep` or `ORKOrderedTask.speechInNoiseTask(...)` is relevant for later hearing studies, not current Study No. 1 readiness.
+*   **Calibrated tone generation:** Treat `ORKdBHLToneAudiometryAudioGenerator` as a reference implementation, not a stable app dependency, because it is a private ResearchKitActiveTask header in the inspected ResearchKit source.
 
 ### Backend
 *   **Supabase:** PostgreSQL + Auth.
@@ -324,9 +333,11 @@ RLS policies are required on all user-scoped tables (`profiles`, `consents`, `au
 *   For study No. 1:
     *   Consent + permissions
     *   Prompt Apple hearing test (if needed) and import audiogram via HealthKit
-    *   Headphone gating for Apple Airpods Pro 2
-    *   Quiet-room gating
-    *   Single-frequency (1kHz) LM
+    *   Headphone gating for AirPods Pro (2nd generation)
+    *   Stable volume, route-change, audio-state, and fit/seal guardrails
+    *   Quiet-room gating with stored environment samples
+    *   Single-frequency (1 kHz) threshold and LM flow
+    *   Repeated LM trials with median and within-session variability
     *   4 tasks per day for 7 days
     *   Daily local push notifications
 
@@ -341,7 +352,8 @@ RLS policies are required on all user-scoped tables (`profiles`, `consents`, `au
 *   In-app hearing test (bypassing Apple native test).
 *   Production ResearchKit consent/instruction flow.
 *   Model-aware headphone metadata collection and gating.
-*   Calibration-validation plan before any dB HL/dB SL claims.
+*   App-owned calibrated tone service based on ResearchKit-style AirPods Pro 2 tables, with unit-tested dB HL/dB SPL/amplitude conversion.
+*   Acoustic calibration-validation plan before collecting study data that makes dB HL/dB SL claims.
 *   Export/analysis documentation for `task_runs.raw_payload`.
 
 ## 8. Local Development
@@ -387,7 +399,7 @@ It’s a table (per frequency) giving the SPL that corresponds to 0 dB HL for a 
 *   **Convert HL → SPL:** `SPL = HL + RETSPL(f, transducer)`
 *   **Convert SPL → HL:** `HL = SPL − RETSPL(f, transducer)`
 
-Apple’s ResearchKit framework gives us RETSPL tables and device mappings for certain Apple headphones so we can get clinically meaningful dB HL from a phone.
+Apple's ResearchKit framework provides RETSPL tables, AirPods Pro 2 sensitivity tables, and iOS volume-curve mappings that can support estimated dB HL/dB SPL output from a phone. Those estimates are not exact individual in-ear SPL and must be validated for the app, route, OS, firmware, and study protocol before being treated as research-grade measurements.
 
 ### Other Vocabulary
 *   **EMA:** Ecological Momentary Assessment — brief, in‑the‑moment self‑report questions (e.g., tinnitus loudness, annoyance, mood).
