@@ -119,7 +119,7 @@ Users complete loudness-matching tasks at specific times of day.
 *   **UI/UX:** SwiftUI
 *   **Frameworks:**
     *   **HealthKit:** For audiogram retrieval.
-    *   **ResearchKit (StanfordBDHG Fork):** We use [StanfordBDHG’s SPM fork of Apple ResearchKit](https://github.com/StanfordBDHG/ResearchKit), resolved through SwiftPM and pinned in `Package.resolved`.
+    *   **ResearchKit:** We use Apple ResearchKit as embedded dynamic frameworks via `ResearchKit.xcodeproj`.
 
 ### ResearchKit Direction
 
