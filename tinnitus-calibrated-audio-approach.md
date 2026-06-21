@@ -416,6 +416,150 @@ Recommended flow:
    - chosen stimulus type,
    - calibration asset identifiers.
 
+## Proposed study protocol and UI plan
+
+The app should implement one reusable loudness-matching engine that can be used for different study configurations.
+
+1. Fixed-frequency loudness matching at 1000 Hz.
+2. Pitch matching followed by loudness matching at the matched pitch.
+
+Both studies should share the same preflight checks, calibrated playback service, loudness-match UI, event logging, and result schema. The difference is whether the test frequency is fixed in advance or estimated through a pitch-matching phase.
+
+### Shared preflight protocol
+
+Before either study starts:
+
+1. Confirm AirPods Pro 2 route.
+2. Confirm stable system volume, preferably maximum volume.
+3. Run or request a fit/seal confirmation.
+4. Run environment SPL gating.
+5. Ask tinnitus laterality: left, right, both, central, or unclear.
+6. Define playback ear based on the study rule.
+7. Display safety stop affordance before any stimulus is played.
+
+For unilateral tinnitus, play to the affected ear. For bilateral or central tinnitus, define this in the protocol before data collection. The cleanest research design is to test left and right ears separately when possible, because it avoids ambiguity in channel-specific thresholds and dB SL calculations.
+
+### Study A: fixed 1000 Hz loudness matching
+
+This study intentionally removes pitch matching to produce a simpler, standardized measure. The stimulus is always a 1000 Hz pure tone.
+
+Recommended flow:
+
+1. Run preflight checks.
+2. Measure hearing threshold at 1000 Hz in the test ear.
+3. Start loudness matching slightly above threshold, for example threshold + 5 dB SL.
+4. Let the participant adjust the 1000 Hz tone until it is the same loudness as their tinnitus.
+5. Repeat the loudness match three times.
+6. Report the median matched level and within-session variability.
+
+Also store estimated dB SPL and dB HL, but dB SL is the most interpretable value because it accounts for that participant's threshold at the tested frequency.
+
+### Study B: pitch matching plus loudness matching
+
+This study estimates tinnitus pitch first, then runs the same loudness-matching flow at that pitch.
+
+Recommended flow:
+
+1. Run preflight checks.
+2. Ask the participant whether the tinnitus is more tone-like, hiss/noise-like, buzzing, or unclear.
+3. Run pitch matching.
+4. Confirm matched pitch with one or more replay checks.
+5. Measure hearing threshold at the matched pitch.
+6. Run the same loudness-match UI used in Study A.
+7. Repeat loudness matching three times.
+8. Report median matched dB SL, estimated dB SPL, dB HL, pitch, and confidence.
+
+### Pitch-matching UI options
+
+There are three reasonable pitch-matching approaches:
+
+1. **Two-choice bracketing**
+   Present Tone A and Tone B, then ask which is closer to the tinnitus pitch. This is controlled and analyzable, but slower.
+
+2. **Frequency slider**
+   Let the participant scrub frequency until it sounds closest. This is fast, but noisier and more prone to anchoring or accidental overshoot.
+
+3. **Hybrid**
+   Start with coarse two-choice bracketing, then allow fine adjustment with constrained buttons or a narrow slider. This is the best balance for Study B.
+
+Recommended Study B pitch UI:
+
+```text
+Which tone is closer to your tinnitus?
+
+[ Play A ]    [ Play B ]
+
+[ A is closer ]    [ B is closer ]    [ About the same ]
+```
+
+After the coarse pitch is found, use a fine adjustment screen:
+
+```text
+[ Play Tone ]
+
+Much Lower    Lower    Matches Pitch    Higher    Much Higher
+```
+
+Use octave checks because tinnitus pitch matching can be vulnerable to octave confusion. For example, after a candidate pitch is selected, compare it with half and double the frequency when those values are within the calibrated or validated range.
+
+### Loudness-matching UI pattern
+
+Use the same loudness UI in both studies. The recommended first implementation is a button-based method of adjustment:
+
+```text
+[ Play Tone ]
+
+Much Softer    Softer    Same Loudness    Louder    Much Louder
+
+[ Stop ]
+```
+
+Design details:
+
+- Keep the numeric dB level hidden from the participant to reduce anchoring.
+- Use pulsed tones, not a continuously running tone.
+- Use ramp-in and ramp-out to avoid clicks.
+- Make `Stop` always visible and immediate.
+- Log every button press, level change, playback event, route change, and volume change.
+- Use larger steps early and smaller steps near the match.
+
+Suggested step sizes:
+
+```text
+Much Softer / Much Louder = 5 dB
+Softer / Louder = 1 or 2 dB
+Same Loudness = accept current candidate
+```
+
+A practical trial sequence:
+
+1. Start at threshold + 5 dB SL, or a randomized value around threshold + 5 to +15 dB SL.
+2. Let the participant move up/down with the buttons.
+3. When they choose `Same Loudness`, run a refinement pass using 1 dB steps.
+4. Save the accepted level.
+5. Repeat for three trials, with randomized starting levels.
+6. Use the median accepted level as the study result and store the spread as a reliability metric.
+
+
+### Confidence and quality checks
+
+After each match, ask for a confidence rating:
+
+```text
+How confident are you in this match?
+
+Low    Medium    High
+```
+
+Also flag sessions where:
+
+- the three repeated matches differ by more than a predefined threshold;
+- the participant reports low confidence;
+- route or volume changed;
+- environment SPL gate failed or was marginal;
+- the requested level approached the clipping/safety limit;
+- the matched pitch was outside the validated calibration range.
+
 ## High-level Swift shape
 
 This is intentionally pseudocode, not implementation:
