@@ -10,7 +10,7 @@ Accepted for architecture readiness.
 
 TinniTrack needs to continue toward ResearchKit-backed hearing-study workflows without pretending the current Study No. 1 loudness-match prototype is scientifically valid. The app also needs a lower deployment target than the Xcode-created iOS 26.1 default.
 
-The StanfordBDHG ResearchKit package is already available through SwiftPM and is resolved to `3.1.4`. Its package manifest declares iOS 17+, so TinniTrack can target iOS 18.1.
+ResearchKit is integrated through Apple's embedded framework project flow by adding `ResearchKit.xcodeproj` to the app project and embedding the `ResearchKit`, `ResearchKitUI`, and `ResearchKitActiveTask` dynamic frameworks. TinniTrack targets iOS 18.1.
 
 ## Decision
 

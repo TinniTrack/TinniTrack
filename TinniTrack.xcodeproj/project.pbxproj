@@ -7,19 +7,42 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E1C796B22FE887F300B8979E /* ResearchKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1C796AA2FE887B300B8979E /* ResearchKit.framework */; };
+		E1C796B32FE887F300B8979E /* ResearchKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E1C796AA2FE887B300B8979E /* ResearchKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E1C796B52FE888B900B8979E /* ResearchKitActiveTask.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1C796B02FE887B300B8979E /* ResearchKitActiveTask.framework */; };
+		E1C796B62FE888B900B8979E /* ResearchKitActiveTask.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E1C796B02FE887B300B8979E /* ResearchKitActiveTask.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E1C796B72FE888B900B8979E /* ResearchKitUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1C796AE2FE887B300B8979E /* ResearchKitUI.framework */; };
+		E1C796B82FE888B900B8979E /* ResearchKitUI.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E1C796AE2FE887B300B8979E /* ResearchKitUI.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E1CBE5142EE26FCC005AB9B0 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE5132EE26FCC005AB9B0 /* Auth */; };
 		E1CBE5162EE26FCC005AB9B0 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE5152EE26FCC005AB9B0 /* Functions */; };
 		E1CBE5182EE26FCC005AB9B0 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE5172EE26FCC005AB9B0 /* PostgREST */; };
 		E1CBE51A2EE26FCC005AB9B0 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE5192EE26FCC005AB9B0 /* Realtime */; };
 		E1CBE51C2EE26FCC005AB9B0 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE51B2EE26FCC005AB9B0 /* Storage */; };
 		E1CBE51E2EE26FCC005AB9B0 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE51D2EE26FCC005AB9B0 /* Supabase */; };
-		E1EADEF92FD4E43E00F207B7 /* ResearchKit in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEF82FD4E43E00F207B7 /* ResearchKit */; };
-		E1EADEFB2FD4E43E00F207B7 /* ResearchKitActiveTask in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEFA2FD4E43E00F207B7 /* ResearchKitActiveTask */; };
-		E1EADEFD2FD4E43E00F207B7 /* ResearchKitSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEFC2FD4E43E00F207B7 /* ResearchKitSwiftUI */; };
-		E1EADEFF2FD4E43E00F207B7 /* ResearchKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEFE2FD4E43E00F207B7 /* ResearchKitUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		E1C796A92FE887B300B8979E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E1C7968F2FE887B200B8979E /* ResearchKit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = B183A5951A8535D100C76870;
+			remoteInfo = ResearchKit;
+		};
+		E1C796AD2FE887B300B8979E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E1C7968F2FE887B200B8979E /* ResearchKit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = CA1C7A5A288B0C68004DAB3A;
+			remoteInfo = ResearchKitUI;
+		};
+		E1C796AF2FE887B300B8979E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E1C7968F2FE887B200B8979E /* ResearchKit.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = CAD08967289DD747007B2A98;
+			remoteInfo = ResearchKitActiveTask;
+		};
 		E1CBE40A2EE269DE005AB9B0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = E1CBE3F42EE269DD005AB9B0 /* Project object */;
@@ -36,7 +59,24 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		E1C796B42FE887F300B8979E /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				E1C796B82FE888B900B8979E /* ResearchKitUI.framework in Embed Frameworks */,
+				E1C796B32FE887F300B8979E /* ResearchKit.framework in Embed Frameworks */,
+				E1C796B62FE888B900B8979E /* ResearchKitActiveTask.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		E1C7968F2FE887B200B8979E /* ResearchKit.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = ResearchKit.xcodeproj; path = Frameworks/ResearchKit/ResearchKit.xcodeproj; sourceTree = "<group>"; };
 		E1CBE3FC2EE269DD005AB9B0 /* TinniTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TinniTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1CBE4092EE269DE005AB9B0 /* TinniTrackTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinniTrackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1CBE4132EE269DE005AB9B0 /* TinniTrackUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinniTrackUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,16 +105,15 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E1EADEFF2FD4E43E00F207B7 /* ResearchKitUI in Frameworks */,
-				E1EADEFD2FD4E43E00F207B7 /* ResearchKitSwiftUI in Frameworks */,
+				E1C796B72FE888B900B8979E /* ResearchKitUI.framework in Frameworks */,
 				E1CBE5182EE26FCC005AB9B0 /* PostgREST in Frameworks */,
-				E1EADEFB2FD4E43E00F207B7 /* ResearchKitActiveTask in Frameworks */,
 				E1CBE5162EE26FCC005AB9B0 /* Functions in Frameworks */,
-				E1EADEF92FD4E43E00F207B7 /* ResearchKit in Frameworks */,
 				E1CBE51E2EE26FCC005AB9B0 /* Supabase in Frameworks */,
 				E1CBE5142EE26FCC005AB9B0 /* Auth in Frameworks */,
 				E1CBE51C2EE26FCC005AB9B0 /* Storage in Frameworks */,
+				E1C796B22FE887F300B8979E /* ResearchKit.framework in Frameworks */,
 				E1CBE51A2EE26FCC005AB9B0 /* Realtime in Frameworks */,
+				E1C796B52FE888B900B8979E /* ResearchKitActiveTask.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -95,6 +134,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		E1C796902FE887B200B8979E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E1C796AA2FE887B300B8979E /* ResearchKit.framework */,
+				E1C796AE2FE887B300B8979E /* ResearchKitUI.framework */,
+				E1C796B02FE887B300B8979E /* ResearchKitActiveTask.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E1C796B12FE887F300B8979E /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		E1CBE3F32EE269DD005AB9B0 = {
 			isa = PBXGroup;
 			children = (
@@ -102,6 +158,8 @@
 				E1CBE40C2EE269DE005AB9B0 /* TinniTrackTests */,
 				E1CBE4162EE269DE005AB9B0 /* TinniTrackUITests */,
 				E1CBE3FD2EE269DD005AB9B0 /* Products */,
+				E1C7968F2FE887B200B8979E /* ResearchKit.xcodeproj */,
+				E1C796B12FE887F300B8979E /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -125,6 +183,7 @@
 				E1CBE3F82EE269DD005AB9B0 /* Sources */,
 				E1CBE3F92EE269DD005AB9B0 /* Frameworks */,
 				E1CBE3FA2EE269DD005AB9B0 /* Resources */,
+				E1C796B42FE887F300B8979E /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -141,10 +200,6 @@
 				E1CBE5192EE26FCC005AB9B0 /* Realtime */,
 				E1CBE51B2EE26FCC005AB9B0 /* Storage */,
 				E1CBE51D2EE26FCC005AB9B0 /* Supabase */,
-				E1EADEF82FD4E43E00F207B7 /* ResearchKit */,
-				E1EADEFA2FD4E43E00F207B7 /* ResearchKitActiveTask */,
-				E1EADEFC2FD4E43E00F207B7 /* ResearchKitSwiftUI */,
-				E1EADEFE2FD4E43E00F207B7 /* ResearchKitUI */,
 			);
 			productName = TinniTrack;
 			productReference = E1CBE3FC2EE269DD005AB9B0 /* TinniTrack.app */;
@@ -230,11 +285,16 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E1CBE5122EE26FCC005AB9B0 /* XCRemoteSwiftPackageReference "supabase-swift" */,
-				E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E1CBE3FD2EE269DD005AB9B0 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = E1C796902FE887B200B8979E /* Products */;
+					ProjectRef = E1C7968F2FE887B200B8979E /* ResearchKit.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				E1CBE3FB2EE269DD005AB9B0 /* TinniTrack */,
@@ -243,6 +303,30 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXReferenceProxy section */
+		E1C796AA2FE887B300B8979E /* ResearchKit.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = ResearchKit.framework;
+			remoteRef = E1C796A92FE887B300B8979E /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E1C796AE2FE887B300B8979E /* ResearchKitUI.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = ResearchKitUI.framework;
+			remoteRef = E1C796AD2FE887B300B8979E /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		E1C796B02FE887B300B8979E /* ResearchKitActiveTask.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = ResearchKitActiveTask.framework;
+			remoteRef = E1C796AF2FE887B300B8979E /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXReferenceProxy section */
 
 /* Begin PBXResourcesBuildPhase section */
 		E1CBE3FA2EE269DD005AB9B0 /* Resources */ = {
@@ -611,14 +695,6 @@
 				minimumVersion = 2.5.1;
 			};
 		};
-		E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/StanfordBDHG/ResearchKit";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 3.1.4;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -651,26 +727,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E1CBE5122EE26FCC005AB9B0 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
-		};
-		E1EADEF82FD4E43E00F207B7 /* ResearchKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKit;
-		};
-		E1EADEFA2FD4E43E00F207B7 /* ResearchKitActiveTask */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKitActiveTask;
-		};
-		E1EADEFC2FD4E43E00F207B7 /* ResearchKitSwiftUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKitSwiftUI;
-		};
-		E1EADEFE2FD4E43E00F207B7 /* ResearchKitUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKitUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

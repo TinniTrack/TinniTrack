@@ -10,6 +10,27 @@ The app is an iOS research-app prototype for tinnitus study workflows. It curren
 *   Baseline hearing thresholds (via HealthKit Audiograms).
 *   Longitudinal Tinnitus Loudness-Match (LM) and Pitch-Match (PM) measurements.
 
+## Local Setup
+
+This repo uses Apple ResearchKit as a git submodule at `Frameworks/ResearchKit`.
+
+For a fresh clone, include submodules:
+
+```sh
+git clone --recurse-submodules <repo-url>
+cd Tinnitus-Capstone
+git -C Frameworks/ResearchKit lfs pull --include='LFS-Files/**' --exclude=''
+```
+
+If you already cloned the repo without submodules:
+
+```sh
+git submodule update --init --recursive
+git -C Frameworks/ResearchKit lfs pull --include='LFS-Files/**' --exclude=''
+```
+
+Then drag `Frameworks/ResearchKit/ResearchKit.xcodeproj` into `TinniTrack.xcodeproj` in Xcode and embed `ResearchKit.framework`, `ResearchKitUI.framework`, and `ResearchKitActiveTask.framework` in the app target.
+
 ## 2. Why we’re building it
 *   **Objectivity:** Tinnitus is subjective; standardized calibration (dB SL/HL) allows for inter-subject and longitudinal comparison.
 *   **Hardware Consistency:** Apple devices (specifically AirPods Pro) provide known acoustic profiles, enabling clinical-grade accuracy outside a sound booth.
@@ -119,7 +140,7 @@ Users complete loudness-matching tasks at specific times of day.
 *   **UI/UX:** SwiftUI
 *   **Frameworks:**
     *   **HealthKit:** For audiogram retrieval.
-    *   **ResearchKit (StanfordBDHG Fork):** We use [StanfordBDHG’s SPM fork of Apple ResearchKit](https://github.com/StanfordBDHG/ResearchKit), resolved through SwiftPM and pinned in `Package.resolved`.
+    *   **ResearchKit:** We use Apple ResearchKit frameworks via `ResearchKit.xcodeproj`.
 
 ### ResearchKit Direction
 
