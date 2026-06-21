@@ -178,7 +178,7 @@ struct StudyTaskOrientationSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             StudyPrerequisiteCard(
                 title: "Take an Apple Hearing Test",
-                message: "Use AirPods Pro with your paired iPhone. In Settings > your AirPods, tap Take a Hearing Test. Then come back and continue orientation."
+                message: "Use AirPods Pro (2nd generation) with your paired iPhone. In Settings > your AirPods, tap Take a Hearing Test. Then come back and continue orientation."
             )
 
             Link(

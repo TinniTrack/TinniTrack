@@ -94,7 +94,7 @@ enum StudyProtocolCatalog {
                 ),
                 outputDeviceRequirement: OutputDeviceRequirement(
                     allowedDevices: [CalibrationProfileCatalog.airPodsPro2ResearchKitReference],
-                    enforcement: "deferred to calibrated route verification"
+                    enforcement: "Phase 2 calibrated route and maximum-volume guardrails required before calibrated playback"
                 ),
                 ambientRequirement: AmbientNoiseRequirement(
                     threshold: StudyNo1Configuration.ambientThresholdDB,
@@ -120,8 +120,8 @@ enum StudyProtocolCatalog {
                 "measurement_metadata"
             ],
             resultUnits: [.dBHL, .dBSPL, .dBSL],
-            validityNotice: "Calibrated result collection is disabled until playback, route, volume, and study protocol phases are implemented."
+            validityNotice: "Calibrated result collection is disabled until calibrated playback and study protocol phases are implemented."
         ),
-        notes: "Defines the intended calibrated study protocol while Phase 1 provides conversion only."
+        notes: "Defines the intended calibrated study protocol while Phase 2 provides conversion plus route and volume guardrails."
     )
 }
