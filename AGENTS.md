@@ -13,6 +13,10 @@
 - Feature code should not import ResearchKit directly by default. Use `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift` as the boundary for ResearchKit presentation and result handling.
 - Supabase schema changes must be made through new SQL migration files in `supabase/migrations/`. Do not rewrite migrations that may already have been applied remotely.
 
+## iOS Simulator Guidance
+
+- Run only one iOS Simulator at a time. Running simulators in parallel causes local performance issues and can make build, run, and UI testing results less reliable.
+
 ## Commit Workflow
 
 - For implementation tasks, work in small, reviewable commits. A single focused commit is fine for a small change; multi-step work should be split into coherent milestones.
