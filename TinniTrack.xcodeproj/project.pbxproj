@@ -13,10 +13,6 @@
 		E1CBE51A2EE26FCC005AB9B0 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE5192EE26FCC005AB9B0 /* Realtime */; };
 		E1CBE51C2EE26FCC005AB9B0 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE51B2EE26FCC005AB9B0 /* Storage */; };
 		E1CBE51E2EE26FCC005AB9B0 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E1CBE51D2EE26FCC005AB9B0 /* Supabase */; };
-		E1EADEF92FD4E43E00F207B7 /* ResearchKit in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEF82FD4E43E00F207B7 /* ResearchKit */; };
-		E1EADEFB2FD4E43E00F207B7 /* ResearchKitActiveTask in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEFA2FD4E43E00F207B7 /* ResearchKitActiveTask */; };
-		E1EADEFD2FD4E43E00F207B7 /* ResearchKitSwiftUI in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEFC2FD4E43E00F207B7 /* ResearchKitSwiftUI */; };
-		E1EADEFF2FD4E43E00F207B7 /* ResearchKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = E1EADEFE2FD4E43E00F207B7 /* ResearchKitUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,12 +61,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E1EADEFF2FD4E43E00F207B7 /* ResearchKitUI in Frameworks */,
-				E1EADEFD2FD4E43E00F207B7 /* ResearchKitSwiftUI in Frameworks */,
 				E1CBE5182EE26FCC005AB9B0 /* PostgREST in Frameworks */,
-				E1EADEFB2FD4E43E00F207B7 /* ResearchKitActiveTask in Frameworks */,
 				E1CBE5162EE26FCC005AB9B0 /* Functions in Frameworks */,
-				E1EADEF92FD4E43E00F207B7 /* ResearchKit in Frameworks */,
 				E1CBE51E2EE26FCC005AB9B0 /* Supabase in Frameworks */,
 				E1CBE5142EE26FCC005AB9B0 /* Auth in Frameworks */,
 				E1CBE51C2EE26FCC005AB9B0 /* Storage in Frameworks */,
@@ -141,10 +133,6 @@
 				E1CBE5192EE26FCC005AB9B0 /* Realtime */,
 				E1CBE51B2EE26FCC005AB9B0 /* Storage */,
 				E1CBE51D2EE26FCC005AB9B0 /* Supabase */,
-				E1EADEF82FD4E43E00F207B7 /* ResearchKit */,
-				E1EADEFA2FD4E43E00F207B7 /* ResearchKitActiveTask */,
-				E1EADEFC2FD4E43E00F207B7 /* ResearchKitSwiftUI */,
-				E1EADEFE2FD4E43E00F207B7 /* ResearchKitUI */,
 			);
 			productName = TinniTrack;
 			productReference = E1CBE3FC2EE269DD005AB9B0 /* TinniTrack.app */;
@@ -230,7 +218,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E1CBE5122EE26FCC005AB9B0 /* XCRemoteSwiftPackageReference "supabase-swift" */,
-				E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E1CBE3FD2EE269DD005AB9B0 /* Products */;
@@ -611,14 +598,6 @@
 				minimumVersion = 2.5.1;
 			};
 		};
-		E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/StanfordBDHG/ResearchKit";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 3.1.4;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -651,26 +630,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E1CBE5122EE26FCC005AB9B0 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
-		};
-		E1EADEF82FD4E43E00F207B7 /* ResearchKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKit;
-		};
-		E1EADEFA2FD4E43E00F207B7 /* ResearchKitActiveTask */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKitActiveTask;
-		};
-		E1EADEFC2FD4E43E00F207B7 /* ResearchKitSwiftUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKitSwiftUI;
-		};
-		E1EADEFE2FD4E43E00F207B7 /* ResearchKitUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E1EADEF72FD4E43E00F207B7 /* XCRemoteSwiftPackageReference "ResearchKit" */;
-			productName = ResearchKitUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
