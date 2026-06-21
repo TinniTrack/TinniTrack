@@ -21,7 +21,6 @@ enum StudyTaskKind: String, Equatable {
 }
 
 enum MeasurementUnit: String, Equatable {
-    case normalizedAmplitude
     case estimatedDBA
     case dBSPL
     case dBHL
@@ -94,35 +93,35 @@ enum StudyProtocolCatalog {
                     channel: "current output route"
                 ),
                 outputDeviceRequirement: OutputDeviceRequirement(
-                    allowedDevices: [CalibrationProfileCatalog.airPodsProPrototype],
-                    enforcement: "route-name gate"
+                    allowedDevices: [CalibrationProfileCatalog.airPodsPro2ResearchKitReference],
+                    enforcement: "deferred to calibrated route verification"
                 ),
                 ambientRequirement: AmbientNoiseRequirement(
                     threshold: StudyNo1Configuration.ambientThresholdDB,
                     unit: .estimatedDBA,
-                    source: "AVAudioRecorder metering heuristic"
+                    source: "deferred to calibrated quiet-room gate"
                 ),
-                measurementUnit: .normalizedAmplitude,
+                measurementUnit: .dBHL,
                 researchKitModule: nil,
-                requiresCalibratedOutput: false,
-                notes: "Current implementation stores normalized playback level and traces only."
+                requiresCalibratedOutput: true,
+                notes: "Scheduled task placeholder only; calibrated playback and loudness matching are deferred."
             )
         ],
-        calibrationProfile: CalibrationProfileCatalog.studyNo1Prototype,
+        calibrationProfile: CalibrationProfileCatalog.airPodsPro2ResearchKitCalibration,
         resultPayload: MeasurementPayloadMetadata(
-            schemaVersion: "study-no-1-lm-payload-v1",
+            schemaVersion: "study-no-1-lm-calibrated-deferred",
             protocolVersion: "lm_v1",
             rawPayloadKeys: [
                 "task_key",
                 "task_version",
-                "matched_level",
-                "loudness_trace",
-                "ambient_trace",
+                "matched_level_dbhl",
+                "matched_level_dbspl",
+                "calibration_metadata",
                 "measurement_metadata"
             ],
-            resultUnits: [.normalizedAmplitude, .estimatedDBA],
-            validityNotice: "Prototype payload is not yet calibrated to dB HL, dB SL, or verified dB SPL."
+            resultUnits: [.dBHL, .dBSPL, .dBSL],
+            validityNotice: "Calibrated result collection is disabled until playback, route, volume, and study protocol phases are implemented."
         ),
-        notes: "Defines the current app protocol without claiming scientific validity."
+        notes: "Defines the intended calibrated study protocol while Phase 1 provides conversion only."
     )
 }
