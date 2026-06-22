@@ -39,6 +39,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.thresholdLevelText = "10"
         viewModel.recordThresholdFromInput()
         viewModel.adjustLevel(.louder)
+        completePreflight(viewModel)
         viewModel.playTone()
 
         let request = try #require(player.playedRequests.first)
@@ -62,6 +63,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             guardrailProvider: { passedGuardrails() },
             allowsCalibratedPlayback: true
         )
+        completePreflight(viewModel)
         viewModel.selectLaterality(.left)
         viewModel.thresholdLevelText = "10"
         viewModel.recordThresholdFromInput()
@@ -107,15 +109,103 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.selectLaterality(.left)
         viewModel.thresholdLevelText = "10"
         viewModel.recordThresholdFromInput()
+        viewModel.environmentSamplesText = "31 32 33 34 35"
+        viewModel.fitSealConfirmed = true
+        viewModel.safetyAcknowledged = true
 
         viewModel.playTone()
 
-        #expect(viewModel.message == .guardrailsUnavailable)
-        guard case .restartRequired = viewModel.protocolState else {
-            Issue.record("Expected restart-required state")
+        guard case .missingPreflight = viewModel.message else {
+            Issue.record("Expected missing preflight because guardrails failed")
             return
         }
-        #expect(viewModel.events.last?.kind == .playbackRefused)
+    }
+
+    @Test
+    func guardedPlaybackRequiresFullPreflight() {
+        let player = MockCalibratedTonePlayer()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            allowsCalibratedPlayback: true
+        )
+        viewModel.selectLaterality(.left)
+        viewModel.thresholdLevelText = "10"
+        viewModel.recordThresholdFromInput()
+
+        viewModel.playTone()
+
+        guard case .missingPreflight = viewModel.message else {
+            Issue.record("Expected missing preflight message")
+            return
+        }
+        #expect(player.playedRequests.isEmpty)
+
+        completePreflight(viewModel)
+        viewModel.playTone()
+
+        #expect(player.playedRequests.count == 1)
+    }
+
+    @Test
+    func preflightRejectsInvalidEnvironmentSamples() {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            allowsCalibratedPlayback: true
+        )
+        viewModel.fitSealConfirmed = true
+        viewModel.safetyAcknowledged = true
+        viewModel.refreshGuardrails()
+
+        viewModel.environmentSamplesText = "31 32 invalid 34 35 36"
+        #expect(viewModel.preflightReady == false)
+
+        viewModel.environmentSamplesText = "31 32 33 34 45"
+        #expect(viewModel.preflightReady == false)
+    }
+
+    @Test
+    func completedStudyABuildsPhase6PayloadWithPreflightMetadata() throws {
+        let viewModel = completedViewModel()
+        let payload = try viewModel.makePhase6Payload(
+            scheduledTask: scheduledTask(),
+            enrollment: enrollment(),
+            submittedAt: timestamp.addingTimeInterval(100)
+        )
+
+        #expect(payload.identifiers.enrollmentId == enrollment().id.uuidString)
+        #expect(payload.identifiers.scheduledTaskId == scheduledTask().id.uuidString)
+        #expect(payload.device.deviceModel == "iPhone17,2")
+        #expect(payload.airPods.modelIdentifier == "AIRPODSPROV2")
+        #expect(payload.environment.samplesDBA == [31, 32, 33, 34, 35])
+        #expect(payload.environment.gateResult == .recordedOnly)
+        #expect(payload.fitSeal.status == .confirmedPassed)
+        #expect(payload.safety.acknowledgedAt != nil)
+        #expect(payload.threshold.source == .manualScaffold)
+        #expect(payload.summary.medianMatchedDBHL == 16)
+    }
+
+    @Test
+    func submitCompletedRunUsesStudyServiceBoundary() async {
+        let viewModel = completedViewModel()
+        let service = MockStudyService()
+        let task = scheduledTask()
+        let currentEnrollment = enrollment()
+
+        await viewModel.submitCompletedRun(
+            scheduledTask: task,
+            enrollment: currentEnrollment,
+            studyService: service
+        )
+
+        #expect(viewModel.hasSubmitted)
+        #expect(service.submissions.count == 1)
+        #expect(service.submissions.first?.scheduledTaskID == task.id)
+        #expect(service.submissions.first?.enrollmentID == currentEnrollment.id)
+        #expect(service.submissions.first?.submission.matchedLevel == 16)
+        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("phase-6-study-a-v1"))
     }
 
     @Test
@@ -144,6 +234,32 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.recordConfidence(confidence)
     }
 
+    private func completePreflight(_ viewModel: LoudnessMatchTaskFlowViewModel) {
+        viewModel.environmentSamplesText = "31 32 33 34 35"
+        viewModel.fitSealConfirmed = true
+        viewModel.safetyAcknowledged = true
+        viewModel.refreshGuardrails()
+    }
+
+    private func completedViewModel() -> LoudnessMatchTaskFlowViewModel {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            allowsCalibratedPlayback: true,
+            runtimeContextProvider: MockPhase6RuntimeContextProvider(),
+            submissionExporter: Phase6LoudnessMatchSubmissionExporter(appVersion: "1.2.3"),
+            dateProvider: { timestamp }
+        )
+        completePreflight(viewModel)
+        viewModel.selectLaterality(.left)
+        viewModel.thresholdLevelText = "10"
+        viewModel.recordThresholdFromInput()
+        acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
+        acceptCurrentTrial(viewModel, adjustment: .softer, confidence: .medium)
+        acceptCurrentTrial(viewModel, adjustment: .muchLouder, confidence: .low)
+        return viewModel
+    }
+
     private func makeEngine() -> TinnitusProtocolEngine {
         TinnitusProtocolEngine(
             playbackPlanner: CalibratedTonePlaybackPlanner(dateProvider: { timestamp }),
@@ -170,6 +286,33 @@ struct LoudnessMatchTaskFlowViewModelTests {
                 verificationSource: .appCalibrationProfile
             )
         ])
+    }
+
+    private func scheduledTask() -> ScheduledTask {
+        ScheduledTask(
+            id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
+            enrollmentID: enrollment().id,
+            taskKey: "lm_1khz_v1",
+            taskVersion: 1,
+            scheduledFor: timestamp,
+            windowStart: timestamp.addingTimeInterval(-60),
+            windowEnd: timestamp.addingTimeInterval(3_600),
+            status: .scheduled,
+            dayIndex: 0,
+            slotIndex: 0,
+            completedAt: nil
+        )
+    }
+
+    private func enrollment() -> StudyEnrollment {
+        StudyEnrollment(
+            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+            userID: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            studyID: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!,
+            status: .enrolled,
+            enrolledAt: timestamp,
+            createdAt: timestamp
+        )
     }
 }
 
@@ -200,5 +343,61 @@ private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
         .metadata
         .started(at: Date(timeIntervalSince1970: 1_800_020_001))
         .stopped(at: Date(timeIntervalSince1970: 1_800_020_002))
+    }
+}
+
+private struct MockPhase6RuntimeContextProvider: Phase6RuntimeContextProviding {
+    func deviceContext() -> Phase6DeviceContext {
+        Phase6DeviceContext(
+            deviceModel: "iPhone17,2",
+            systemName: "iOS",
+            systemVersion: "26.0"
+        )
+    }
+
+    func audioSessionContext() -> Phase6AudioSessionContext {
+        Phase6AudioSessionContext(
+            category: "playback",
+            mode: "default",
+            options: [],
+            sampleRate: 44_100,
+            bufferSize: 512
+        )
+    }
+
+    func airPodsContext(guardrailValidation: CalibratedAudioGuardrailValidation) -> Phase6AirPodsContext {
+        Phase6AirPodsContext(
+            modelIdentifier: guardrailValidation.metadata.supportedHeadphoneIdentifier,
+            firmwareVersion: nil,
+            unavailableReason: "Firmware unavailable in test fixture."
+        )
+    }
+}
+
+private final class MockStudyService: StudyServiceProtocol {
+    struct Submission: Equatable {
+        let scheduledTaskID: UUID
+        let enrollmentID: UUID
+        let submission: LoudnessMatchSubmission
+    }
+
+    var submissions: [Submission] = []
+
+    func fetchStudies() async throws -> [Study] { [] }
+    func fetchMyEnrollments() async throws -> [StudyEnrollment] { [] }
+    func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] { [] }
+    func enroll(studyID: UUID) async throws {}
+    func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
+
+    func submitLoudnessMatch(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: LoudnessMatchSubmission
+    ) async throws {
+        submissions.append(Submission(
+            scheduledTaskID: scheduledTaskID,
+            enrollmentID: enrollmentID,
+            submission: submission
+        ))
     }
 }

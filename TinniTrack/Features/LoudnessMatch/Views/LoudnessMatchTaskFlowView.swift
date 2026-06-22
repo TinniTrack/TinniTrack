@@ -51,17 +51,30 @@ struct LoudnessMatchTaskFlowView: View {
 
     private var safetyGateSection: some View {
         Section {
-            Label("Calibrated playback remains locked for participants.", systemImage: "lock.shield")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
+            LabeledContent("Audio Guardrails", value: guardrailStatusText)
             Button {
                 viewModel.refreshGuardrails()
             } label: {
                 Label("Check Audio Guardrails", systemImage: "checkmark.shield")
             }
+
+            TextField("Quiet-room samples dBA", text: $viewModel.environmentSamplesText)
+                .keyboardType(.numbersAndPunctuation)
+
+            Toggle("Fit / seal confirmed", isOn: $viewModel.fitSealConfirmed)
+            Toggle("Safety acknowledged", isOn: $viewModel.safetyAcknowledged)
+
+            if viewModel.preflightReady {
+                Label("Ready for guarded playback", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Label("Playback and submission are locked until preflight passes.", systemImage: "lock.shield")
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Preflight")
         } footer: {
-            Text("This Phase 4 screen exercises the study protocol but does not enable calibrated tone playback until the required preflight can prove route, volume, and restart safety.")
+            Text("Use comma, space, or line separated dBA samples. The current Study A implementation records this as quiet-room context and requires five samples below 45 dBA.")
         }
     }
 
@@ -76,10 +89,11 @@ struct LoudnessMatchTaskFlowView: View {
                     }
                 }
             }
+            .disabled(!viewModel.preflightReady)
 
         case .awaitingThreshold:
-            Section("Threshold") {
-                TextField("Threshold dB HL", text: $viewModel.thresholdLevelText)
+            Section {
+                TextField("Researcher threshold dB HL", text: $viewModel.thresholdLevelText)
                     .keyboardType(.decimalPad)
 
                 Button {
@@ -93,6 +107,10 @@ struct LoudnessMatchTaskFlowView: View {
                 } label: {
                     Label("Continue Without Threshold", systemImage: "exclamationmark.triangle")
                 }
+            } header: {
+                Text("1000 Hz Threshold")
+            } footer: {
+                Text("Manual threshold entry is persisted as a scaffold source, not as measured ResearchKit audiometry.")
             }
 
         case .readyForTrial:
@@ -133,6 +151,7 @@ struct LoudnessMatchTaskFlowView: View {
                 } label: {
                     Label("Same Loudness", systemImage: "equal.circle")
                 }
+                .disabled(!viewModel.preflightReady)
             }
 
         case .awaitingConfidence:
@@ -158,6 +177,22 @@ struct LoudnessMatchTaskFlowView: View {
                     Text(summary.qualityFlags.map(\.rawValue).joined(separator: ", "))
                         .foregroundStyle(.secondary)
                 }
+
+                Button {
+                    Task {
+                        await viewModel.submitCompletedRun(
+                            scheduledTask: scheduledTask,
+                            enrollment: enrollment,
+                            studyService: studyService
+                        )
+                        if viewModel.hasSubmitted {
+                            onSubmitted()
+                        }
+                    }
+                } label: {
+                    Label(viewModel.isSubmitting ? "Submitting" : "Submit", systemImage: "square.and.arrow.up")
+                }
+                .disabled(!viewModel.canSubmit)
             }
 
         case .aborted:
@@ -186,12 +221,33 @@ struct LoudnessMatchTaskFlowView: View {
             return "Calibrated playback is still disabled for this participant workflow."
         case .invalidThreshold:
             return "Enter a finite threshold value in dB HL."
+        case .invalidEnvironmentSamples:
+            return "Enter at least five finite quiet-room dBA samples below 45 dBA."
+        case .missingPreflight(let message):
+            return message
+        case .incompletePayload(let message):
+            return message
         case .guardrailsUnavailable:
             return "Audio guardrails are missing, failed, or require restart."
         case .playbackFailed(let message):
             return message
+        case .submissionFailed(let message):
+            return message
         case nil:
             return ""
+        }
+    }
+
+    private var guardrailStatusText: String {
+        switch viewModel.currentGuardrailValidation.state {
+        case .notEvaluated:
+            return "Not checked"
+        case .passed:
+            return "Passed"
+        case .failed:
+            return "Failed"
+        case .restartRequired:
+            return "Restart required"
         }
     }
 

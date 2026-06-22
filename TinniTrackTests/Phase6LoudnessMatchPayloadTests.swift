@@ -234,6 +234,7 @@ struct Phase6LoudnessMatchPayloadTests {
             ),
             startedAt: timestamp,
             submittedAt: timestamp.addingTimeInterval(60),
+            guardrailValidation: passedGuardrails(),
             device: Phase6DeviceContext(
                 deviceModel: "iPhone17,2",
                 systemName: "iOS",

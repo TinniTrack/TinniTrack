@@ -280,6 +280,7 @@ struct Phase6PreflightContext: Equatable {
     let identifiers: Phase6IdentifierContext
     let startedAt: Date
     let submittedAt: Date?
+    let guardrailValidation: CalibratedAudioGuardrailValidation
     let device: Phase6DeviceContext
     let airPods: Phase6AirPodsContext
     let audioSession: Phase6AudioSessionContext
@@ -313,9 +314,9 @@ struct Phase6LoudnessMatchPayloadBuilder {
             throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A requires estimated dB SPL and dB SL medians.")
         }
 
-        let guardrailMetadata = latestGuardrailMetadata(from: events)
+        let guardrailMetadata = latestGuardrailMetadata(from: events) ?? preflight.guardrailValidation.metadata
         let route = Phase6AudioRouteContext(
-            outputs: guardrailMetadata?.routeDetails?.outputs.map(Phase6RouteOutputContext.init) ?? []
+            outputs: guardrailMetadata.routeDetails?.outputs.map(Phase6RouteOutputContext.init) ?? []
         )
         let thresholdRecordedAt = events.last { $0.kind == .thresholdRecorded }?.timestamp
         let threshold = Phase6ThresholdContext(
