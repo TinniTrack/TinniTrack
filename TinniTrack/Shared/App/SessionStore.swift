@@ -338,14 +338,15 @@ final class SessionStore: ObservableObject {
     #endif
 
     func resendVerificationEmail() async {
-        guard let pending = emailVerificationPendingStore.load(),
+        guard let pendingEmail = pendingVerificationEmailForResend(),
               let redirectURL = URL(string: "tinnitrack://auth/confirm") else {
             return
         }
 
         await execute(activity: .resendingVerificationEmail) { [self] in
             do {
-                try await authService.resendSignUpVerification(email: pending.email, redirectURL: redirectURL)
+                setPendingEmailVerification(pendingEmail)
+                try await authService.resendSignUpVerification(email: pendingEmail, redirectURL: redirectURL)
                 emailVerificationPendingStore.updateLastResend(at: Date())
                 state.banner = .info("Verification email sent.")
             } catch {
@@ -441,6 +442,21 @@ final class SessionStore: ObservableObject {
 
     private func clearPendingEmailVerification() {
         emailVerificationPendingStore.clear()
+    }
+
+    private func pendingVerificationEmailForResend() -> String? {
+        if case .awaitingEmailVerification(let email) = state.route {
+            let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalized.isEmpty {
+                return normalized
+            }
+        }
+
+        guard let pending = emailVerificationPendingStore.load() else {
+            return nil
+        }
+        let normalized = pending.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
     }
 
     private func routeForNoSession() -> SessionState.Route {
