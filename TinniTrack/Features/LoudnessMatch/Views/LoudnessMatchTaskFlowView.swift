@@ -58,8 +58,21 @@ struct LoudnessMatchTaskFlowView: View {
                 Label("Check Audio Guardrails", systemImage: "checkmark.shield")
             }
 
-            TextField("Quiet-room samples dBA", text: $viewModel.environmentSamplesText)
-                .keyboardType(.numbersAndPunctuation)
+            Toggle("Researcher verified AirPods Pro 2", isOn: $viewModel.researchProtocolAirPodsPro2Verified)
+
+            Button {
+                Task {
+                    await viewModel.runEnvironmentGate()
+                }
+            } label: {
+                Label(
+                    viewModel.isRunningEnvironmentGate ? "Checking Room" : "Run Quiet-Room Check",
+                    systemImage: "waveform.badge.magnifyingglass"
+                )
+            }
+            .disabled(viewModel.isRunningEnvironmentGate)
+
+            LabeledContent("Quiet-Room Gate", value: environmentGateStatusText)
 
             Toggle("Fit / seal confirmed", isOn: $viewModel.fitSealConfirmed)
             Toggle("Safety acknowledged", isOn: $viewModel.safetyAcknowledged)
@@ -74,7 +87,7 @@ struct LoudnessMatchTaskFlowView: View {
         } header: {
             Text("Preflight")
         } footer: {
-            Text("Use comma, space, or line separated dBA samples. The current Study A implementation records this as quiet-room context and requires five samples below 45 dBA.")
+            Text("AirPods Pro 2 verification is a research-protocol confirmation because public iOS route APIs do not expose Apple's private AirPods hearing-test verification or firmware details.")
         }
     }
 
@@ -93,24 +106,34 @@ struct LoudnessMatchTaskFlowView: View {
 
         case .awaitingThreshold:
             Section {
-                TextField("Researcher threshold dB HL", text: $viewModel.thresholdLevelText)
-                    .keyboardType(.decimalPad)
-
                 Button {
-                    viewModel.recordThresholdFromInput()
+                    viewModel.playThresholdTone()
                 } label: {
-                    Label("Use Threshold", systemImage: "checkmark.circle")
+                    Label("Play Threshold Tone", systemImage: "play.fill")
                 }
+                .disabled(!viewModel.canPlayThresholdTone)
 
                 Button(role: .destructive) {
-                    viewModel.markThresholdUnavailable()
+                    viewModel.stopTone()
                 } label: {
-                    Label("Continue Without Threshold", systemImage: "exclamationmark.triangle")
+                    Label("Stop", systemImage: "stop.fill")
                 }
+
+                HStack {
+                    Button("Heard") {
+                        viewModel.recordThresholdResponse(.heard)
+                    }
+                    Button("Not Heard") {
+                        viewModel.recordThresholdResponse(.notHeard)
+                    }
+                }
+                .disabled(!viewModel.canRecordThresholdResponse)
+
+                LabeledContent("Responses", value: "\(viewModel.thresholdStaircase.presentations.count)")
             } header: {
                 Text("1000 Hz Threshold")
             } footer: {
-                Text("Manual threshold entry is persisted as a scaffold source, not as measured ResearchKit audiometry.")
+                Text("The threshold staircase records every presented 1000 Hz level and heard/not-heard response before loudness matching starts.")
             }
 
         case .readyForTrial:
@@ -219,16 +242,16 @@ struct LoudnessMatchTaskFlowView: View {
         switch viewModel.message {
         case .playbackDisabled:
             return "Calibrated playback is still disabled for this participant workflow."
-        case .invalidThreshold:
-            return "Enter a finite threshold value in dB HL."
-        case .invalidEnvironmentSamples:
-            return "Enter at least five finite quiet-room dBA samples below 45 dBA."
+        case .environmentGateFailed:
+            return "The quiet-room gate did not collect enough consecutive samples below the Study A threshold."
         case .missingPreflight(let message):
             return message
         case .incompletePayload(let message):
             return message
         case .guardrailsUnavailable:
             return "Audio guardrails are missing, failed, or require restart."
+        case .environmentGateUnavailable(let message):
+            return message
         case .playbackFailed(let message):
             return message
         case .submissionFailed(let message):
@@ -236,6 +259,13 @@ struct LoudnessMatchTaskFlowView: View {
         case nil:
             return ""
         }
+    }
+
+    private var environmentGateStatusText: String {
+        guard let result = viewModel.environmentGateResult else {
+            return "Not checked"
+        }
+        return result.passed ? "Passed" : "Failed"
     }
 
     private var guardrailStatusText: String {

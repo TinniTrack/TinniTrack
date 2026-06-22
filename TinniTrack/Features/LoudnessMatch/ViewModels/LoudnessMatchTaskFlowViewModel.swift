@@ -5,60 +5,91 @@ import Foundation
 final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     enum FlowMessage: Equatable {
         case playbackDisabled
-        case invalidThreshold
-        case invalidEnvironmentSamples
+        case environmentGateFailed
         case missingPreflight(String)
         case incompletePayload(String)
         case guardrailsUnavailable
+        case environmentGateUnavailable(String)
         case playbackFailed(String)
         case submissionFailed(String)
     }
 
     @Published private(set) var protocolState: TinnitusProtocolState
     @Published private(set) var selectedLaterality: TinnitusLaterality?
-    @Published var thresholdLevelText = ""
-    @Published var environmentSamplesText = ""
+    @Published var researchProtocolAirPodsPro2Verified = false {
+        didSet {
+            researchProtocolResolver?.airPodsPro2Verified = researchProtocolAirPodsPro2Verified
+            refreshGuardrails()
+        }
+    }
     @Published var fitSealConfirmed = false
     @Published var safetyAcknowledged = false
+    @Published private(set) var environmentGateResult: TinnitusEnvironmentSPLGateResult?
+    @Published private(set) var isRunningEnvironmentGate = false
+    @Published private(set) var thresholdStaircase: TinnitusThresholdStaircase
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
     @Published private(set) var message: FlowMessage?
     @Published private(set) var isPlaying = false
+    @Published private(set) var canRecordThresholdResponse = false
     @Published private(set) var isSubmitting = false
     @Published private(set) var hasSubmitted = false
     @Published private(set) var completedSummary: TinnitusLoudnessMatchSummary?
 
     private var engine: TinnitusProtocolEngine
     private let player: CalibratedTonePlaying?
+    private let guardrailMonitor: CalibratedAudioSessionGuardrailMonitor?
     private let guardrailProvider: () -> CalibratedAudioGuardrailValidation
+    private let environmentMeter: EnvironmentSPLMeasuring
     private let allowsCalibratedPlayback: Bool
     private let runtimeContextProvider: Phase6RuntimeContextProviding
     private let submissionExporter: Phase6LoudnessMatchSubmissionExporter
     private let dateProvider: () -> Date
-
-    private let environmentThresholdDBA = 45.0
-    private let requiredEnvironmentSamples = 5
-    private let environmentSamplingInterval = 1.0
+    private let researchProtocolResolver: ResearchProtocolCalibratedHeadphoneResolver?
 
     init(
         engine: TinnitusProtocolEngine? = nil,
         player: CalibratedTonePlaying? = nil,
         guardrailProvider: (() -> CalibratedAudioGuardrailValidation)? = nil,
-        allowsCalibratedPlayback: Bool = false,
+        environmentMeter: EnvironmentSPLMeasuring? = nil,
+        allowsCalibratedPlayback: Bool = true,
         runtimeContextProvider: Phase6RuntimeContextProviding? = nil,
         submissionExporter: Phase6LoudnessMatchSubmissionExporter? = nil,
         dateProvider: @escaping () -> Date = Date.init
     ) {
         let resolvedEngine = engine ?? TinnitusProtocolEngine()
-        self.engine = resolvedEngine
-        self.player = player
-        self.guardrailProvider = guardrailProvider ?? {
-            CalibratedAudioGuardrailSession().validation
+        let resolver: ResearchProtocolCalibratedHeadphoneResolver?
+        let monitor: CalibratedAudioSessionGuardrailMonitor?
+        let resolvedPlayer: CalibratedTonePlaying?
+        let resolvedGuardrailProvider: () -> CalibratedAudioGuardrailValidation
+
+        if let guardrailProvider {
+            resolver = nil
+            monitor = nil
+            resolvedGuardrailProvider = guardrailProvider
+            resolvedPlayer = player
+        } else {
+            let researchResolver = ResearchProtocolCalibratedHeadphoneResolver()
+            let guardrailMonitor = CalibratedAudioSessionGuardrailMonitor(profileResolver: researchResolver)
+            resolver = researchResolver
+            monitor = guardrailMonitor
+            resolvedGuardrailProvider = {
+                guardrailMonitor.validateCurrentGuardrails()
+            }
+            resolvedPlayer = player ?? CalibratedToneAudioPlayer()
         }
+
+        self.engine = resolvedEngine
+        self.player = resolvedPlayer
+        self.guardrailMonitor = monitor
+        self.guardrailProvider = resolvedGuardrailProvider
+        self.environmentMeter = environmentMeter ?? AVAudioEnvironmentSPLMeter()
         self.allowsCalibratedPlayback = allowsCalibratedPlayback
         self.runtimeContextProvider = runtimeContextProvider ?? SystemPhase6RuntimeContextProvider()
         self.submissionExporter = submissionExporter ?? Phase6LoudnessMatchSubmissionExporter()
         self.dateProvider = dateProvider
+        self.researchProtocolResolver = resolver
         protocolState = resolvedEngine.state
+        thresholdStaircase = TinnitusThresholdStaircase()
         currentGuardrailValidation = self.guardrailProvider()
     }
 
@@ -73,9 +104,16 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             && currentCandidateLevelDBHL != nil
     }
 
+    var canPlayThresholdTone: Bool {
+        allowsCalibratedPlayback
+            && currentGuardrailValidation.state == .passed
+            && preflightReady
+            && !thresholdStaircase.isComplete
+    }
+
     var preflightReady: Bool {
         currentGuardrailValidation.state == .passed
-            && environmentContextFromInput() != nil
+            && environmentGateResult?.passed == true
             && fitSealConfirmed
             && safetyAcknowledged
     }
@@ -107,7 +145,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
     func refreshGuardrails() {
         currentGuardrailValidation = guardrailProvider()
-        if currentGuardrailValidation.state != .passed {
+        if currentGuardrailValidation.state != .passed, hasRequestedStimulus {
             engine.applyGuardrailValidation(currentGuardrailValidation)
             syncFromEngine()
         }
@@ -115,24 +153,97 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
     func selectLaterality(_ laterality: TinnitusLaterality) {
         selectedLaterality = laterality
+        thresholdStaircase = TinnitusThresholdStaircase()
         engine.selectLaterality(laterality)
-        syncFromEngine()
-    }
-
-    func recordThresholdFromInput() {
-        guard let level = Double(thresholdLevelText.trimmingCharacters(in: .whitespacesAndNewlines)),
-              level.isFinite
-        else {
-            message = .invalidThreshold
-            return
-        }
-
-        engine.recordThreshold(levelDBHL: level)
         syncFromEngine()
     }
 
     func markThresholdUnavailable() {
         engine.markThresholdUnavailable(reason: "Threshold estimator is not enabled in this Phase 4 scaffold.")
+        syncFromEngine()
+    }
+
+    func runEnvironmentGate() async {
+        guard !isRunningEnvironmentGate else {
+            return
+        }
+
+        isRunningEnvironmentGate = true
+        defer { isRunningEnvironmentGate = false }
+
+        do {
+            let result = try await environmentMeter.runGate(configuration: .studyA)
+            environmentGateResult = result
+            message = result.passed ? nil : .environmentGateFailed
+        } catch {
+            message = .environmentGateUnavailable(error.localizedDescription)
+        }
+    }
+
+    func playThresholdTone() {
+        guard allowsCalibratedPlayback else {
+            message = .playbackDisabled
+            return
+        }
+
+        guard preflightReady else {
+            message = .missingPreflight("Complete audio guardrails, AirPods Pro 2 research verification, quiet-room gate, fit/seal confirmation, and safety acknowledgement before threshold playback.")
+            return
+        }
+
+        currentGuardrailValidation = guardrailProvider()
+        guard currentGuardrailValidation.state == .passed else {
+            let attempt = engine.playThresholdTone(
+                levelDBHL: thresholdStaircase.currentLevelDBHL,
+                guardrailValidation: currentGuardrailValidation
+            )
+            message = attempt.refusalReason == nil ? .guardrailsUnavailable : .guardrailsUnavailable
+            syncFromEngine()
+            return
+        }
+
+        let attempt = engine.playThresholdTone(
+            levelDBHL: thresholdStaircase.currentLevelDBHL,
+            guardrailValidation: currentGuardrailValidation
+        )
+        guard let request = attempt.request, attempt.refusalReason == nil else {
+            message = .guardrailsUnavailable
+            syncFromEngine()
+            return
+        }
+
+        do {
+            _ = try player?.play(request)
+            isPlaying = true
+            canRecordThresholdResponse = true
+            startPlaybackGuardrailMonitoring()
+            message = nil
+        } catch {
+            message = .playbackFailed(error.localizedDescription)
+        }
+
+        syncFromEngine()
+    }
+
+    func recordThresholdResponse(_ response: TinnitusThresholdResponse) {
+        guard canRecordThresholdResponse else {
+            message = .missingPreflight("Play the threshold tone before recording a heard or not-heard response.")
+            return
+        }
+
+        let presentedLevel = thresholdStaircase.currentLevelDBHL
+        if isPlaying {
+            stopTone()
+        }
+        canRecordThresholdResponse = false
+
+        engine.recordThresholdResponse(levelDBHL: presentedLevel, response: response)
+        thresholdStaircase.recordResponse(response)
+
+        if let measuredThreshold = thresholdStaircase.measuredThresholdDBHL {
+            engine.recordThreshold(levelDBHL: measuredThreshold)
+        }
+
         syncFromEngine()
     }
 
@@ -170,6 +281,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         do {
             _ = try player?.play(request)
             isPlaying = true
+            startPlaybackGuardrailMonitoring()
             message = nil
         } catch {
             message = .playbackFailed(error.localizedDescription)
@@ -179,8 +291,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func stopTone() {
+        guardrailMonitor?.stopMonitoring()
         let metadata = player?.stop()
         isPlaying = false
+        canRecordThresholdResponse = false
         engine.recordStop(playbackMetadata: metadata)
         syncFromEngine()
     }
@@ -200,6 +314,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
     func abort() {
         if isPlaying {
+            guardrailMonitor?.stopMonitoring()
             _ = player?.stop()
             isPlaying = false
         }
@@ -215,7 +330,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         guard let summary = completedSummary else {
             throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A is not complete.")
         }
-        guard let environment = environmentContextFromInput() else {
+        guard let environment = environmentGateResult?.phase6Context else {
             throw Phase6PayloadValidationError.missingRequiredFields(["environment.samplesDBA"])
         }
         guard fitSealConfirmed else {
@@ -251,7 +366,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 maximumLevelDBHL: 100.0,
                 limitation: "Immediate stop is visible during playback; no clinical or diagnostic claim."
             ),
-            thresholdSource: .manualScaffold
+            thresholdSource: .measured
         )
 
         return try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
@@ -299,53 +414,40 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         message = nil
     }
 
-    private func environmentContextFromInput() -> Phase6EnvironmentSPLContext? {
-        let tokens = environmentSamplesText
-            .split { character in
-                character == "," || character == "\n" || character == " "
-            }
-        let samples = tokens.compactMap { token -> Double? in
-            guard let sample = Double(String(token).trimmingCharacters(in: .whitespacesAndNewlines)),
-                  sample.isFinite else {
-                return nil
-            }
-            return sample
-        }
-
-        guard samples.count == tokens.count, samples.count >= requiredEnvironmentSamples else {
-            return nil
-        }
-
-        var contiguous = 0
-        for sample in samples {
-            if sample < environmentThresholdDBA {
-                contiguous += 1
-            } else {
-                contiguous = 0
-            }
-        }
-
-        let passed = samples.suffix(requiredEnvironmentSamples).allSatisfy { $0 < environmentThresholdDBA }
-            || contiguous >= requiredEnvironmentSamples
-
-        guard passed else {
-            return nil
-        }
-
-        return Phase6EnvironmentSPLContext(
-            thresholdDBA: environmentThresholdDBA,
-            requiredContiguousSamples: requiredEnvironmentSamples,
-            samplingInterval: environmentSamplingInterval,
-            sensitivityOffsetDB: nil,
-            samplesDBA: samples,
-            gateResult: .recordedOnly
-        )
-    }
-
     private func syncFromEngine() {
         protocolState = engine.state
         if case .completed(let summary) = engine.state {
             completedSummary = summary
+        }
+    }
+
+    private func startPlaybackGuardrailMonitoring() {
+        guardrailMonitor?.startMonitoring { [weak self] validation in
+            guard validation.state != .passed else {
+                return
+            }
+
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+
+                if self.isPlaying {
+                    self.stopTone()
+                }
+                self.engine.applyGuardrailValidation(validation)
+                self.currentGuardrailValidation = validation
+                self.syncFromEngine()
+            }
+        }
+    }
+
+    private var hasRequestedStimulus: Bool {
+        events.contains { event in
+            event.kind == .thresholdToneRequested
+                || event.kind == .thresholdPlaybackPlanned
+                || event.kind == .playRequested
+                || event.kind == .playbackPlanned
         }
     }
 }

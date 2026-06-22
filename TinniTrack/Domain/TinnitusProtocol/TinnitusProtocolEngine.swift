@@ -83,6 +83,94 @@ struct TinnitusProtocolEngine {
         startNextTrial()
     }
 
+    mutating func playThresholdTone(
+        levelDBHL: Double,
+        guardrailValidation: CalibratedAudioGuardrailValidation
+    ) -> TinnitusProtocolPlaybackAttempt {
+        guard case .awaitingThreshold = state,
+              let channel
+        else {
+            let reason = TinnitusProtocolAbortReason.invalidState("Threshold tone can only be played during threshold collection.")
+            abort(reason)
+            return TinnitusProtocolPlaybackAttempt(request: nil, plan: nil, refusalReason: reason)
+        }
+
+        appendEvent(
+            kind: .thresholdToneRequested,
+            frequencyHz: configuration.frequencyHz,
+            presentedLevelDBHL: levelDBHL,
+            estimatedDBSPL: estimatedDBSPL(for: levelDBHL),
+            dbSL: nil,
+            channel: channel,
+            guardrailMetadata: guardrailValidation.metadata
+        )
+
+        if let refusal = guardrailRefusal(for: guardrailValidation) {
+            applyPlaybackRefusal(refusal, validation: guardrailValidation, levelDBHL: levelDBHL)
+            return TinnitusProtocolPlaybackAttempt(request: nil, plan: nil, refusalReason: refusal)
+        }
+
+        let request = CalibratedTonePlaybackRequest(
+            frequencyHz: configuration.frequencyHz,
+            levelDBHL: levelDBHL,
+            channel: channel,
+            duration: configuration.toneDuration,
+            rampDuration: configuration.rampDuration,
+            guardrailValidation: guardrailValidation
+        )
+
+        do {
+            let plan = try playbackPlanner.makePlan(for: request)
+            appendEvent(
+                kind: .thresholdPlaybackPlanned,
+                frequencyHz: plan.metadata.frequencyHz,
+                presentedLevelDBHL: plan.metadata.requestedDBHL,
+                estimatedDBSPL: plan.metadata.targetDBSPL,
+                dbSL: nil,
+                channel: plan.metadata.channel,
+                guardrailMetadata: guardrailValidation.metadata,
+                playbackMetadata: plan.metadata
+            )
+            return TinnitusProtocolPlaybackAttempt(request: request, plan: plan, refusalReason: nil)
+        } catch let error as CalibrationConversionError {
+            let reason: TinnitusProtocolAbortReason
+            if case .unsupportedFrequency(let frequencyHz, _) = error {
+                reason = .unsupportedFrequency(frequencyHz)
+                insertQualityFlag(.unsupportedFrequency)
+            } else {
+                reason = .safetyRefusal(String(describing: error))
+                insertQualityFlag(.safetyLimitRefused)
+            }
+            applyPlaybackRefusal(reason, validation: guardrailValidation, levelDBHL: levelDBHL)
+            return TinnitusProtocolPlaybackAttempt(request: request, plan: nil, refusalReason: reason)
+        } catch {
+            let reason = TinnitusProtocolAbortReason.safetyRefusal(error.localizedDescription)
+            insertQualityFlag(.playbackRefused)
+            applyPlaybackRefusal(reason, validation: guardrailValidation, levelDBHL: levelDBHL)
+            return TinnitusProtocolPlaybackAttempt(request: request, plan: nil, refusalReason: reason)
+        }
+    }
+
+    mutating func recordThresholdResponse(
+        levelDBHL: Double,
+        response: TinnitusThresholdResponse
+    ) {
+        guard case .awaitingThreshold = state else {
+            abort(.invalidState("Threshold responses can only be recorded during threshold collection."))
+            return
+        }
+
+        appendEvent(
+            kind: .thresholdResponseRecorded,
+            frequencyHz: configuration.frequencyHz,
+            presentedLevelDBHL: levelDBHL,
+            estimatedDBSPL: estimatedDBSPL(for: levelDBHL),
+            dbSL: nil,
+            channel: channel,
+            response: response.rawValue
+        )
+    }
+
     mutating func markThresholdUnavailable(reason: String) {
         guard case .awaitingThreshold = state else {
             abort(.invalidState("Threshold can only be marked unavailable after laterality selection."))

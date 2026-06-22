@@ -157,6 +157,9 @@ struct Phase6ProtocolEventContext: Codable, Equatable {
     let response: String?
     let reason: String?
     let qualityFlags: [String]
+    let guardrailState: String?
+    let guardrailOutputVolume: Double?
+    let guardrailRouteOutputs: [Phase6RouteOutputContext]
 }
 
 struct Phase6PlaybackEventContext: Codable, Equatable {
@@ -258,8 +261,8 @@ struct Phase6LoudnessMatchRunPayload: Codable, Equatable {
         guard stimulus.kind == "pureTone", stimulus.frequencyHz == 1_000 else {
             throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A must use a fixed 1000 Hz pure tone.")
         }
-        guard threshold.source == .measured || threshold.source == .manualScaffold else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A requires a recorded 1000 Hz threshold source.")
+        guard threshold.source == .measured else {
+            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Completed Study A requires a measured 1000 Hz threshold source.")
         }
         guard threshold.frequencyHz == 1_000 else {
             throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A threshold must be recorded at 1000 Hz.")
@@ -270,8 +273,8 @@ struct Phase6LoudnessMatchRunPayload: Codable, Equatable {
         guard trials.allSatisfy({ $0.estimatedDBSPL.isFinite && $0.dbSL.isFinite }) else {
             throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A requires estimated dB SPL and dB SL for each trial.")
         }
-        guard environment.gateResult == .passed || environment.gateResult == .recordedOnly else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Environment context must pass or be explicitly recorded as equivalent context.")
+        guard environment.gateResult == .passed else {
+            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Completed Study A requires a passed environment SPL gate.")
         }
     }
 }
@@ -324,9 +327,7 @@ struct Phase6LoudnessMatchPayloadBuilder {
             levelDBHL: thresholdDBHL,
             source: preflight.thresholdSource,
             recordedAt: thresholdRecordedAt,
-            limitation: preflight.thresholdSource == .manualScaffold
-                ? "Manual scaffold threshold entry; not faked measured audiometry."
-                : nil
+            limitation: nil
         )
         let payload = Phase6LoudnessMatchRunPayload(
             payloadVersion: Phase6LoudnessMatchRunPayload.payloadVersion,
@@ -373,6 +374,7 @@ struct Phase6LoudnessMatchPayloadBuilder {
             refusals: events.compactMap(Phase6RefusalContext.init),
             limitations: [
                 Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
+                "AirPods Pro 2 verification uses the recorded research-protocol route confirmation when public iOS APIs cannot expose Apple's private AirPods hearing-test verification.",
                 "No clinical or diagnostic claim is made by this payload."
             ]
         )
@@ -443,6 +445,9 @@ private extension Phase6ProtocolEventContext {
         response = event.response
         reason = event.reason
         qualityFlags = event.qualityFlags.map(\.rawValue)
+        guardrailState = event.guardrailMetadata.map { "\($0.validationState)" }
+        guardrailOutputVolume = event.guardrailMetadata?.rawOutputVolume
+        guardrailRouteOutputs = event.guardrailMetadata?.routeDetails?.outputs.map(Phase6RouteOutputContext.init) ?? []
     }
 }
 

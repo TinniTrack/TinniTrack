@@ -143,6 +143,9 @@ enum TinnitusProtocolEventKind: String, Equatable {
     case sessionStarted
     case lateralitySelected
     case pitchMatched
+    case thresholdToneRequested
+    case thresholdPlaybackPlanned
+    case thresholdResponseRecorded
     case thresholdRecorded
     case thresholdUnavailable
     case trialStarted

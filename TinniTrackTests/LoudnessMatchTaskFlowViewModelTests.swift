@@ -7,66 +7,86 @@ struct LoudnessMatchTaskFlowViewModelTests {
     private let timestamp = Date(timeIntervalSince1970: 1_800_020_000)
 
     @Test
-    func defaultParticipantWorkflowKeepsPlaybackDisabled() {
-        let player = MockCalibratedTonePlayer()
-        let viewModel = LoudnessMatchTaskFlowViewModel(
-            player: player,
-            guardrailProvider: { passedGuardrails() },
-            allowsCalibratedPlayback: false
-        )
-        viewModel.selectLaterality(.left)
-        viewModel.thresholdLevelText = "10"
-        viewModel.recordThresholdFromInput()
-
-        viewModel.playTone()
-
-        #expect(viewModel.message == .playbackDisabled)
-        #expect(player.playedRequests.isEmpty)
-        #expect(viewModel.isPlaying == false)
-    }
-
-    @Test
-    func enabledTestHarnessBuildsPlaybackRequestThroughViewModelActions() throws {
+    func defaultParticipantWorkflowBuildsPlaybackRequestAfterMeasuredPreflightAndThreshold() async throws {
         let player = MockCalibratedTonePlayer()
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             player: player,
             guardrailProvider: { passedGuardrails() },
-            allowsCalibratedPlayback: true
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
 
-        viewModel.selectLaterality(.right)
-        viewModel.thresholdLevelText = "10"
-        viewModel.recordThresholdFromInput()
+        await completePreflight(viewModel)
+        completeMeasuredThreshold(viewModel, laterality: .right)
         viewModel.adjustLevel(.louder)
-        completePreflight(viewModel)
         viewModel.playTone()
 
-        let request = try #require(player.playedRequests.first)
+        let request = try #require(player.playedRequests.last)
         #expect(request.frequencyHz == 1_000)
         #expect(request.levelDBHL == 16)
         #expect(request.channel == .right)
         #expect(viewModel.isPlaying)
         #expect(viewModel.events.contains { $0.kind == .playbackPlanned })
 
+        let stopCountBeforeLoudnessStop = player.stopCallCount
         viewModel.stopTone()
 
-        #expect(player.stopCallCount == 1)
+        #expect(player.stopCallCount == stopCountBeforeLoudnessStop + 1)
         #expect(viewModel.isPlaying == false)
         #expect(viewModel.events.last?.kind == .stopRequested)
     }
 
     @Test
-    func viewModelCompletesThreeTrialsAndExposesSummary() {
+    func thresholdWorkflowLogsPresentationsAndRecordsMeasuredThreshold() async throws {
+        let player = MockCalibratedTonePlayer()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        await completePreflight(viewModel)
+        viewModel.selectLaterality(.left)
+        viewModel.playThresholdTone()
+        viewModel.recordThresholdResponse(.heard)
+
+        let thresholdRequest = try #require(player.playedRequests.first)
+        #expect(thresholdRequest.levelDBHL == 30)
+        #expect(viewModel.events.contains { $0.kind == .thresholdPlaybackPlanned })
+        #expect(viewModel.events.contains { $0.kind == .thresholdResponseRecorded && $0.response == "heard" })
+
+        for response in [
+            TinnitusThresholdResponse.heard,
+            .heard,
+            .notHeard,
+            .notHeard,
+            .heard,
+            .notHeard,
+            .notHeard,
+            .heard
+        ] {
+            recordThresholdCycle(viewModel, response: response)
+        }
+
+        guard case .readyForTrial(_, let candidateLevel) = viewModel.protocolState else {
+            Issue.record("Expected loudness trial after measured threshold")
+            return
+        }
+        #expect(candidateLevel == 15)
+        #expect(viewModel.completedSummary == nil)
+        #expect(viewModel.events.contains { $0.kind == .thresholdRecorded && $0.presentedLevelDBHL == 10 })
+    }
+
+    @Test
+    func viewModelCompletesThreeTrialsAndExposesSummary() async {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
-            allowsCalibratedPlayback: true
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
-        completePreflight(viewModel)
-        viewModel.selectLaterality(.left)
-        viewModel.thresholdLevelText = "10"
-        viewModel.recordThresholdFromInput()
+        await completePreflight(viewModel)
+        completeMeasuredThreshold(viewModel, laterality: .left)
 
         acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
         acceptCurrentTrial(viewModel, adjustment: .softer, confidence: .medium)
@@ -79,22 +99,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func invalidThresholdInputDoesNotAdvanceProtocol() {
-        let viewModel = LoudnessMatchTaskFlowViewModel()
-        viewModel.selectLaterality(.left)
-        viewModel.thresholdLevelText = "abc"
-
-        viewModel.recordThresholdFromInput()
-
-        #expect(viewModel.message == .invalidThreshold)
-        guard case .awaitingThreshold = viewModel.protocolState else {
-            Issue.record("Expected threshold state")
-            return
-        }
-    }
-
-    @Test
-    func failedGuardrailsRefusePlaybackAndRequireRestart() {
+    func failedGuardrailsRefusePlaybackAndKeepPreflightLocked() async {
         let failed = CalibratedAudioGuardrailPolicy().validate(
             route: CalibratedAudioRouteDetails(outputs: []),
             outputVolume: 1.0,
@@ -104,16 +109,12 @@ struct LoudnessMatchTaskFlowViewModelTests {
             engine: makeEngine(),
             player: MockCalibratedTonePlayer(),
             guardrailProvider: { failed },
-            allowsCalibratedPlayback: true
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
+        await completePreflight(viewModel)
         viewModel.selectLaterality(.left)
-        viewModel.thresholdLevelText = "10"
-        viewModel.recordThresholdFromInput()
-        viewModel.environmentSamplesText = "31 32 33 34 35"
-        viewModel.fitSealConfirmed = true
-        viewModel.safetyAcknowledged = true
 
-        viewModel.playTone()
+        viewModel.playThresholdTone()
 
         guard case .missingPreflight = viewModel.message else {
             Issue.record("Expected missing preflight because guardrails failed")
@@ -128,11 +129,9 @@ struct LoudnessMatchTaskFlowViewModelTests {
             engine: makeEngine(),
             player: player,
             guardrailProvider: { passedGuardrails() },
-            allowsCalibratedPlayback: true
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
         viewModel.selectLaterality(.left)
-        viewModel.thresholdLevelText = "10"
-        viewModel.recordThresholdFromInput()
 
         viewModel.playTone()
 
@@ -141,34 +140,36 @@ struct LoudnessMatchTaskFlowViewModelTests {
             return
         }
         #expect(player.playedRequests.isEmpty)
-
-        completePreflight(viewModel)
-        viewModel.playTone()
-
-        #expect(player.playedRequests.count == 1)
     }
 
     @Test
-    func preflightRejectsInvalidEnvironmentSamples() {
-        let viewModel = LoudnessMatchTaskFlowViewModel(
+    func preflightUsesEnvironmentGateResult() async {
+        let passing = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
-            allowsCalibratedPlayback: true
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
-        viewModel.fitSealConfirmed = true
-        viewModel.safetyAcknowledged = true
-        viewModel.refreshGuardrails()
+        await completePreflight(passing)
+        #expect(passing.preflightReady)
+        #expect(passing.environmentGateResult?.gateResult == .passed)
 
-        viewModel.environmentSamplesText = "31 32 invalid 34 35 36"
-        #expect(viewModel.preflightReady == false)
+        let failing = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 46, 33, 47, 34])
+        )
+        failing.fitSealConfirmed = true
+        failing.safetyAcknowledged = true
+        failing.refreshGuardrails()
+        await failing.runEnvironmentGate()
 
-        viewModel.environmentSamplesText = "31 32 33 34 45"
-        #expect(viewModel.preflightReady == false)
+        #expect(failing.preflightReady == false)
+        #expect(failing.message == .environmentGateFailed)
     }
 
     @Test
-    func completedStudyABuildsPhase6PayloadWithPreflightMetadata() throws {
-        let viewModel = completedViewModel()
+    func completedStudyABuildsPhase6PayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
+        let viewModel = await completedViewModel()
         let payload = try viewModel.makePhase6Payload(
             scheduledTask: scheduledTask(),
             enrollment: enrollment(),
@@ -180,16 +181,17 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(payload.device.deviceModel == "iPhone17,2")
         #expect(payload.airPods.modelIdentifier == "AIRPODSPROV2")
         #expect(payload.environment.samplesDBA == [31, 32, 33, 34, 35])
-        #expect(payload.environment.gateResult == .recordedOnly)
+        #expect(payload.environment.gateResult == .passed)
         #expect(payload.fitSeal.status == .confirmedPassed)
         #expect(payload.safety.acknowledgedAt != nil)
-        #expect(payload.threshold.source == .manualScaffold)
+        #expect(payload.threshold.source == .measured)
+        #expect(payload.threshold.levelDBHL == 10)
         #expect(payload.summary.medianMatchedDBHL == 16)
     }
 
     @Test
     func submitCompletedRunUsesStudyServiceBoundary() async {
-        let viewModel = completedViewModel()
+        let viewModel = await completedViewModel()
         let service = MockStudyService()
         let task = scheduledTask()
         let currentEnrollment = enrollment()
@@ -209,8 +211,13 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func thresholdUnavailablePathPreservesQualityFlags() {
-        let viewModel = LoudnessMatchTaskFlowViewModel(engine: makeEngine())
+    func thresholdUnavailablePathPreservesQualityFlagsButCannotSubmitStudyA() async {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+        await completePreflight(viewModel)
         viewModel.selectLaterality(.unclear)
         viewModel.markThresholdUnavailable()
 
@@ -222,6 +229,13 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(viewModel.completedSummary?.qualityFlags.contains(.thresholdUnavailable) == true)
         #expect(viewModel.completedSummary?.qualityFlags.contains(.dbSLInvalid) == true)
         #expect(viewModel.completedSummary?.qualityFlags.contains(.ambiguousLaterality) == true)
+        #expect(throws: Phase6PayloadValidationError.self) {
+            _ = try viewModel.makePhase6Payload(
+                scheduledTask: scheduledTask(),
+                enrollment: enrollment(),
+                submittedAt: timestamp
+            )
+        }
     }
 
     private func acceptCurrentTrial(
@@ -234,26 +248,56 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.recordConfidence(confidence)
     }
 
-    private func completePreflight(_ viewModel: LoudnessMatchTaskFlowViewModel) {
-        viewModel.environmentSamplesText = "31 32 33 34 35"
+    private func completePreflight(_ viewModel: LoudnessMatchTaskFlowViewModel) async {
         viewModel.fitSealConfirmed = true
         viewModel.safetyAcknowledged = true
         viewModel.refreshGuardrails()
+        await viewModel.runEnvironmentGate()
     }
 
-    private func completedViewModel() -> LoudnessMatchTaskFlowViewModel {
+    private func completeMeasuredThreshold(
+        _ viewModel: LoudnessMatchTaskFlowViewModel,
+        laterality: TinnitusLaterality
+    ) {
+        viewModel.selectLaterality(laterality)
+        finishThresholdAt10DBHL(viewModel)
+    }
+
+    private func finishThresholdAt10DBHL(_ viewModel: LoudnessMatchTaskFlowViewModel) {
+        for response in [
+            TinnitusThresholdResponse.heard,
+            .heard,
+            .heard,
+            .notHeard,
+            .notHeard,
+            .heard,
+            .notHeard,
+            .notHeard,
+            .heard
+        ] {
+            recordThresholdCycle(viewModel, response: response)
+        }
+    }
+
+    private func recordThresholdCycle(
+        _ viewModel: LoudnessMatchTaskFlowViewModel,
+        response: TinnitusThresholdResponse
+    ) {
+        viewModel.playThresholdTone()
+        viewModel.recordThresholdResponse(response)
+    }
+
+    private func completedViewModel() async -> LoudnessMatchTaskFlowViewModel {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
-            allowsCalibratedPlayback: true,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
             runtimeContextProvider: MockPhase6RuntimeContextProvider(),
             submissionExporter: Phase6LoudnessMatchSubmissionExporter(appVersion: "1.2.3"),
             dateProvider: { timestamp }
         )
-        completePreflight(viewModel)
-        viewModel.selectLaterality(.left)
-        viewModel.thresholdLevelText = "10"
-        viewModel.recordThresholdFromInput()
+        await completePreflight(viewModel)
+        completeMeasuredThreshold(viewModel, laterality: .left)
         acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
         acceptCurrentTrial(viewModel, adjustment: .softer, confidence: .medium)
         acceptCurrentTrial(viewModel, adjustment: .muchLouder, confidence: .low)
@@ -283,7 +327,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
                 portUID: "verified-airpods-pro-2",
                 channelNames: ["left", "right"],
                 verifiedCalibratedHeadphoneIdentifier: "AIRPODSPROV2",
-                verificationSource: .appCalibrationProfile
+                verificationSource: .researchProtocol
             )
         ])
     }
@@ -313,6 +357,14 @@ struct LoudnessMatchTaskFlowViewModelTests {
             enrolledAt: timestamp,
             createdAt: timestamp
         )
+    }
+}
+
+private struct MockEnvironmentSPLMeter: EnvironmentSPLMeasuring {
+    let samplesDBA: [Double]
+
+    func runGate(configuration: TinnitusEnvironmentSPLGateConfiguration) async throws -> TinnitusEnvironmentSPLGateResult {
+        TinnitusEnvironmentSPLGateEvaluator().evaluate(samplesDBA: samplesDBA, configuration: configuration)
     }
 }
 

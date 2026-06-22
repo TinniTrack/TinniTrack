@@ -28,11 +28,12 @@ struct Phase6LoudnessMatchPayloadTests {
         #expect(payload.stimulus.frequencyHz == 1_000)
         #expect(payload.stimulus.kind == "pureTone")
         #expect(payload.threshold.levelDBHL == 10)
-        #expect(payload.threshold.source == .manualScaffold)
+        #expect(payload.threshold.source == .measured)
         #expect(payload.trials.map(\.acceptedLevelDBHL) == [16, 14, 20])
         #expect(payload.summary.medianMatchedDBHL == 16)
         #expect(payload.summary.medianDBSL == 6)
         #expect(payload.protocolEvents.contains { $0.kind == "playbackPlanned" })
+        #expect(payload.protocolEvents.contains { $0.guardrailState == "passed" && $0.guardrailOutputVolume == 1.0 })
         #expect(payload.playbackEvents.count == 6)
         #expect(payload.refusals.contains { $0.reason == "stopRequested" })
         #expect(payload.limitations.contains(Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation))
@@ -121,6 +122,47 @@ struct Phase6LoudnessMatchPayloadTests {
             #expect(reason.contains("threshold"))
         } catch {
             Issue.record("Unexpected error \(error)")
+        }
+    }
+
+    @Test
+    func completedStudyAValidationRefusesManualScaffoldThresholdSource() throws {
+        let valid = try makeCompletedPayload()
+        let invalid = Phase6LoudnessMatchRunPayload(
+            payloadVersion: valid.payloadVersion,
+            protocolKind: valid.protocolKind,
+            identifiers: valid.identifiers,
+            lifecycle: valid.lifecycle,
+            device: valid.device,
+            airPods: valid.airPods,
+            calibration: valid.calibration,
+            audioRoute: valid.audioRoute,
+            audioSession: valid.audioSession,
+            volume: valid.volume,
+            environment: valid.environment,
+            fitSeal: valid.fitSeal,
+            safety: valid.safety,
+            stimulus: valid.stimulus,
+            threshold: Phase6ThresholdContext(
+                frequencyHz: valid.threshold.frequencyHz,
+                levelDBHL: valid.threshold.levelDBHL,
+                source: .manualScaffold,
+                recordedAt: valid.threshold.recordedAt,
+                limitation: "Legacy scaffold fixture."
+            ),
+            trials: valid.trials,
+            summary: valid.summary,
+            protocolEvents: valid.protocolEvents,
+            playbackEvents: valid.playbackEvents,
+            refusals: valid.refusals,
+            limitations: valid.limitations
+        )
+
+        do {
+            try invalid.validateCompletedStudyA()
+            Issue.record("Expected completed Study A validation to reject manual scaffold thresholds")
+        } catch Phase6PayloadValidationError.incompleteStudyA(let reason) {
+            #expect(reason.contains("measured"))
         }
     }
 
@@ -271,7 +313,7 @@ struct Phase6LoudnessMatchPayloadTests {
                 maximumLevelDBHL: 100,
                 limitation: "Immediate stop is available; no diagnostic claim."
             ),
-            thresholdSource: .manualScaffold
+            thresholdSource: .measured
         )
     }
 

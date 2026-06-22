@@ -168,9 +168,9 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
             threshold: Phase6ThresholdContext(
                 frequencyHz: 1_000,
                 levelDBHL: 10,
-                source: .manualScaffold,
+                source: .measured,
                 recordedAt: timestamp,
-                limitation: "Manual scaffold threshold entry."
+                limitation: nil
             ),
             trials: [
                 Phase6LoudnessTrialContext(trialIndex: 1, acceptedLevelDBHL: 15, estimatedDBSPL: 24.27, dbSL: 5, confidence: "high", acceptedAt: timestamp),
@@ -198,7 +198,10 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
                     confidence: nil,
                     response: nil,
                     reason: nil,
-                    qualityFlags: []
+                    qualityFlags: [],
+                    guardrailState: nil,
+                    guardrailOutputVolume: nil,
+                    guardrailRouteOutputs: []
                 )
             ],
             playbackEvents: [
