@@ -104,24 +104,32 @@ enum StudyProtocolCatalog {
                 measurementUnit: .dBHL,
                 researchKitModule: nil,
                 requiresCalibratedOutput: true,
-                notes: "Scheduled task placeholder only; calibrated playback and loudness matching are deferred."
+                notes: "Phase 4 protocol scaffold supports fixed 1 kHz loudness matching decisions, repeated trials, and raw event logging; participant calibrated playback remains safety-gated until preflight proof is available."
             )
         ],
         calibrationProfile: CalibrationProfileCatalog.airPodsPro2ResearchKitCalibration,
         resultPayload: MeasurementPayloadMetadata(
-            schemaVersion: "study-no-1-lm-calibrated-deferred",
+            schemaVersion: "study-no-1-lm-phase-4-protocol-gated",
             protocolVersion: "lm_v1",
             rawPayloadKeys: [
                 "task_key",
                 "task_version",
+                "laterality",
+                "playback_channel",
+                "threshold_dbhl",
                 "matched_level_dbhl",
                 "matched_level_dbspl",
+                "matched_level_dbsl",
+                "confidence",
+                "protocol_events",
+                "trial_summaries",
+                "quality_flags",
                 "calibration_metadata",
                 "measurement_metadata"
             ],
             resultUnits: [.dBHL, .dBSPL, .dBSL],
-            validityNotice: "Calibrated result collection is disabled until calibrated playback and study protocol phases are implemented."
+            validityNotice: "Phase 4 protocol logic is implemented, but participant calibrated result collection remains disabled until route, volume, quiet-room, and restart safety preflight are production-ready."
         ),
-        notes: "Defines the intended calibrated study protocol while Phase 2 provides conversion plus route and volume guardrails."
+        notes: "Defines the calibrated Study A protocol scaffold over Phase 1 conversion, Phase 2 guardrails, and Phase 3 playback planning. Persistence and production collection remain deferred."
     )
 }
