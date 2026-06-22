@@ -1,6 +1,6 @@
 import Foundation
 
-enum CalibrationValidationStatus: String, Equatable {
+enum CalibrationValidationStatus: String, Codable, Equatable {
     case researchKitReferenceAvailable
     case labValidationRequired
 }

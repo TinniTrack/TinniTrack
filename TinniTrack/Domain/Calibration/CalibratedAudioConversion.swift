@@ -17,12 +17,12 @@ enum CalibrationConversionError: Error, Equatable {
     )
 }
 
-struct VolumeCurveBucket: Equatable {
+struct VolumeCurveBucket: Codable, Equatable {
     let outputVolume: Double
     let splOffsetDB: Double
 }
 
-struct CalibratedAudioCalibrationMetadata: Equatable {
+struct CalibratedAudioCalibrationMetadata: Codable, Equatable {
     let headphoneIdentifier: String
     let supportedFrequenciesHz: [Double]
     let sourceRepositoryURL: String
