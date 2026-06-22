@@ -1,0 +1,228 @@
+import Foundation
+import Testing
+@testable import TinniTrack
+
+struct Phase6LoudnessMatchSubmissionExporterTests {
+    private let timestamp = Date(timeIntervalSince1970: 1_800_040_000)
+
+    @Test
+    func exporterMapsPhase6PayloadIntoExistingSubmissionShape() throws {
+        let payload = makePayload()
+        let exporter = Phase6LoudnessMatchSubmissionExporter(appVersion: "1.2.3")
+
+        let submission = try exporter.makeSubmission(from: payload)
+
+        #expect(submission.startedAt == timestamp)
+        #expect(submission.completedAt == timestamp.addingTimeInterval(90))
+        #expect(submission.matchedLevel == 16)
+        #expect(submission.appVersion == "1.2.3")
+        #expect(submission.calibrationVersion?.contains("retspl_AIRPODSPROV2.plist") == true)
+        #expect(submission.deviceInfo["model"] == .string("iPhone17,2"))
+        #expect(submission.deviceInfo["system_version"] == .string("26.0"))
+        #expect(submission.headphoneInfo["model_identifier"] == .string("AIRPODSPROV2"))
+        #expect(submission.gating["environment"] != nil)
+        #expect(submission.gating["fit_seal"] != nil)
+        #expect(submission.gating["safety"] != nil)
+        #expect(submission.rawPayload["payloadVersion"] == .string("phase-6-study-a-v1"))
+        #expect(submission.rawPayload["protocolKind"] == .string("studyAFixedOneKilohertz"))
+
+        guard case .object(let summary)? = submission.rawPayload["summary"] else {
+            Issue.record("Expected summary object in raw payload")
+            return
+        }
+        #expect(summary["medianMatchedDBHL"] == .number(16))
+        #expect(summary["medianDBSL"] == .number(6))
+    }
+
+    @Test
+    func exporterRefusesPayloadMissingRequiredPreflightData() {
+        let valid = makePayload()
+        let invalid = Phase6LoudnessMatchRunPayload(
+            payloadVersion: valid.payloadVersion,
+            protocolKind: valid.protocolKind,
+            identifiers: valid.identifiers,
+            lifecycle: valid.lifecycle,
+            device: valid.device,
+            airPods: valid.airPods,
+            calibration: valid.calibration,
+            audioRoute: valid.audioRoute,
+            audioSession: valid.audioSession,
+            volume: valid.volume,
+            environment: Phase6EnvironmentSPLContext(
+                thresholdDBA: 45,
+                requiredContiguousSamples: 5,
+                samplingInterval: 1,
+                sensitivityOffsetDB: nil,
+                samplesDBA: [],
+                gateResult: .failed
+            ),
+            fitSeal: valid.fitSeal,
+            safety: valid.safety,
+            stimulus: valid.stimulus,
+            threshold: valid.threshold,
+            trials: valid.trials,
+            summary: valid.summary,
+            protocolEvents: valid.protocolEvents,
+            playbackEvents: valid.playbackEvents,
+            refusals: valid.refusals,
+            limitations: valid.limitations
+        )
+
+        do {
+            _ = try Phase6LoudnessMatchSubmissionExporter(appVersion: "1.2.3")
+                .makeSubmission(from: invalid)
+            Issue.record("Expected exporter to validate and reject incomplete preflight data")
+        } catch Phase6PayloadValidationError.missingRequiredFields(let fields) {
+            #expect(fields.contains("environment.samplesDBA"))
+        } catch {
+            Issue.record("Unexpected error \(error)")
+        }
+    }
+
+    private func makePayload() -> Phase6LoudnessMatchRunPayload {
+        Phase6LoudnessMatchRunPayload(
+            payloadVersion: Phase6LoudnessMatchRunPayload.payloadVersion,
+            protocolKind: "studyAFixedOneKilohertz",
+            identifiers: Phase6IdentifierContext(
+                participantId: "participant-1",
+                studySessionId: "session-1",
+                enrollmentId: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!.uuidString,
+                scheduledTaskId: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!.uuidString
+            ),
+            lifecycle: Phase6RunLifecycle(
+                startedAt: timestamp,
+                completedAt: timestamp.addingTimeInterval(90),
+                submittedAt: timestamp.addingTimeInterval(120),
+                abortedAt: nil,
+                interruptedAt: []
+            ),
+            device: Phase6DeviceContext(
+                deviceModel: "iPhone17,2",
+                systemName: "iOS",
+                systemVersion: "26.0"
+            ),
+            airPods: Phase6AirPodsContext(
+                modelIdentifier: "AIRPODSPROV2",
+                firmwareVersion: nil,
+                unavailableReason: "Firmware unavailable through public APIs."
+            ),
+            calibration: Phase6ResearchKitCalibrationContext(
+                sourceRepositoryURL: CalibratedHeadphoneProfile.airPodsPro2.metadata.sourceRepositoryURL,
+                vendoredResearchKitCommit: CalibratedHeadphoneProfile.airPodsPro2.metadata.vendoredResearchKitCommit,
+                designDocumentResearchKitCommit: CalibratedHeadphoneProfile.airPodsPro2.metadata.designDocumentResearchKitCommit,
+                assetSourceVersion: CalibratedHeadphoneProfile.airPodsPro2.metadata.sourceFileNames.joined(separator: ","),
+                sourceFileNames: CalibratedHeadphoneProfile.airPodsPro2.metadata.sourceFileNames,
+                validationStatus: CalibratedHeadphoneProfile.airPodsPro2.metadata.validationStatus.rawValue,
+                limitation: Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation
+            ),
+            audioRoute: Phase6AudioRouteContext(outputs: [
+                Phase6RouteOutputContext(
+                    portType: "bluetoothA2DP",
+                    portName: "Verified AirPods Pro 2",
+                    portUID: "route-1",
+                    channelNames: ["left", "right"],
+                    verifiedCalibratedHeadphoneIdentifier: "AIRPODSPROV2",
+                    verificationSource: "appCalibrationProfile"
+                )
+            ]),
+            audioSession: Phase6AudioSessionContext(
+                category: "playback",
+                mode: "default",
+                options: [],
+                sampleRate: 44_100,
+                bufferSize: 512
+            ),
+            volume: Phase6VolumeContext(
+                outputVolume: 1.0,
+                bucketedOutputVolume: 1.0,
+                volumeCurveOffsetDB: 0,
+                policy: CalibratedAudioVolumePolicy.maximum.description
+            ),
+            environment: Phase6EnvironmentSPLContext(
+                thresholdDBA: 45,
+                requiredContiguousSamples: 5,
+                samplingInterval: 1,
+                sensitivityOffsetDB: -23.3,
+                samplesDBA: [32, 33, 34, 35, 36],
+                gateResult: .passed
+            ),
+            fitSeal: Phase6FitSealContext(
+                status: .confirmedPassed,
+                confirmedAt: timestamp,
+                limitations: "Participant confirmation only."
+            ),
+            safety: Phase6SafetyContext(
+                acknowledgedAt: timestamp,
+                stopControlVisibleBeforePlayback: true,
+                maximumLevelDBHL: 100,
+                limitation: "Immediate stop visible before playback."
+            ),
+            stimulus: Phase6StimulusContext(
+                kind: "pureTone",
+                frequencyHz: 1_000,
+                channel: "left",
+                tinnitusLaterality: "left",
+                toneDuration: 1,
+                rampDuration: 0.2
+            ),
+            threshold: Phase6ThresholdContext(
+                frequencyHz: 1_000,
+                levelDBHL: 10,
+                source: .manualScaffold,
+                recordedAt: timestamp,
+                limitation: "Manual scaffold threshold entry."
+            ),
+            trials: [
+                Phase6LoudnessTrialContext(trialIndex: 1, acceptedLevelDBHL: 15, estimatedDBSPL: 24.27, dbSL: 5, confidence: "high", acceptedAt: timestamp),
+                Phase6LoudnessTrialContext(trialIndex: 2, acceptedLevelDBHL: 16, estimatedDBSPL: 25.27, dbSL: 6, confidence: "medium", acceptedAt: timestamp),
+                Phase6LoudnessTrialContext(trialIndex: 3, acceptedLevelDBHL: 17, estimatedDBSPL: 26.27, dbSL: 7, confidence: "high", acceptedAt: timestamp)
+            ],
+            summary: Phase6LoudnessSummaryContext(
+                medianMatchedDBHL: 16,
+                medianEstimatedDBSPL: 25.27,
+                medianDBSL: 6,
+                withinSessionSpreadDB: 2,
+                qualityFlags: [],
+                completedAt: timestamp.addingTimeInterval(90)
+            ),
+            protocolEvents: [
+                Phase6ProtocolEventContext(
+                    timestamp: timestamp,
+                    kind: "sessionStarted",
+                    frequencyHz: nil,
+                    presentedLevelDBHL: nil,
+                    estimatedDBSPL: nil,
+                    dbSL: nil,
+                    channel: nil,
+                    laterality: nil,
+                    confidence: nil,
+                    response: nil,
+                    reason: nil,
+                    qualityFlags: []
+                )
+            ],
+            playbackEvents: [
+                Phase6PlaybackEventContext(
+                    timestamp: timestamp,
+                    frequencyHz: 1_000,
+                    channel: "left",
+                    requestedDBHL: 15,
+                    targetDBSPL: 24.27,
+                    attenuationDB: -89.4,
+                    linearAmplitude: 0.00003,
+                    duration: 1,
+                    rampDuration: 0.2,
+                    sampleRate: 44_100,
+                    bufferFrameCount: 512,
+                    startedAt: timestamp,
+                    stoppedAt: timestamp.addingTimeInterval(1)
+                )
+            ],
+            refusals: [],
+            limitations: [
+                Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
+                "No clinical or diagnostic claim is made by this payload."
+            ]
+        )
+    }
+}
