@@ -34,7 +34,7 @@ enum CalibratedToneRendererError: Error, Equatable {
 
 struct CalibratedToneRenderer {
     private var phase = 0.0
-    private var renderedFrameCount = 0
+    private(set) var renderedFrameCount = 0
 
     init(initialPhase: Double = 0.0) {
         phase = initialPhase
