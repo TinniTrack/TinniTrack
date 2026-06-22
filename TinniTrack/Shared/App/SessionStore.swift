@@ -329,6 +329,14 @@ final class SessionStore: ObservableObject {
         state.passwordResetPresented = false
     }
 
+    #if DEBUG
+    func refreshAfterDeveloperToolAction() async {
+        await engine.run { [self] in
+            await refreshRoute(preserveRouteOnFailure: true, showErrorBanner: true)
+        }
+    }
+    #endif
+
     func resendVerificationEmail() async {
         guard let pending = emailVerificationPendingStore.load(),
               let redirectURL = URL(string: "tinnitrack://auth/confirm") else {

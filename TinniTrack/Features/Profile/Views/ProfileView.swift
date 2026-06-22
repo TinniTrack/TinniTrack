@@ -15,6 +15,9 @@ struct ProfileView: View {
     @State private var isEditingPersonalInfo = false
     @State private var accountNoticeMessage: String?
     @State private var isDeleteConfirmationPresented = false
+    #if DEBUG
+    @StateObject private var developerToolsViewModel = DeveloperToolsViewModel(service: SupabaseDeveloperToolingService())
+    #endif
 
     private let calendar = Calendar(identifier: .gregorian)
 
@@ -68,6 +71,15 @@ struct ProfileView: View {
                 .disabled(sessionStore.state.isBusy)
                 .accessibilityIdentifier("profile_delete_account_button")
             }
+
+            #if DEBUG
+            ProfileDeveloperToolsSection(
+                viewModel: developerToolsViewModel,
+                environment: supabaseEnvironment
+            ) {
+                await sessionStore.refreshAfterDeveloperToolAction()
+            }
+            #endif
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
@@ -337,9 +349,11 @@ struct ProfileView: View {
     }()
 }
 
+#if DEBUG
 #Preview {
     NavigationStack {
         ProfileView()
     }
     .environmentObject(SessionStoreFactory.makePreviewStore(.authenticatedReady))
 }
+#endif

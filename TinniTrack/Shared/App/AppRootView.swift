@@ -10,6 +10,13 @@ struct AppRootView: View {
 
     var body: some View {
         rootContent
+        #if DEBUG
+        .overlay(alignment: .bottomTrailing) {
+            DeveloperEnvironmentBadge(environment: supabaseEnvironment)
+                .padding(12)
+                .allowsHitTesting(false)
+        }
+        #endif
         .alert(sessionStore.state.banner?.title ?? "Info", isPresented: Binding(
             get: { sessionStore.state.banner != nil },
             set: { shouldPresent in
@@ -59,7 +66,9 @@ struct AppRootView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     AppRootView()
         .environmentObject(SessionStoreFactory.makePreviewStore())
 }
+#endif

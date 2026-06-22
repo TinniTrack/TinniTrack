@@ -7,6 +7,9 @@ struct StudyTaskDashboardView: View {
 
     @Environment(\.openURL) private var openURL
     @StateObject private var viewModel: StudyTaskDashboardViewModel
+    #if DEBUG
+    @StateObject private var developerToolsViewModel: DeveloperToolsViewModel
+    #endif
     @State private var isOrientationPresented = false
     @State private var orientationStep: StudyTaskOrientationStep = .hearingTest
     @State private var selectedTask: ScheduledTask?
@@ -34,6 +37,11 @@ struct StudyTaskDashboardView: View {
                 profileTimezone: profileTimezone
             )
         )
+        #if DEBUG
+        _developerToolsViewModel = StateObject(
+            wrappedValue: DeveloperToolsViewModel(service: SupabaseDeveloperToolingService())
+        )
+        #endif
     }
 
     var body: some View {
@@ -158,6 +166,12 @@ struct StudyTaskDashboardView: View {
                     .disabled(viewModel.isSyncing)
                 }
             }
+
+            #if DEBUG
+            StudyTaskDeveloperToolsSection(viewModel: developerToolsViewModel) {
+                await viewModel.refresh()
+            }
+            #endif
 
             Section("Future Tasks") {
                 if viewModel.isLoadingTasks {
