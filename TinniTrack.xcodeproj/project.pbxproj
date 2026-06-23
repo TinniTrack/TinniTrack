@@ -390,6 +390,20 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		E12657D92FEA3F5700996BE7 /* Debug iPhone Dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = TinniTrackTests;
+			};
+			name = "Debug iPhone Dev";
+		};
+		E12657DA2FEA3F5700996BE7 /* Debug iPhone Dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = TinniTrackUITests;
+			};
+			name = "Debug iPhone Dev";
+		};
 		E1CBE41B2EE269DE005AB9B0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -778,6 +792,7 @@
 			buildConfigurations = (
 				E1CBE4212EE269DE005AB9B0 /* Debug */,
 				E1CBE4222EE269DE005AB9B0 /* Release */,
+				E12657D92FEA3F5700996BE7 /* Debug iPhone Dev */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -787,6 +802,7 @@
 			buildConfigurations = (
 				E1CBE4242EE269DE005AB9B0 /* Debug */,
 				E1CBE4252EE269DE005AB9B0 /* Release */,
+				E12657DA2FEA3F5700996BE7 /* Debug iPhone Dev */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
