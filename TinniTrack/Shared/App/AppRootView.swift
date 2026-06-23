@@ -62,6 +62,22 @@ struct AppRootView: View {
                     EmptyView()
                 }
             }
+            .id(onboardingNavigationStackID)
+        }
+    }
+
+    private var onboardingNavigationStackID: String {
+        switch sessionStore.state.route {
+        case .bootstrapping:
+            return "bootstrapping"
+        case .unauthenticated:
+            return "unauthenticated"
+        case .awaitingEmailVerification:
+            return "awaitingEmailVerification"
+        case .needsOnboarding:
+            return "needsOnboarding"
+        case .ready:
+            return "ready"
         }
     }
 }
