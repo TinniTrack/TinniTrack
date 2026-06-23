@@ -202,7 +202,7 @@ struct LoudnessMatchActiveTestView: View {
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
             Text(value)
                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(LoudnessMatchModalColors.text)
         }
         .padding(.vertical, 6)
     }
@@ -214,7 +214,7 @@ struct LoudnessMatchActiveTestView: View {
             Spacer()
             Text(value)
                 .fontWeight(.semibold)
-                .foregroundStyle(.white)
+                .foregroundStyle(LoudnessMatchModalColors.text)
         }
         .font(.title3)
     }
@@ -227,7 +227,7 @@ struct LoudnessMatchActiveTestView: View {
                 .frame(minHeight: 52)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.white)
+        .foregroundStyle(LoudnessMatchModalColors.text)
         .background(LoudnessMatchModalColors.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
@@ -253,13 +253,17 @@ struct LoudnessMatchActiveTestView: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .foregroundStyle(isEnabled ? .white : LoudnessMatchModalColors.disabledText)
+        .foregroundStyle(isEnabled ? actionTextColor(isPrimary: isPrimary) : LoudnessMatchModalColors.disabledText)
         .background(isPrimary && isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.controlBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
         }
+    }
+
+    private func actionTextColor(isPrimary: Bool) -> Color {
+        isPrimary ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.text
     }
 
     private func lateralityTitle(_ laterality: TinnitusLaterality) -> String {

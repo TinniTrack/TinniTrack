@@ -121,12 +121,12 @@ private struct NoiseGateMeter: View {
     private func color(for index: Int) -> Color {
         switch status {
         case .measuring:
-            return Color.white.opacity(0.36)
+            return LoudnessMatchModalColors.meterInactive
         case .tooLoud:
             return LoudnessMatchModalColors.warning
         case .passed:
             let filledCount = max(1, Int((progress * 16).rounded(.up)))
-            return index < filledCount ? LoudnessMatchModalColors.success : Color.white.opacity(0.20)
+            return index < filledCount ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.controlBackground
         }
     }
 }
@@ -181,7 +181,7 @@ struct LoudnessMatchNoiseSuggestionsView: View {
 
             Text(text)
                 .font(.title3)
-                .foregroundStyle(.white)
+                .foregroundStyle(LoudnessMatchModalColors.text)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
         }

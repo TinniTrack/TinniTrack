@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum LoudnessMatchModalStep: Equatable {
     case intro
@@ -10,17 +11,48 @@ enum LoudnessMatchModalStep: Equatable {
 }
 
 enum LoudnessMatchModalColors {
-    static let background = Color(red: 0.11, green: 0.11, blue: 0.12)
-    static let controlBackground = Color.white.opacity(0.06)
-    static let controlStroke = Color.white.opacity(0.10)
+    static let background = dynamic(
+        light: .systemBackground,
+        dark: UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+    )
+    static let controlBackground = dynamic(
+        light: .secondarySystemBackground,
+        dark: UIColor.white.withAlphaComponent(0.06)
+    )
+    static let controlStroke = dynamic(
+        light: UIColor.separator.withAlphaComponent(0.36),
+        dark: UIColor.white.withAlphaComponent(0.10)
+    )
+    static let buttonStroke = dynamic(
+        light: UIColor.separator.withAlphaComponent(0.24),
+        dark: UIColor.white.withAlphaComponent(0.18)
+    )
     static let primary = Color(red: 0.02, green: 0.58, blue: 1.0)
     static let primaryText = Color.white
-    static let disabledFill = Color.white.opacity(0.16)
-    static let disabledText = Color.white.opacity(0.34)
-    static let secondaryText = Color.white.opacity(0.56)
-    static let tertiaryText = Color.white.opacity(0.38)
+    static let disabledFill = dynamic(
+        light: .systemGray5,
+        dark: UIColor.white.withAlphaComponent(0.16)
+    )
+    static let text = Color(uiColor: .label)
+    static let secondaryText = Color(uiColor: .secondaryLabel)
+    static let tertiaryText = Color(uiColor: .tertiaryLabel)
+    static let disabledText = Color(uiColor: .tertiaryLabel)
+    static let graphic = dynamic(
+        light: UIColor.label.withAlphaComponent(0.82),
+        dark: UIColor.white.withAlphaComponent(0.90)
+    )
+    static let meterInactive = dynamic(
+        light: .systemGray3,
+        dark: UIColor.white.withAlphaComponent(0.36)
+    )
     static let success = Color(red: 0.16, green: 0.84, blue: 0.34)
     static let warning = Color(red: 1.0, green: 0.56, blue: 0.16)
+
+    private static func dynamic(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        })
+    }
 }
 
 struct LoudnessMatchModalPrimaryButton: View {
@@ -54,7 +86,7 @@ struct LoudnessMatchModalPrimaryButton: View {
         .clipShape(Capsule())
         .overlay {
             Capsule()
-                .stroke(Color.white.opacity(isEnabled ? 0.18 : 0.10), lineWidth: 1)
+                .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
         }
         .accessibilityIdentifier("loudness_modal_primary_button")
     }
@@ -73,7 +105,7 @@ struct LoudnessMatchModalIconButton: View {
                 .frame(width: 54, height: 54)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.white)
+        .foregroundStyle(LoudnessMatchModalColors.text)
         .background(LoudnessMatchModalColors.controlBackground)
         .clipShape(Circle())
         .overlay {
@@ -123,7 +155,7 @@ struct LoudnessMatchModalTitleBlock: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(.largeTitle, design: .default, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(LoudnessMatchModalColors.text)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let bodyText {

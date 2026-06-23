@@ -77,7 +77,7 @@ private struct AirPodsCorrectEarStepView: View {
         VStack(spacing: 10) {
             Image(systemName: "airpodspro")
                 .font(.system(size: 94, weight: .regular))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(LoudnessMatchModalColors.graphic)
             Text(label)
                 .font(.headline)
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
@@ -92,7 +92,7 @@ private struct AirPodsFitStepView: View {
 
             Image(systemName: "ear.and.waveform")
                 .font(.system(size: 118, weight: .regular))
-                .foregroundStyle(.white.opacity(0.88), LoudnessMatchModalColors.primary)
+                .foregroundStyle(LoudnessMatchModalColors.graphic, LoudnessMatchModalColors.primary)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
 

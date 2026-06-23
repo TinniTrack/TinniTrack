@@ -59,7 +59,7 @@ struct LoudnessMatchTaskModalFlowView: View {
 
             topControls
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(LoudnessMatchModalColors.text)
         .interactiveDismissDisabled(true)
         .onAppear {
             handleStepEntered(step)
