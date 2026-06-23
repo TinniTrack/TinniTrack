@@ -50,7 +50,8 @@ struct LoudnessMatchTaskModalFlowView: View {
                 } footer: {
                     LoudnessMatchModalPrimaryButton(
                         title: primaryButtonTitle,
-                        isEnabled: isPrimaryButtonEnabled
+                        isEnabled: isPrimaryButtonEnabled,
+                        isInteractionEnabled: isPrimaryButtonInteractionEnabled
                     ) {
                         advance()
                     }
@@ -142,14 +143,25 @@ struct LoudnessMatchTaskModalFlowView: View {
 
     private var isPrimaryButtonEnabled: Bool {
         switch step {
-        case .intro, .correctEar, .fit:
+        case .intro, .fit:
             return true
+        case .correctEar:
+            return viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic
         case .quietRoom:
             return viewModel.environmentGateResult?.passed == true
         case .maxVolume:
             return viewModel.currentGuardrailValidation.state == .passed
         case .activeTest:
             return false
+        }
+    }
+
+    private var isPrimaryButtonInteractionEnabled: Bool {
+        switch step {
+        case .correctEar:
+            return true
+        default:
+            return isPrimaryButtonEnabled
         }
     }
 
@@ -160,13 +172,17 @@ struct LoudnessMatchTaskModalFlowView: View {
     private func advance() {
         switch step {
         case .intro:
+            step = .correctEar
+        case .correctEar:
+            guard viewModel.validateAirPodsForCorrectEarStep() else {
+                return
+            }
+            viewModel.stopHeadphoneRouteMonitoring()
             step = .quietRoom
         case .quietRoom:
             guard viewModel.environmentGateResult?.passed == true else {
                 return
             }
-            step = .correctEar
-        case .correctEar:
             step = .fit
         case .fit:
             viewModel.completeFitConfirmation()
@@ -192,11 +208,12 @@ struct LoudnessMatchTaskModalFlowView: View {
             break
         case .quietRoom:
             viewModel.cancelEnvironmentGate()
-            step = .intro
-        case .correctEar:
-            step = .quietRoom
-        case .fit:
             step = .correctEar
+        case .correctEar:
+            viewModel.stopHeadphoneRouteMonitoring()
+            step = .intro
+        case .fit:
+            step = .quietRoom
         case .maxVolume:
             viewModel.stopVolumeGateMonitoring()
             step = .fit
@@ -216,11 +233,17 @@ struct LoudnessMatchTaskModalFlowView: View {
 
     private func handleStepEntered(_ newStep: LoudnessMatchModalStep) {
         switch newStep {
+        case .correctEar:
+            viewModel.stopVolumeGateMonitoring()
+            viewModel.cancelEnvironmentGate()
+            viewModel.startHeadphoneRouteMonitoring()
         case .quietRoom:
+            viewModel.stopHeadphoneRouteMonitoring()
             if viewModel.environmentGateResult?.passed != true {
                 viewModel.startContinuousEnvironmentGate()
             }
         case .maxVolume:
+            viewModel.stopHeadphoneRouteMonitoring()
             viewModel.startVolumeGateMonitoring()
         default:
             break
@@ -228,6 +251,7 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     private func cleanupForDismiss(abortActiveTest: Bool) {
+        viewModel.stopHeadphoneRouteMonitoring()
         viewModel.cancelEnvironmentGate()
         viewModel.stopVolumeGateMonitoring()
 
@@ -244,6 +268,10 @@ struct LoudnessMatchTaskModalFlowView: View {
             return "Calibrated playback is still disabled for this participant workflow."
         case .environmentGateFailed:
             return "The quiet-room gate did not collect enough consecutive samples below the Study A threshold."
+        case .airPodsNotInEar:
+            return "Please place your AirPods in your ear."
+        case .unsupportedHeadphones:
+            return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
         case .missingPreflight(let message):
             return message
         case .incompletePayload(let message):

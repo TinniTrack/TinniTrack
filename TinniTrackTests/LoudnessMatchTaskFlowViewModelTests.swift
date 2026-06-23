@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import TinniTrack
@@ -231,6 +232,81 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func correctEarGateShowsMissingAirPodsMessageWhenNoRouteIsAvailable() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(outputs: [], outputVolume: 1.0)
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { CalibratedAudioGuardrailSession().validation },
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
+        #expect(viewModel.message == .airPodsNotInEar)
+        #expect(viewModel.headphoneRouteAssessment.primaryIssue == .noOutput)
+    }
+
+    @Test
+    func correctEarGateShowsUnsupportedHeadphonesMessageForNonMatchingBluetoothPlaybackRoute() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Bluetooth Speaker", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { CalibratedAudioGuardrailSession().validation },
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
+        #expect(viewModel.message == .unsupportedHeadphones)
+        #expect(viewModel.headphoneRouteAssessment.primaryIssue == .unsupportedBluetoothPlaybackDevice)
+    }
+
+    @Test
+    func correctEarGatePassesForLikelyAirPodsPro2PlaybackRoute() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
+            outputVolume: 0.5
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { CalibratedAudioGuardrailSession().validation },
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        #expect(viewModel.validateAirPodsForCorrectEarStep())
+        #expect(viewModel.message == nil)
+        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
+    }
+
+    @Test
+    func headphoneRouteMonitoringUpdatesAssessmentAndStopsObservation() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(outputs: [], outputVolume: 1.0)
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { CalibratedAudioGuardrailSession().validation },
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.startHeadphoneRouteMonitoring()
+        #expect(viewModel.isHeadphoneRouteMonitoring)
+        #expect(viewModel.headphoneRouteAssessment.primaryIssue == .noOutput)
+
+        routeProvider.outputs = [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
+
+        viewModel.stopHeadphoneRouteMonitoring()
+        #expect(viewModel.isHeadphoneRouteMonitoring == false)
+        #expect(routeProvider.routeObservation?.isInvalidated == true)
+    }
+
+    @Test
     func completedStudyABuildsPhase6PayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
         let viewModel = await completedViewModel()
         let payload = try viewModel.makePhase6Payload(
@@ -395,6 +471,19 @@ struct LoudnessMatchTaskFlowViewModelTests {
         ])
     }
 
+    private func audioOutput(
+        name: String,
+        portType: AVAudioSession.Port,
+        uid: String = "route-uid"
+    ) -> AudioSessionRouteOutputSnapshot {
+        AudioSessionRouteOutputSnapshot(
+            portName: name,
+            portTypeRawValue: portType.rawValue,
+            portUID: uid,
+            channelNames: ["left", "right"]
+        )
+    }
+
     private func scheduledTask() -> ScheduledTask {
         ScheduledTask(
             id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
@@ -459,6 +548,57 @@ private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
                 task.cancel()
             }
         }
+    }
+}
+
+private final class MockAudioSessionRouteVolumeProvider: AudioSessionRouteVolumeProviding {
+    var outputs: [AudioSessionRouteOutputSnapshot]
+    var outputVolume: Double?
+    private(set) var refreshCallCount = 0
+    private var routeHandler: (() -> Void)?
+    private(set) var routeObservation: MockAudioSessionObservation?
+
+    init(outputs: [AudioSessionRouteOutputSnapshot], outputVolume: Double?) {
+        self.outputs = outputs
+        self.outputVolume = outputVolume
+    }
+
+    func refreshRouteAndVolume() {
+        refreshCallCount += 1
+    }
+
+    func currentRouteOutputs() -> [AudioSessionRouteOutputSnapshot] {
+        outputs
+    }
+
+    func currentOutputVolume() -> Double? {
+        outputVolume
+    }
+
+    func observeRouteChanges(_ handler: @escaping () -> Void) -> AudioSessionObservation {
+        routeHandler = handler
+        let observation = MockAudioSessionObservation()
+        routeObservation = observation
+        return observation
+    }
+
+    func observeOutputVolumeChanges(_ handler: @escaping () -> Void) -> AudioSessionObservation {
+        MockAudioSessionObservation()
+    }
+
+    func triggerRouteChange() {
+        guard routeObservation?.isInvalidated != true else {
+            return
+        }
+        routeHandler?()
+    }
+}
+
+private final class MockAudioSessionObservation: AudioSessionObservation {
+    private(set) var isInvalidated = false
+
+    func invalidate() {
+        isInvalidated = true
     }
 }
 

@@ -10,6 +10,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         case incompletePayload(String)
         case guardrailsUnavailable
         case environmentGateUnavailable(String)
+        case airPodsNotInEar
+        case unsupportedHeadphones
         case playbackFailed(String)
         case submissionFailed(String)
     }
@@ -18,7 +20,6 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var selectedLaterality: TinnitusLaterality?
     @Published var researchProtocolAirPodsPro2Verified = false {
         didSet {
-            researchProtocolResolver?.airPodsPro2Verified = researchProtocolAirPodsPro2Verified
             refreshGuardrails()
         }
     }
@@ -27,6 +28,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var environmentGateResult: TinnitusEnvironmentSPLGateResult?
     @Published private(set) var environmentGateUpdate: TinnitusEnvironmentSPLGateUpdate?
     @Published private(set) var isRunningEnvironmentGate = false
+    @Published private(set) var headphoneRouteAssessment: HeadphoneRouteAssessment = .notEvaluated
+    @Published private(set) var isHeadphoneRouteMonitoring = false
     @Published private(set) var isVolumeGateMonitoring = false
     @Published private(set) var thresholdStaircase: TinnitusThresholdStaircase
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
@@ -41,19 +44,23 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let player: CalibratedTonePlaying?
     private let guardrailMonitor: CalibratedAudioSessionGuardrailMonitor?
     private let guardrailProvider: () -> CalibratedAudioGuardrailValidation
+    private let headphoneRouteProvider: AudioSessionRouteVolumeProviding?
+    private let headphoneRouteAssessor: HeadphoneRouteAssessor
     private let environmentMeter: EnvironmentSPLMeasuring
     private let environmentGateMonitor: EnvironmentSPLGateMonitoring
     private let allowsCalibratedPlayback: Bool
     private let runtimeContextProvider: Phase6RuntimeContextProviding
     private let submissionExporter: Phase6LoudnessMatchSubmissionExporter
     private let dateProvider: () -> Date
-    private let researchProtocolResolver: ResearchProtocolCalibratedHeadphoneResolver?
     private var environmentGateTask: Task<Void, Never>?
+    private var headphoneRouteObservation: AudioSessionObservation?
 
     init(
         engine: TinnitusProtocolEngine? = nil,
         player: CalibratedTonePlaying? = nil,
         guardrailProvider: (() -> CalibratedAudioGuardrailValidation)? = nil,
+        headphoneRouteProvider: AudioSessionRouteVolumeProviding? = nil,
+        headphoneRouteAssessor: HeadphoneRouteAssessor = HeadphoneRouteAssessor(),
         environmentMeter: EnvironmentSPLMeasuring? = nil,
         environmentGateMonitor: EnvironmentSPLGateMonitoring? = nil,
         allowsCalibratedPlayback: Bool = true,
@@ -62,31 +69,36 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         dateProvider: @escaping () -> Date = Date.init
     ) {
         let resolvedEngine = engine ?? TinnitusProtocolEngine()
-        let resolver: ResearchProtocolCalibratedHeadphoneResolver?
         let monitor: CalibratedAudioSessionGuardrailMonitor?
         let resolvedPlayer: CalibratedTonePlaying?
         let resolvedGuardrailProvider: () -> CalibratedAudioGuardrailValidation
+        let resolvedHeadphoneRouteProvider: AudioSessionRouteVolumeProviding?
 
         if let guardrailProvider {
-            resolver = nil
             monitor = nil
             resolvedGuardrailProvider = guardrailProvider
             resolvedPlayer = player
+            resolvedHeadphoneRouteProvider = headphoneRouteProvider
         } else {
-            let researchResolver = ResearchProtocolCalibratedHeadphoneResolver()
-            let guardrailMonitor = CalibratedAudioSessionGuardrailMonitor(profileResolver: researchResolver)
-            resolver = researchResolver
+            let routeProvider = headphoneRouteProvider ?? AVAudioSessionRouteVolumeProvider()
+            let guardrailMonitor = CalibratedAudioSessionGuardrailMonitor(
+                provider: routeProvider,
+                profileResolver: RouteNameHeuristicCalibratedHeadphoneResolver()
+            )
             monitor = guardrailMonitor
             resolvedGuardrailProvider = {
                 guardrailMonitor.validateCurrentGuardrails()
             }
             resolvedPlayer = player ?? CalibratedToneAudioPlayer()
+            resolvedHeadphoneRouteProvider = routeProvider
         }
 
         self.engine = resolvedEngine
         self.player = resolvedPlayer
         self.guardrailMonitor = monitor
         self.guardrailProvider = resolvedGuardrailProvider
+        self.headphoneRouteProvider = resolvedHeadphoneRouteProvider
+        self.headphoneRouteAssessor = headphoneRouteAssessor
         let resolvedEnvironmentMeter = environmentMeter ?? AVAudioEnvironmentSPLMeter()
         self.environmentMeter = resolvedEnvironmentMeter
         self.environmentGateMonitor = environmentGateMonitor
@@ -96,10 +108,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         self.runtimeContextProvider = runtimeContextProvider ?? SystemPhase6RuntimeContextProvider()
         self.submissionExporter = submissionExporter ?? Phase6LoudnessMatchSubmissionExporter()
         self.dateProvider = dateProvider
-        self.researchProtocolResolver = resolver
         protocolState = resolvedEngine.state
         thresholdStaircase = TinnitusThresholdStaircase()
         currentGuardrailValidation = self.guardrailProvider()
+        syncHeadphoneRouteAssessmentFromPassedGuardrails()
     }
 
     var events: [TinnitusProtocolEvent] {
@@ -122,6 +134,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
     var preflightReady: Bool {
         currentGuardrailValidation.state == .passed
+            && headphoneRouteAssessment.passesAirPodsPro2Heuristic
             && environmentGateResult?.passed == true
             && fitSealConfirmed
             && safetyAcknowledged
@@ -154,10 +167,88 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
     func refreshGuardrails() {
         currentGuardrailValidation = guardrailProvider()
+        syncHeadphoneRouteAssessmentFromPassedGuardrails()
         if currentGuardrailValidation.state != .passed, hasRequestedStimulus {
             engine.applyGuardrailValidation(currentGuardrailValidation)
             syncFromEngine()
         }
+    }
+
+    func refreshHeadphoneRouteAssessment() {
+        guard let headphoneRouteProvider else {
+            return
+        }
+
+        headphoneRouteProvider.refreshRouteAndVolume()
+        headphoneRouteAssessment = headphoneRouteAssessor.assess(
+            outputs: headphoneRouteProvider.currentRouteOutputs(),
+            outputVolume: headphoneRouteProvider.currentOutputVolume()
+        )
+        refreshGuardrails()
+    }
+
+    func startHeadphoneRouteMonitoring() {
+        guard let headphoneRouteProvider else {
+            refreshHeadphoneRouteAssessment()
+            return
+        }
+
+        stopHeadphoneRouteMonitoring()
+        isHeadphoneRouteMonitoring = true
+        refreshHeadphoneRouteAssessment()
+
+        headphoneRouteObservation = headphoneRouteProvider.observeRouteChanges { [weak self] in
+            Task { @MainActor in
+                self?.refreshHeadphoneRouteAssessment()
+            }
+        }
+    }
+
+    func stopHeadphoneRouteMonitoring() {
+        headphoneRouteObservation?.invalidate()
+        headphoneRouteObservation = nil
+        isHeadphoneRouteMonitoring = false
+    }
+
+    @discardableResult
+    func validateAirPodsForCorrectEarStep() -> Bool {
+        refreshHeadphoneRouteAssessment()
+        guard headphoneRouteAssessment.passesAirPodsPro2Heuristic else {
+            message = airPodsGateMessage(for: headphoneRouteAssessment)
+            return false
+        }
+
+        message = nil
+        return true
+    }
+
+    private func airPodsGateMessage(for assessment: HeadphoneRouteAssessment) -> FlowMessage {
+        switch assessment.primaryIssue {
+        case .noOutput, .builtInOutput, .bluetoothHeadsetProfile, .bluetoothLowEnergyRoute, .unknownRoute, nil:
+            return .airPodsNotInEar
+        case .multipleOutputs, .unsupportedWiredOrExternalRoute, .unsupportedBluetoothPlaybackDevice, .outputVolumeUnavailable:
+            return .unsupportedHeadphones
+        }
+    }
+
+    private func syncHeadphoneRouteAssessmentFromPassedGuardrails() {
+        guard currentGuardrailValidation.state == .passed,
+              let output = currentGuardrailValidation.metadata.routeDetails?.outputs.first
+        else {
+            return
+        }
+
+        headphoneRouteAssessment = HeadphoneRouteAssessment(
+            level: .likelyAirPodsPro2Route,
+            outputCount: currentGuardrailValidation.metadata.routeDetails?.outputs.count ?? 1,
+            portName: output.portName,
+            portType: output.portType,
+            portTypeRawValue: nil,
+            routeUID: output.portUID,
+            channelNames: output.channelNames,
+            outputVolume: currentGuardrailValidation.metadata.rawOutputVolume,
+            issues: []
+        )
     }
 
     func selectLaterality(_ laterality: TinnitusLaterality) {

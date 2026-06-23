@@ -30,6 +30,18 @@ struct HeadphoneRouteAssessment: Equatable {
     let outputVolume: Double?
     let issues: [HeadphoneRouteIssue]
 
+    static let notEvaluated = HeadphoneRouteAssessment(
+        level: .failed,
+        outputCount: 0,
+        portName: nil,
+        portType: nil,
+        portTypeRawValue: nil,
+        routeUID: nil,
+        channelNames: [],
+        outputVolume: nil,
+        issues: [.noOutput]
+    )
+
     var passesAirPodsPro2Heuristic: Bool {
         level == .likelyAirPodsPro2Route && issues.isEmpty
     }
@@ -159,4 +171,3 @@ struct RouteNameHeuristicCalibratedHeadphoneResolver: CalibratedHeadphoneProfile
         )
     }
 }
-

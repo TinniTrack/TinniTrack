@@ -58,8 +58,13 @@ enum LoudnessMatchModalColors {
 struct LoudnessMatchModalPrimaryButton: View {
     let title: String
     var isEnabled = true
+    var isInteractionEnabled: Bool? = nil
     var isLoading = false
     let action: () -> Void
+
+    private var canInteract: Bool {
+        isInteractionEnabled ?? isEnabled
+    }
 
     var body: some View {
         Button(action: action) {
@@ -80,7 +85,7 @@ struct LoudnessMatchModalPrimaryButton: View {
             .padding(.horizontal, 18)
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled || isLoading)
+        .disabled(!canInteract || isLoading)
         .background(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledFill)
         .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.disabledText)
         .clipShape(Capsule())

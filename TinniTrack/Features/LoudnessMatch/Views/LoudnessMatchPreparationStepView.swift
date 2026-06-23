@@ -16,7 +16,7 @@ struct LoudnessMatchPreparationStepView: View {
                 showSuggestions: showNoiseSuggestions
             )
         case .correctEar:
-            AirPodsCorrectEarStepView()
+            AirPodsCorrectEarStepView(assessment: viewModel.headphoneRouteAssessment)
         case .fit:
             AirPodsFitStepView()
         case .maxVolume:
@@ -57,6 +57,8 @@ private struct IntroStepView: View {
 }
 
 private struct AirPodsCorrectEarStepView: View {
+    let assessment: HeadphoneRouteAssessment
+
     var body: some View {
         VStack(alignment: .leading, spacing: 34) {
             Spacer(minLength: 0)
@@ -73,9 +75,17 @@ private struct AirPodsCorrectEarStepView: View {
                 bodyText: "Having your right AirPod in your right ear and left in your left ear can help with test quality.\n\nIf you wear hearing aids, be sure to remove them first."
             )
 
+            Text(statusText)
+                .font(.callout)
+                .foregroundStyle(assessment.passesAirPodsPro2Heuristic ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.secondaryText)
+                .lineLimit(3)
+                .minimumScaleFactor(0.82)
+                .accessibilityIdentifier("loudness_airpods_status_label")
+
             Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        .accessibilityIdentifier("loudness_airpods_step")
     }
 
     private func airPodGlyph(label: String) -> some View {
@@ -86,6 +96,19 @@ private struct AirPodsCorrectEarStepView: View {
             Text(label)
                 .font(.headline)
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+        }
+    }
+
+    private var statusText: String {
+        if assessment.passesAirPodsPro2Heuristic {
+            return "AirPods Pro 2 playback route detected."
+        }
+
+        switch assessment.primaryIssue {
+        case .noOutput, .builtInOutput, .bluetoothHeadsetProfile, .bluetoothLowEnergyRoute, .unknownRoute, nil:
+            return "Waiting for your AirPods Pro 2 playback route."
+        case .multipleOutputs, .unsupportedWiredOrExternalRoute, .unsupportedBluetoothPlaybackDevice, .outputVolumeUnavailable:
+            return "The current audio output is not eligible for this study."
         }
     }
 }
