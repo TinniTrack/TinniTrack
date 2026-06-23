@@ -51,6 +51,30 @@ struct CalibratedAudioSessionGuardrailMonitorTests {
     }
 
     @Test
+    func manualValidationRefreshesRouteAndVolumeBeforeReading() {
+        let provider = MockAudioSessionRouteVolumeProvider(
+            outputs: [bluetoothAirPodsOutput()],
+            outputVolume: 1.0
+        )
+        provider.pendingOutputVolume = 0.5
+        let monitor = CalibratedAudioSessionGuardrailMonitor(
+            provider: provider,
+            profileResolver: StaticAirPodsPro2Resolver()
+        )
+
+        let validation = monitor.validateCurrentGuardrails()
+
+        #expect(provider.refreshCallCount == 1)
+        #expect(validation.state == .failed)
+        #expect(validation.metadata.rawOutputVolume == 0.5)
+        guard case .invalidVolume(let volume, _) = validation.error else {
+            Issue.record("Expected invalidVolume after refreshed volume, got \(String(describing: validation.error))")
+            return
+        }
+        #expect(volume == 0.5)
+    }
+
+    @Test
     func routeChangeObservationInvalidatesPassedGuardrails() {
         let provider = MockAudioSessionRouteVolumeProvider(
             outputs: [bluetoothAirPodsOutput()],
@@ -149,6 +173,8 @@ private struct StaticAirPodsPro2Resolver: CalibratedHeadphoneProfileResolving {
 private final class MockAudioSessionRouteVolumeProvider: AudioSessionRouteVolumeProviding {
     var outputs: [AudioSessionRouteOutputSnapshot]
     var outputVolume: Double?
+    var pendingOutputVolume: Double?
+    private(set) var refreshCallCount = 0
     private var routeHandler: (() -> Void)?
     private var volumeHandler: (() -> Void)?
     private(set) var routeObservation: MockAudioSessionObservation?
@@ -157,6 +183,14 @@ private final class MockAudioSessionRouteVolumeProvider: AudioSessionRouteVolume
     init(outputs: [AudioSessionRouteOutputSnapshot], outputVolume: Double?) {
         self.outputs = outputs
         self.outputVolume = outputVolume
+    }
+
+    func refreshRouteAndVolume() {
+        refreshCallCount += 1
+        if let pendingOutputVolume {
+            outputVolume = pendingOutputVolume
+            self.pendingOutputVolume = nil
+        }
     }
 
     func currentRouteOutputs() -> [AudioSessionRouteOutputSnapshot] {

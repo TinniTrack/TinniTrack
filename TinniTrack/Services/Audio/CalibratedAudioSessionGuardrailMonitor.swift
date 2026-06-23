@@ -28,6 +28,7 @@ protocol AudioSessionObservation: AnyObject {
 }
 
 protocol AudioSessionRouteVolumeProviding: AnyObject {
+    func refreshRouteAndVolume()
     func currentRouteOutputs() -> [AudioSessionRouteOutputSnapshot]
     func currentOutputVolume() -> Double?
     func observeRouteChanges(_ handler: @escaping () -> Void) -> AudioSessionObservation
@@ -71,7 +72,8 @@ final class CalibratedAudioSessionGuardrailMonitor {
 
     @discardableResult
     func validateCurrentGuardrails() -> CalibratedAudioGuardrailValidation {
-        session.evaluate(
+        provider.refreshRouteAndVolume()
+        return session.evaluate(
             route: currentRouteDetails(),
             outputVolume: provider.currentOutputVolume(),
             timestamp: dateProvider()
@@ -152,6 +154,15 @@ final class AVAudioSessionRouteVolumeProvider: AudioSessionRouteVolumeProviding 
     ) {
         self.audioSession = audioSession
         self.notificationCenter = notificationCenter
+    }
+
+    func refreshRouteAndVolume() {
+        do {
+            try audioSession.setCategory(.playback, mode: .default, options: [])
+            try audioSession.setActive(true)
+        } catch {
+            // Guardrail validation will fail safely if route or volume remains unavailable.
+        }
     }
 
     func currentRouteOutputs() -> [AudioSessionRouteOutputSnapshot] {
