@@ -57,6 +57,7 @@ struct LoudnessMatchTaskFlowView: View {
             } label: {
                 Label("Check Audio Guardrails", systemImage: "checkmark.shield")
             }
+            guardrailDiagnostics
 
             Toggle("Researcher verified AirPods Pro 2", isOn: $viewModel.researchProtocolAirPodsPro2Verified)
 
@@ -238,6 +239,89 @@ struct LoudnessMatchTaskFlowView: View {
         }
     }
 
+    private var guardrailDiagnostics: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(guardrailDiagnosticSummary)
+                .font(.footnote)
+                .foregroundStyle(viewModel.currentGuardrailValidation.state == .passed ? .green : .secondary)
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 8) {
+                    guardrailDiagnosticRow("State", guardrailStatusText)
+                    guardrailDiagnosticRow("Reason", guardrailReasonText)
+                    guardrailDiagnosticRow("Output volume", guardrailOutputVolumeText)
+                    guardrailDiagnosticRow("Volume policy", guardrailVolumePolicyText)
+                    guardrailDiagnosticRow("Checked", guardrailCheckedTimeText)
+
+                    Divider()
+
+                    Text("Route outputs")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    let outputs = viewModel.currentGuardrailValidation.metadata.routeDetails?.outputs ?? []
+                    if outputs.isEmpty {
+                        Text("No current route outputs were reported by AVAudioSession.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(outputs.enumerated()), id: \.offset) { index, output in
+                            guardrailRouteOutputView(output, index: index)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            } label: {
+                Label("Guardrail diagnostics", systemImage: "stethoscope")
+                    .font(.footnote)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func guardrailDiagnosticRow(_ title: String, _ value: String) -> some View {
+        LabeledContent {
+            Text(value)
+                .multilineTextAlignment(.trailing)
+        } label: {
+            Text(title)
+        }
+        .font(.caption)
+    }
+
+    private func guardrailRouteOutputView(
+        _ output: CalibratedAudioRouteOutput,
+        index: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Output \(index + 1): \(output.portName)")
+                .font(.caption)
+            Text("Type: \(guardrailPortKindText(output.portType))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if let identifier = output.verifiedCalibratedHeadphoneIdentifier {
+                Text("Verified profile: \(identifier)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Verified profile: none")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if let source = output.verificationSource {
+                Text("Verification source: \(source.rawValue)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if let uid = output.portUID, !uid.isEmpty {
+                Text("UID: \(uid)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+
     private var messageText: String {
         switch viewModel.message {
         case .playbackDisabled:
@@ -279,6 +363,112 @@ struct LoudnessMatchTaskFlowView: View {
         case .restartRequired:
             return "Restart required"
         }
+    }
+
+    private var guardrailDiagnosticSummary: String {
+        switch viewModel.currentGuardrailValidation.state {
+        case .notEvaluated:
+            return "Tap Check Audio Guardrails to read the current audio route and system volume."
+        case .passed:
+            return "Passed: current route, AirPods Pro 2 verification, and max-volume policy all match."
+        case .failed, .restartRequired:
+            return guardrailReasonText
+        }
+    }
+
+    private var guardrailReasonText: String {
+        guard let error = viewModel.currentGuardrailValidation.error else {
+            switch viewModel.currentGuardrailValidation.state {
+            case .notEvaluated:
+                return "No guardrail check has run yet."
+            case .passed:
+                return "No failure."
+            case .failed:
+                return "The guardrail policy failed without a specific error."
+            case .restartRequired:
+                return "The guardrail state changed and the task must restart before playback."
+            }
+        }
+
+        switch error {
+        case .unsupportedRoute(let route, _):
+            let count = route.outputs.count
+            if count == 0 {
+                return "No audio output route is available. Connect AirPods Pro 2 and try again."
+            }
+            if count > 1 {
+                return "Expected exactly one Bluetooth A2DP output, but AVAudioSession reported \(count) outputs."
+            }
+            let output = route.outputs[0]
+            return "Expected Bluetooth A2DP AirPods output, but current route is \(guardrailPortKindText(output.portType))."
+        case .unverifiedHeadphoneProfile:
+            return "Current route is not verified as AirPods Pro 2. Confirm the researcher verification toggle and Bluetooth A2DP route."
+        case .invalidVolume(let volume, let policy):
+            return "System output volume must be \(formatRaw(policy.requiredVolume)) +/- \(formatRaw(policy.tolerance)); current raw volume is \(formatRaw(volume))."
+        case .routeChanged:
+            return "Audio route changed after guardrails passed. Restart this loudness-match task before playback."
+        case .volumeChanged(_, let currentVolume):
+            return "System output volume changed after guardrails passed. Current raw volume is \(formatOptionalRaw(currentVolume)). Restart before playback."
+        case .unavailableAudioSessionData(let reason):
+            return reason
+        case .missingCalibrationProfile(let identifier):
+            return "Missing calibration profile for \(identifier)."
+        }
+    }
+
+    private var guardrailOutputVolumeText: String {
+        formatOptionalRaw(viewModel.currentGuardrailValidation.metadata.rawOutputVolume)
+    }
+
+    private var guardrailVolumePolicyText: String {
+        viewModel.currentGuardrailValidation.metadata.volumePolicyDescription
+    }
+
+    private var guardrailCheckedTimeText: String {
+        let timestamp = viewModel.currentGuardrailValidation.metadata.timestamp
+        guard timestamp != Date.distantPast else {
+            return "Never"
+        }
+
+        return timestamp.formatted(date: .omitted, time: .standard)
+    }
+
+    private func guardrailPortKindText(_ kind: CalibratedAudioRoutePortKind) -> String {
+        switch kind {
+        case .builtInSpeaker:
+            return "Built-in speaker"
+        case .builtInReceiver:
+            return "Built-in receiver"
+        case .wiredHeadphones:
+            return "Wired headphones"
+        case .bluetoothA2DP:
+            return "Bluetooth A2DP"
+        case .bluetoothHFP:
+            return "Bluetooth hands-free"
+        case .bluetoothLE:
+            return "Bluetooth LE"
+        case .airPlay:
+            return "AirPlay"
+        case .carAudio:
+            return "Car audio"
+        case .hdmi:
+            return "HDMI"
+        case .usbAudio:
+            return "USB audio"
+        case .unknown(let rawValue):
+            return "Unknown (\(rawValue))"
+        }
+    }
+
+    private func formatOptionalRaw(_ value: Double?) -> String {
+        guard let value else {
+            return "Unavailable"
+        }
+        return formatRaw(value)
+    }
+
+    private func formatRaw(_ value: Double) -> String {
+        String(format: "%.4f", value)
     }
 
     private func lateralityTitle(_ laterality: TinnitusLaterality) -> String {
