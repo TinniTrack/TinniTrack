@@ -21,9 +21,13 @@ struct StudyPrerequisiteCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(StudyTaskColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(StudyTaskColors.cardStroke, lineWidth: 1)
+        }
+        .shadow(color: StudyTaskColors.cardShadow, radius: 3, x: 0, y: 1)
     }
 }
 
@@ -38,7 +42,7 @@ struct StudyActionButton: View {
             HStack {
                 if isLoading {
                     ProgressView()
-                        .tint(isPrimary ? .white : .blue)
+                        .tint(isPrimary ? .white : StudyTaskColors.action)
                 }
                 Text(title)
                     .fontWeight(.semibold)
@@ -47,11 +51,25 @@ struct StudyActionButton: View {
             .padding(.vertical, 14)
         }
         .buttonStyle(.plain)
-        .background(isPrimary ? Color.blue : Color.white)
-        .foregroundStyle(isPrimary ? Color.white : Color.blue)
+        .background(isPrimary ? StudyTaskColors.primaryActionBackground : StudyTaskColors.cardBackground)
+        .foregroundStyle(isPrimary ? Color.white : StudyTaskColors.action)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(isPrimary ? 0 : 0.08), radius: 3, x: 0, y: 1)
+        .overlay {
+            if !isPrimary {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(StudyTaskColors.cardStroke, lineWidth: 1)
+            }
+        }
+        .shadow(color: isPrimary ? .clear : StudyTaskColors.cardShadow, radius: 3, x: 0, y: 1)
     }
+}
+
+private enum StudyTaskColors {
+    static let action = Color(uiColor: .systemBlue)
+    static let primaryActionBackground = Color(uiColor: .systemBlue)
+    static let cardBackground = Color(uiColor: .secondarySystemGroupedBackground)
+    static let cardStroke = Color(uiColor: .separator).opacity(0.35)
+    static let cardShadow = Color.black.opacity(0.08)
 }
 
 struct FutureStudyTaskRow: View {
