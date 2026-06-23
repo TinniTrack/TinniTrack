@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import OSLog
 
 @MainActor
 final class LoudnessMatchTaskFlowViewModel: ObservableObject {
@@ -54,6 +55,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let runtimeContextProvider: Phase6RuntimeContextProviding
     private let submissionExporter: Phase6LoudnessMatchSubmissionExporter
     private let dateProvider: () -> Date
+    private let routeDiagnosticsLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "TinniTrack",
+        category: "LoudnessAirPodsGate"
+    )
     private var environmentGateTask: Task<Void, Never>?
     private var headphoneRouteObservation: AudioSessionObservation?
     private var airPodsContinuityObservation: AudioSessionObservation?
@@ -186,10 +191,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
 
         headphoneRouteProvider.refreshRouteAndVolume()
-        headphoneRouteAssessment = headphoneRouteAssessor.assess(
+        let assessment = headphoneRouteAssessor.assess(
             outputs: headphoneRouteProvider.currentRouteOutputs(),
             outputVolume: headphoneRouteProvider.currentOutputVolume()
         )
+        setHeadphoneRouteAssessment(assessment, source: "correctEarRefresh")
         refreshGuardrails()
     }
 
@@ -252,7 +258,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             outputs: headphoneRouteProvider.currentRouteOutputs(),
             outputVolume: headphoneRouteProvider.currentOutputVolume()
         )
-        headphoneRouteAssessment = assessment
+        setHeadphoneRouteAssessment(assessment, source: "continuityRefresh")
 
         if assessment.passesAirPodsPro2Heuristic {
             isAirPodsRouteInterrupted = false
@@ -296,7 +302,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             return
         }
 
-        headphoneRouteAssessment = HeadphoneRouteAssessment(
+        setHeadphoneRouteAssessment(HeadphoneRouteAssessment(
             level: .likelyAirPodsPro2Route,
             outputCount: currentGuardrailValidation.metadata.routeDetails?.outputs.count ?? 1,
             portName: output.portName,
@@ -306,6 +312,19 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             channelNames: output.channelNames,
             outputVolume: currentGuardrailValidation.metadata.rawOutputVolume,
             issues: []
+        ), source: "passedGuardrailSync")
+    }
+
+    private func setHeadphoneRouteAssessment(_ assessment: HeadphoneRouteAssessment, source: String) {
+        headphoneRouteAssessment = assessment
+        logHeadphoneRouteAssessment(assessment, source: source)
+    }
+
+    private func logHeadphoneRouteAssessment(_ assessment: HeadphoneRouteAssessment, source: String) {
+        routeDiagnosticsLogger.info(
+            """
+            route_assessment source=\(source, privacy: .public) passed=\(assessment.passesAirPodsPro2Heuristic, privacy: .public) level=\(assessment.level.rawValue, privacy: .public) issue=\(assessment.primaryIssue?.rawValue ?? "none", privacy: .public) outputs=\(assessment.outputCount, privacy: .public) portType=\(assessment.portTypeRawValue ?? "none", privacy: .public) uidHash=\(assessment.routeUIDFingerprint ?? "none", privacy: .public) portName=\(assessment.portName ?? "none", privacy: .private) channels=\(assessment.channelNames.joined(separator: "|"), privacy: .private) volume=\(assessment.outputVolume ?? -1, privacy: .public)
+            """
         )
     }
 

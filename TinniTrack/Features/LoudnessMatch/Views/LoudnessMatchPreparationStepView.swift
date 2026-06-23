@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct LoudnessMatchPreparationStepView: View {
     let step: LoudnessMatchModalStep
@@ -82,6 +85,10 @@ private struct AirPodsCorrectEarStepView: View {
                 .minimumScaleFactor(0.82)
                 .accessibilityIdentifier("loudness_airpods_status_label")
 
+            #if DEBUG
+            diagnosticsDisclosure
+            #endif
+
             Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -111,6 +118,45 @@ private struct AirPodsCorrectEarStepView: View {
             return "The current audio output is not eligible for this study."
         }
     }
+
+    #if DEBUG
+    private var diagnosticsDisclosure: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(assessment.diagnosticItems) { item in
+                    diagnosticRow(item.title, item.value)
+                }
+
+                #if canImport(UIKit)
+                Button {
+                    UIPasteboard.general.string = assessment.diagnosticReport
+                } label: {
+                    Label("Copy diagnostics", systemImage: "doc.on.doc")
+                }
+                .font(.caption)
+                .padding(.top, 4)
+                #endif
+            }
+            .padding(.top, 6)
+        } label: {
+            Label("AirPods route diagnostics", systemImage: "stethoscope")
+                .font(.footnote)
+        }
+        .font(.caption)
+        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+        .accessibilityIdentifier("loudness_airpods_diagnostics")
+    }
+
+    private func diagnosticRow(_ title: String, _ value: String) -> some View {
+        LabeledContent {
+            Text(value)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        } label: {
+            Text(title)
+        }
+    }
+    #endif
 }
 
 private struct AirPodsFitStepView: View {

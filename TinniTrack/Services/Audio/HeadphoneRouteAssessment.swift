@@ -49,6 +49,49 @@ struct HeadphoneRouteAssessment: Equatable {
     var primaryIssue: HeadphoneRouteIssue? {
         issues.first
     }
+
+    var routeUIDFingerprint: String? {
+        routeUID.map(Self.stableFingerprint)
+    }
+
+    var diagnosticItems: [HeadphoneRouteDiagnosticItem] {
+        [
+            HeadphoneRouteDiagnosticItem(title: "Result", value: passesAirPodsPro2Heuristic ? "passed" : "failed"),
+            HeadphoneRouteDiagnosticItem(title: "Level", value: level.rawValue),
+            HeadphoneRouteDiagnosticItem(title: "Issue", value: issues.map(\.rawValue).joined(separator: ", ").nilIfEmpty ?? "none"),
+            HeadphoneRouteDiagnosticItem(title: "Output count", value: "\(outputCount)"),
+            HeadphoneRouteDiagnosticItem(title: "Port name", value: portName ?? "none"),
+            HeadphoneRouteDiagnosticItem(title: "Port type", value: portType.map { String(describing: $0) } ?? "none"),
+            HeadphoneRouteDiagnosticItem(title: "Raw port type", value: portTypeRawValue ?? "none"),
+            HeadphoneRouteDiagnosticItem(title: "Route UID hash", value: routeUIDFingerprint ?? "none"),
+            HeadphoneRouteDiagnosticItem(title: "Channels", value: channelNames.joined(separator: ", ").nilIfEmpty ?? "none"),
+            HeadphoneRouteDiagnosticItem(title: "Output volume", value: outputVolume.map { String(format: "%.3f", $0) } ?? "none")
+        ]
+    }
+
+    var diagnosticReport: String {
+        diagnosticItems
+            .map { "\($0.title): \($0.value)" }
+            .joined(separator: "\n")
+    }
+
+    private static func stableFingerprint(_ value: String) -> String {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return String(format: "%016llx", hash)
+    }
+}
+
+struct HeadphoneRouteDiagnosticItem: Equatable, Identifiable {
+    let title: String
+    let value: String
+
+    var id: String {
+        title
+    }
 }
 
 struct HeadphoneRouteAssessor {
@@ -153,6 +196,12 @@ struct HeadphoneRouteAssessor {
             || normalized.contains("generation 2")
 
         return containsAirPods && containsPro && containsSecondGeneration
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }
 

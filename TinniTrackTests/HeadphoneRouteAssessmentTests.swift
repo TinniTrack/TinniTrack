@@ -113,6 +113,21 @@ struct HeadphoneRouteAssessmentTests {
     }
 
     @Test
+    func diagnosticReportIncludesRouteDecisionInputsWithoutRawUID() {
+        let assessment = assessor.assess(
+            outputs: [output(name: "Basil's AirPods Pro", portType: .bluetoothA2DP, uid: "private-route-id")],
+            outputVolume: 0.9
+        )
+
+        #expect(assessment.diagnosticReport.contains("Result: failed"))
+        #expect(assessment.diagnosticReport.contains("Issue: unsupportedBluetoothPlaybackDevice"))
+        #expect(assessment.diagnosticReport.contains("Port name: Basil's AirPods Pro"))
+        #expect(assessment.diagnosticReport.contains("Raw port type: BluetoothA2DPOutput"))
+        #expect(assessment.diagnosticReport.contains("Route UID hash:"))
+        #expect(assessment.diagnosticReport.contains("private-route-id") == false)
+    }
+
+    @Test
     func routeNameHeuristicResolverMarksOnlyLikelyAirPodsPro2Routes() {
         let resolver = RouteNameHeuristicCalibratedHeadphoneResolver()
 
@@ -138,4 +153,3 @@ struct HeadphoneRouteAssessmentTests {
         )
     }
 }
-
