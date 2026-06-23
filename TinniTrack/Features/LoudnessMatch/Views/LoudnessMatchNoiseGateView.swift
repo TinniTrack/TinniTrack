@@ -9,8 +9,10 @@ struct LoudnessMatchNoiseGateView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 42) {
-            VStack(spacing: 34) {
+        VStack(alignment: .leading, spacing: 28) {
+            Spacer(minLength: 0)
+
+            VStack(spacing: 26) {
                 NoiseGateMeter(status: status, progress: progress)
 
                 HStack(spacing: 10) {
@@ -25,9 +27,10 @@ struct LoudnessMatchNoiseGateView: View {
                 .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .combine)
             }
-            .padding(.top, 122)
 
-            VStack(alignment: .leading, spacing: 14) {
+            Spacer(minLength: 0)
+
+            VStack(alignment: .leading, spacing: 12) {
                 LoudnessMatchModalTitleBlock(
                     title: "Find a quiet place where you can focus and take the test.",
                     bodyText: "Too much background noise can cause inaccurate results in your test."
@@ -44,6 +47,7 @@ struct LoudnessMatchNoiseGateView: View {
                 .padding(.top, 14)
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .accessibilityIdentifier("loudness_noise_gate_step")
     }
 
@@ -153,21 +157,23 @@ struct LoudnessMatchNoiseSuggestionsView: View {
                 .padding(.horizontal, 34)
                 .padding(.top, 22)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
-                        LoudnessMatchModalTitleBlock(
-                            title: "Suggestions to Reduce Background Noise",
-                            bodyText: "Background noise can make it too hard to hear the tones in the test."
-                        )
+                VStack(alignment: .leading, spacing: 26) {
+                    Spacer(minLength: 0)
 
-                        suggestionRow(systemName: "sofa.fill", text: "Try moving to a room or location that's typically more quiet.")
-                        suggestionRow(systemName: "fan.slash.fill", text: "Close windows and turn off fans or air conditioning.")
-                        suggestionRow(systemName: "moon.stars.fill", text: "Try again later when your space might be more quiet or calm.")
-                    }
-                    .padding(.horizontal, 34)
-                    .padding(.top, 82)
-                    .padding(.bottom, 34)
+                    LoudnessMatchModalTitleBlock(
+                        title: "Suggestions to Reduce Background Noise",
+                        bodyText: "Background noise can make it too hard to hear the tones in the test."
+                    )
+
+                    suggestionRow(systemName: "sofa.fill", text: "Try moving to a room or location that's typically more quiet.")
+                    suggestionRow(systemName: "fan.slash.fill", text: "Close windows and turn off fans or air conditioning.")
+                    suggestionRow(systemName: "moon.stars.fill", text: "Try again later when your space might be more quiet or calm.")
+
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 34)
+                .padding(.top, 42)
+                .padding(.bottom, 34)
             }
         }
     }
@@ -183,7 +189,8 @@ struct LoudnessMatchNoiseSuggestionsView: View {
                 .font(.title3)
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
+                .minimumScaleFactor(0.82)
         }
     }
 }

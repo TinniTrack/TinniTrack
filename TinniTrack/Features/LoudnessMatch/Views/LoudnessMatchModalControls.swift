@@ -130,20 +130,41 @@ struct LoudnessMatchModalContentLayout<Content: View, Footer: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
                 content
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 34)
-                    .padding(.top, 104)
-                    .padding(.bottom, 24)
-            }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .scaleEffect(contentScale(for: proxy.size.height), anchor: .top)
+                    .padding(.horizontal, horizontalPadding(for: proxy.size.width))
+                    .padding(.top, topPadding(for: proxy.size.height))
+                    .padding(.bottom, 10)
 
-            footer
-                .padding(.horizontal, 34)
-                .padding(.top, 10)
-                .padding(.bottom, 18)
+                footer
+                    .padding(.horizontal, horizontalPadding(for: proxy.size.width))
+                    .padding(.top, 8)
+                    .padding(.bottom, bottomPadding(for: proxy.safeAreaInsets.bottom))
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
+    }
+
+    private func horizontalPadding(for width: CGFloat) -> CGFloat {
+        width < 390 ? 26 : 34
+    }
+
+    private func topPadding(for height: CGFloat) -> CGFloat {
+        height < 700 ? 82 : 104
+    }
+
+    private func bottomPadding(for safeAreaBottom: CGFloat) -> CGFloat {
+        max(14, safeAreaBottom + 6)
+    }
+
+    private func contentScale(for height: CGFloat) -> CGFloat {
+        if height < 640 { return 0.86 }
+        if height < 720 { return 0.93 }
+        return 1.0
     }
 }
 
@@ -156,14 +177,16 @@ struct LoudnessMatchModalTitleBlock: View {
             Text(title)
                 .font(.system(.largeTitle, design: .default, weight: .bold))
                 .foregroundStyle(LoudnessMatchModalColors.text)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(4)
+                .minimumScaleFactor(0.82)
 
             if let bodyText {
                 Text(bodyText)
                     .font(.title2)
                     .lineSpacing(5)
                     .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(6)
+                    .minimumScaleFactor(0.82)
             }
         }
         .multilineTextAlignment(.leading)

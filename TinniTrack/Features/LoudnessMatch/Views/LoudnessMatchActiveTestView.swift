@@ -9,9 +9,10 @@ struct LoudnessMatchActiveTestView: View {
 
     var body: some View {
         LoudnessMatchModalContentLayout {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 22) {
                 activeStateView
             }
+            .frame(maxHeight: .infinity, alignment: .top)
             .accessibilityIdentifier("loudness_active_test_step")
         } footer: {
             EmptyView()
@@ -22,7 +23,7 @@ struct LoudnessMatchActiveTestView: View {
     private var activeStateView: some View {
         switch viewModel.protocolState {
         case .collectingLaterality:
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: 22) {
                 LoudnessMatchModalTitleBlock(
                     title: "Where do you hear your tinnitus?",
                     bodyText: "Choose the option that best matches where the sound is most noticeable right now."
@@ -38,7 +39,7 @@ struct LoudnessMatchActiveTestView: View {
             }
 
         case .awaitingThreshold:
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 20) {
                 LoudnessMatchModalTitleBlock(
                     title: "Find the softest tone you can hear.",
                     bodyText: "Tap Play Tone, then tell us whether you heard the sound. The level will adjust automatically."
@@ -84,7 +85,7 @@ struct LoudnessMatchActiveTestView: View {
             }
 
         case .readyForTrial:
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 20) {
                 LoudnessMatchModalTitleBlock(
                     title: viewModel.currentTrialLabel,
                     bodyText: "Adjust the tone until it sounds as loud as your tinnitus, then accept the match."
@@ -109,7 +110,7 @@ struct LoudnessMatchActiveTestView: View {
                     }
                 }
 
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     HStack(spacing: 12) {
                         modalActionButton("Much Softer", systemName: "minus.circle", isPrimary: false) {
                             viewModel.adjustLevel(.muchSofter)
@@ -135,7 +136,7 @@ struct LoudnessMatchActiveTestView: View {
             }
 
         case .awaitingConfidence(let trial):
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 22) {
                 LoudnessMatchModalTitleBlock(
                     title: "How confident are you in that match?",
                     bodyText: "Trial \(trial.trialIndex) is set to \(String(format: "%.0f dB HL", trial.acceptedLevelDBHL))."
@@ -151,7 +152,7 @@ struct LoudnessMatchActiveTestView: View {
             }
 
         case .completed(let summary):
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: 22) {
                 LoudnessMatchModalTitleBlock(
                     title: "Test Complete",
                     bodyText: "Submit this loudness-match result to finish the scheduled task."
@@ -204,7 +205,7 @@ struct LoudnessMatchActiveTestView: View {
                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 .foregroundStyle(LoudnessMatchModalColors.text)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
     }
 
     private func summaryRow(_ title: String, _ value: String) -> some View {
@@ -224,7 +225,7 @@ struct LoudnessMatchActiveTestView: View {
             Text(title)
                 .font(.headline)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 52)
+                .frame(minHeight: 48)
         }
         .buttonStyle(.plain)
         .foregroundStyle(LoudnessMatchModalColors.text)
@@ -249,7 +250,7 @@ struct LoudnessMatchActiveTestView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.74)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 52)
+                .frame(minHeight: 48)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)

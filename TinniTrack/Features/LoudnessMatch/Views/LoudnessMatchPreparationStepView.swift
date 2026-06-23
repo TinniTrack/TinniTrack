@@ -30,8 +30,8 @@ struct LoudnessMatchPreparationStepView: View {
 
 private struct IntroStepView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 36) {
-            Spacer(minLength: 78)
+        VStack(alignment: .leading, spacing: 28) {
+            Spacer(minLength: 0)
 
             Image(systemName: "waveform.path.ecg")
                 .font(.system(size: 92, weight: .medium))
@@ -44,20 +44,22 @@ private struct IntroStepView: View {
                 bodyText: "This quick test will help us measure the intensity of your tinnitus."
             )
 
-            Spacer(minLength: 120)
+            Spacer(minLength: 0)
 
             Text("Note: If You've experienced a sudden change in your hearing, you should talk to a doctor.")
                 .font(.callout)
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
+                .minimumScaleFactor(0.82)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 }
 
 private struct AirPodsCorrectEarStepView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 46) {
-            Spacer(minLength: 72)
+        VStack(alignment: .leading, spacing: 34) {
+            Spacer(minLength: 0)
 
             HStack(spacing: 52) {
                 airPodGlyph(label: "L")
@@ -70,7 +72,10 @@ private struct AirPodsCorrectEarStepView: View {
                 title: "Place your AirPods in the correct ear.",
                 bodyText: "Having your right AirPod in your right ear and left in your left ear can help with test quality.\n\nIf you wear hearing aids, be sure to remove them first."
             )
+
+            Spacer(minLength: 0)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private func airPodGlyph(label: String) -> some View {
@@ -87,11 +92,11 @@ private struct AirPodsCorrectEarStepView: View {
 
 private struct AirPodsFitStepView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 42) {
-            Spacer(minLength: 70)
+        VStack(alignment: .leading, spacing: 32) {
+            Spacer(minLength: 0)
 
             Image(systemName: "ear.and.waveform")
-                .font(.system(size: 118, weight: .regular))
+                .font(.system(size: 108, weight: .regular))
                 .foregroundStyle(LoudnessMatchModalColors.graphic, LoudnessMatchModalColors.primary)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
@@ -100,7 +105,10 @@ private struct AirPodsFitStepView: View {
                 title: "Adjust the position and depth of each AirPod until the fit is snug but comfortable.",
                 bodyText: "A good fit is required to ensure accurate test results."
             )
+
+            Spacer(minLength: 0)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -108,12 +116,12 @@ private struct MaxVolumeGateStepView: View {
     let validation: CalibratedAudioGuardrailValidation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 42) {
-            Spacer(minLength: 96)
+        VStack(alignment: .leading, spacing: 30) {
+            Spacer(minLength: 0)
 
-            VStack(spacing: 22) {
+            VStack(spacing: 18) {
                 Image(systemName: validation.state == .passed ? "speaker.wave.3.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 100, weight: .medium))
+                    .font(.system(size: 86, weight: .medium))
                     .foregroundStyle(validation.state == .passed ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.primary)
                     .accessibilityHidden(true)
 
@@ -136,10 +144,14 @@ private struct MaxVolumeGateStepView: View {
                 Text(statusText)
                     .font(.callout)
                     .foregroundStyle(validation.state == .passed ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.82)
                     .accessibilityIdentifier("loudness_volume_status_label")
             }
+
+            Spacer(minLength: 0)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var statusText: String {
