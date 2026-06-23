@@ -36,4 +36,53 @@ struct TinnitusEnvironmentSPLGateTests {
         #expect(result.gateResult == .passed)
         #expect(result.samplesDBA == [41, 42, 43, 44, 40])
     }
+
+    @Test
+    func streamingUpdateTracksContiguousQuietSamples() {
+        let update = TinnitusEnvironmentSPLGateEvaluator().update(
+            samplesDBA: [50, 44, 43],
+            configuration: .studyA
+        )
+
+        #expect(update.status == .measuring)
+        #expect(update.contiguousPassingSamples == 2)
+        #expect(update.latestSampleDBA == 43)
+        #expect(update.result == nil)
+    }
+
+    @Test
+    func streamingUpdateResetsCounterAtThreshold() {
+        let update = TinnitusEnvironmentSPLGateEvaluator().update(
+            samplesDBA: [44, 43, 45, 42],
+            configuration: .studyA
+        )
+
+        #expect(update.status == .measuring)
+        #expect(update.contiguousPassingSamples == 1)
+        #expect(update.result == nil)
+    }
+
+    @Test
+    func streamingUpdateReportsTooLoudWithoutFailing() {
+        let update = TinnitusEnvironmentSPLGateEvaluator().update(
+            samplesDBA: [44, 43, 46],
+            configuration: .studyA
+        )
+
+        #expect(update.status == .tooLoud)
+        #expect(update.contiguousPassingSamples == 0)
+        #expect(update.result == nil)
+    }
+
+    @Test
+    func streamingUpdatePassPreservesFiniteSamples() {
+        let update = TinnitusEnvironmentSPLGateEvaluator().update(
+            samplesDBA: [Double.nan, 44, 43, 42, 41, 40],
+            configuration: .studyA
+        )
+
+        #expect(update.status == .passed)
+        #expect(update.result?.gateResult == .passed)
+        #expect(update.result?.samplesDBA == [44, 43, 42, 41, 40])
+    }
 }

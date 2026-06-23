@@ -25,7 +25,9 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published var fitSealConfirmed = false
     @Published var safetyAcknowledged = false
     @Published private(set) var environmentGateResult: TinnitusEnvironmentSPLGateResult?
+    @Published private(set) var environmentGateUpdate: TinnitusEnvironmentSPLGateUpdate?
     @Published private(set) var isRunningEnvironmentGate = false
+    @Published private(set) var isVolumeGateMonitoring = false
     @Published private(set) var thresholdStaircase: TinnitusThresholdStaircase
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
     @Published private(set) var message: FlowMessage?
@@ -40,17 +42,20 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let guardrailMonitor: CalibratedAudioSessionGuardrailMonitor?
     private let guardrailProvider: () -> CalibratedAudioGuardrailValidation
     private let environmentMeter: EnvironmentSPLMeasuring
+    private let environmentGateMonitor: EnvironmentSPLGateMonitoring
     private let allowsCalibratedPlayback: Bool
     private let runtimeContextProvider: Phase6RuntimeContextProviding
     private let submissionExporter: Phase6LoudnessMatchSubmissionExporter
     private let dateProvider: () -> Date
     private let researchProtocolResolver: ResearchProtocolCalibratedHeadphoneResolver?
+    private var environmentGateTask: Task<Void, Never>?
 
     init(
         engine: TinnitusProtocolEngine? = nil,
         player: CalibratedTonePlaying? = nil,
         guardrailProvider: (() -> CalibratedAudioGuardrailValidation)? = nil,
         environmentMeter: EnvironmentSPLMeasuring? = nil,
+        environmentGateMonitor: EnvironmentSPLGateMonitoring? = nil,
         allowsCalibratedPlayback: Bool = true,
         runtimeContextProvider: Phase6RuntimeContextProviding? = nil,
         submissionExporter: Phase6LoudnessMatchSubmissionExporter? = nil,
@@ -82,7 +87,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         self.player = resolvedPlayer
         self.guardrailMonitor = monitor
         self.guardrailProvider = resolvedGuardrailProvider
-        self.environmentMeter = environmentMeter ?? AVAudioEnvironmentSPLMeter()
+        let resolvedEnvironmentMeter = environmentMeter ?? AVAudioEnvironmentSPLMeter()
+        self.environmentMeter = resolvedEnvironmentMeter
+        self.environmentGateMonitor = environmentGateMonitor
+            ?? (resolvedEnvironmentMeter as? EnvironmentSPLGateMonitoring)
+            ?? OneShotEnvironmentSPLGateMonitor(meter: resolvedEnvironmentMeter)
         self.allowsCalibratedPlayback = allowsCalibratedPlayback
         self.runtimeContextProvider = runtimeContextProvider ?? SystemPhase6RuntimeContextProvider()
         self.submissionExporter = submissionExporter ?? Phase6LoudnessMatchSubmissionExporter()
@@ -169,15 +178,126 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
 
         isRunningEnvironmentGate = true
+        environmentGateResult = nil
+        environmentGateUpdate = TinnitusEnvironmentSPLGateUpdate(
+            samplesDBA: [],
+            latestSampleDBA: nil,
+            contiguousPassingSamples: 0,
+            status: .measuring,
+            result: nil
+        )
         defer { isRunningEnvironmentGate = false }
 
         do {
             let result = try await environmentMeter.runGate(configuration: .studyA)
             environmentGateResult = result
+            environmentGateUpdate = TinnitusEnvironmentSPLGateEvaluator().update(
+                samplesDBA: result.samplesDBA,
+                configuration: result.configuration
+            )
             message = result.passed ? nil : .environmentGateFailed
         } catch {
             message = .environmentGateUnavailable(error.localizedDescription)
         }
+    }
+
+    func startContinuousEnvironmentGate() {
+        guard !isRunningEnvironmentGate else {
+            return
+        }
+
+        environmentGateResult = nil
+        environmentGateUpdate = TinnitusEnvironmentSPLGateUpdate(
+            samplesDBA: [],
+            latestSampleDBA: nil,
+            contiguousPassingSamples: 0,
+            status: .measuring,
+            result: nil
+        )
+        isRunningEnvironmentGate = true
+        message = nil
+
+        let stream = environmentGateMonitor.monitorGate(configuration: .studyA)
+        environmentGateTask = Task { [weak self] in
+            do {
+                for try await update in stream {
+                    guard let self else {
+                        return
+                    }
+
+                    self.environmentGateUpdate = update
+                    if let result = update.result {
+                        self.environmentGateResult = result
+                        self.isRunningEnvironmentGate = false
+                        self.environmentGateTask = nil
+                        self.message = nil
+                        return
+                    }
+                }
+
+                guard let self else {
+                    return
+                }
+                self.isRunningEnvironmentGate = false
+                self.environmentGateTask = nil
+            } catch {
+                guard let self else {
+                    return
+                }
+                self.isRunningEnvironmentGate = false
+                self.environmentGateTask = nil
+                self.message = .environmentGateUnavailable(error.localizedDescription)
+            }
+        }
+    }
+
+    func cancelEnvironmentGate() {
+        environmentGateTask?.cancel()
+        environmentGateTask = nil
+        isRunningEnvironmentGate = false
+        if environmentGateResult?.passed != true {
+            environmentGateResult = nil
+        }
+    }
+
+    func completeFitConfirmation() {
+        fitSealConfirmed = true
+    }
+
+    func startVolumeGateMonitoring() {
+        isVolumeGateMonitoring = true
+        refreshGuardrails()
+        guard let guardrailMonitor else {
+            return
+        }
+
+        guardrailMonitor.startMonitoring { [weak self] validation in
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+                self.currentGuardrailValidation = validation
+            }
+        }
+    }
+
+    func stopVolumeGateMonitoring() {
+        guardrailMonitor?.stopMonitoring()
+        isVolumeGateMonitoring = false
+    }
+
+    @discardableResult
+    func acknowledgeSafetyAndStartTest() -> Bool {
+        safetyAcknowledged = true
+        refreshGuardrails()
+
+        guard preflightReady else {
+            message = .missingPreflight("Complete quiet-room, fit, route, AirPods Pro 2 verification, and max-volume checks before starting the test.")
+            return false
+        }
+
+        message = nil
+        return true
     }
 
     func playThresholdTone() {
@@ -313,6 +433,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func abort() {
+        cancelEnvironmentGate()
+        stopVolumeGateMonitoring()
         if isPlaying {
             guardrailMonitor?.stopMonitoring()
             _ = player?.stop()
@@ -448,6 +570,36 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 || event.kind == .thresholdPlaybackPlanned
                 || event.kind == .playRequested
                 || event.kind == .playbackPlanned
+        }
+    }
+}
+
+private struct OneShotEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    let meter: EnvironmentSPLMeasuring
+
+    func monitorGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let result = try await meter.runGate(configuration: configuration)
+                    let update = TinnitusEnvironmentSPLGateEvaluator().update(
+                        samplesDBA: result.samplesDBA,
+                        configuration: result.configuration
+                    )
+                    continuation.yield(update)
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
         }
     }
 }

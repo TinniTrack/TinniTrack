@@ -37,6 +37,24 @@ struct TinnitusEnvironmentSPLGateResult: Equatable {
     }
 }
 
+enum TinnitusEnvironmentSPLGateStatus: Equatable {
+    case measuring
+    case tooLoud
+    case passed
+}
+
+struct TinnitusEnvironmentSPLGateUpdate: Equatable {
+    let samplesDBA: [Double]
+    let latestSampleDBA: Double?
+    let contiguousPassingSamples: Int
+    let status: TinnitusEnvironmentSPLGateStatus
+    let result: TinnitusEnvironmentSPLGateResult?
+
+    var passed: Bool {
+        result?.passed == true
+    }
+}
+
 struct TinnitusEnvironmentSPLGateEvaluator {
     func evaluate(
         samplesDBA: [Double],
@@ -62,6 +80,47 @@ struct TinnitusEnvironmentSPLGateEvaluator {
             configuration: configuration,
             samplesDBA: finiteSamples,
             gateResult: passed ? .passed : .failed
+        )
+    }
+
+    func update(
+        samplesDBA: [Double],
+        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyA
+    ) -> TinnitusEnvironmentSPLGateUpdate {
+        let finiteSamples = samplesDBA.filter(\.isFinite)
+        var contiguous = 0
+
+        for sample in finiteSamples {
+            if sample < configuration.thresholdDBA {
+                contiguous += 1
+            } else {
+                contiguous = 0
+            }
+        }
+
+        let result: TinnitusEnvironmentSPLGateResult?
+        let status: TinnitusEnvironmentSPLGateStatus
+        if contiguous >= configuration.requiredContiguousSamples {
+            result = TinnitusEnvironmentSPLGateResult(
+                configuration: configuration,
+                samplesDBA: finiteSamples,
+                gateResult: .passed
+            )
+            status = .passed
+        } else if let latest = finiteSamples.last, latest >= configuration.thresholdDBA {
+            result = nil
+            status = .tooLoud
+        } else {
+            result = nil
+            status = .measuring
+        }
+
+        return TinnitusEnvironmentSPLGateUpdate(
+            samplesDBA: finiteSamples,
+            latestSampleDBA: finiteSamples.last,
+            contiguousPassingSamples: contiguous,
+            status: status,
+            result: result
         )
     }
 }

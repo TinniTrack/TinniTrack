@@ -168,6 +168,69 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func continuousEnvironmentGateStreamsTooLoudThenPasses() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(samplesByUpdate: [
+                [44],
+                [44, 46],
+                [44, 46, 40, 41, 42, 43, 44]
+            ])
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(viewModel.isRunningEnvironmentGate == false)
+        #expect(viewModel.environmentGateUpdate?.status == .passed)
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.environmentGateResult?.samplesDBA == [44, 46, 40, 41, 42, 43, 44])
+    }
+
+    @Test
+    func continuousEnvironmentGateCancellationDoesNotSetResult() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(samplesByUpdate: [[44]], finishAfterUpdates: false)
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        try await Task.sleep(nanoseconds: 10_000_000)
+        viewModel.cancelEnvironmentGate()
+
+        #expect(viewModel.isRunningEnvironmentGate == false)
+        #expect(viewModel.environmentGateResult == nil)
+    }
+
+    @Test
+    func startTestRequiresPassedVolumeGuardrails() async {
+        var validation = CalibratedAudioGuardrailPolicy().validate(
+            route: supportedRoute(),
+            outputVolume: 0.5,
+            timestamp: timestamp
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { validation },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+        viewModel.completeFitConfirmation()
+        await viewModel.runEnvironmentGate()
+
+        #expect(viewModel.acknowledgeSafetyAndStartTest() == false)
+        #expect(viewModel.preflightReady == false)
+
+        validation = passedGuardrails()
+        #expect(viewModel.acknowledgeSafetyAndStartTest())
+        #expect(viewModel.preflightReady)
+        #expect(viewModel.safetyAcknowledged)
+    }
+
+    @Test
     func completedStudyABuildsPhase6PayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
         let viewModel = await completedViewModel()
         let payload = try viewModel.makePhase6Payload(
@@ -365,6 +428,37 @@ private struct MockEnvironmentSPLMeter: EnvironmentSPLMeasuring {
 
     func runGate(configuration: TinnitusEnvironmentSPLGateConfiguration) async throws -> TinnitusEnvironmentSPLGateResult {
         TinnitusEnvironmentSPLGateEvaluator().evaluate(samplesDBA: samplesDBA, configuration: configuration)
+    }
+}
+
+private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    let samplesByUpdate: [[Double]]
+    var finishAfterUpdates = true
+
+    func monitorGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                for samples in samplesByUpdate {
+                    continuation.yield(
+                        TinnitusEnvironmentSPLGateEvaluator().update(
+                            samplesDBA: samples,
+                            configuration: configuration
+                        )
+                    )
+                    await Task.yield()
+                }
+
+                if finishAfterUpdates {
+                    continuation.finish()
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
     }
 }
 
