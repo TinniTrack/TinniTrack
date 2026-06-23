@@ -15,7 +15,10 @@
 
 ## iOS Simulator Guidance
 
-- Run only one iOS Simulator at a time. Running simulators in parallel causes local performance issues and can make build, run, and UI testing results less reliable.
+- Run only one iOS Simulator at a time. Do not run simulators in parallel; parallel simulator sessions cause local performance issues and can make build, run, and UI testing results less reliable.
+- Use the `TinniTrack Local Dev` scheme for simulator testing.
+- Use the regular `TinniTrack` scheme only for production testing on a physical device.
+- Use the `TinniTrack iPhone Dev` scheme for physical-device testing against the separate development database.
 
 ## Commit Workflow
 
