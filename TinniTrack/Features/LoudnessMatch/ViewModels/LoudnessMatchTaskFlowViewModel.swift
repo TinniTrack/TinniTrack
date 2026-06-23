@@ -3,187 +3,603 @@ import Foundation
 
 @MainActor
 final class LoudnessMatchTaskFlowViewModel: ObservableObject {
-    enum Step: Equatable {
-        case headphoneGate
-        case ambientGate
-        case matching
+    enum FlowMessage: Equatable {
+        case playbackDisabled
+        case environmentGateFailed
+        case missingPreflight(String)
+        case incompletePayload(String)
+        case guardrailsUnavailable
+        case environmentGateUnavailable(String)
+        case playbackFailed(String)
+        case submissionFailed(String)
     }
 
-    @Published private(set) var step: Step = .headphoneGate
-    @Published private(set) var currentRoute: AudioOutputRoute?
-    @Published private(set) var ambientPermissionStatus: AmbientNoisePermissionStatus = .notDetermined
-    @Published private(set) var ambientDB: Double?
+    @Published private(set) var protocolState: TinnitusProtocolState
+    @Published private(set) var selectedLaterality: TinnitusLaterality?
+    @Published var researchProtocolAirPodsPro2Verified = false {
+        didSet {
+            researchProtocolResolver?.airPodsPro2Verified = researchProtocolAirPodsPro2Verified
+            refreshGuardrails()
+        }
+    }
+    @Published var fitSealConfirmed = false
+    @Published var safetyAcknowledged = false
+    @Published private(set) var environmentGateResult: TinnitusEnvironmentSPLGateResult?
+    @Published private(set) var environmentGateUpdate: TinnitusEnvironmentSPLGateUpdate?
+    @Published private(set) var isRunningEnvironmentGate = false
+    @Published private(set) var isVolumeGateMonitoring = false
+    @Published private(set) var thresholdStaircase: TinnitusThresholdStaircase
+    @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
+    @Published private(set) var message: FlowMessage?
+    @Published private(set) var isPlaying = false
+    @Published private(set) var canRecordThresholdResponse = false
     @Published private(set) var isSubmitting = false
-    @Published private(set) var errorMessage: String?
-    @Published private(set) var loudnessLevel: Double = 0.3
+    @Published private(set) var hasSubmitted = false
+    @Published private(set) var completedSummary: TinnitusLoudnessMatchSummary?
 
-    private let scheduledTask: ScheduledTask
-    private let enrollment: StudyEnrollment
-    private let studyService: StudyServiceProtocol
-    private let routeMonitor: HeadphoneRouteMonitoring
-    private let ambientNoiseMonitor: AmbientNoiseMonitoring
-    private let tonePlayer: TonePlaying
-    private let routeGate: AudioRouteGating
-    private let deviceMetadataProvider: DeviceMetadataProviding
-    private let resultBuilder: LoudnessMatchResultBuilding
-
-    private var hasStarted = false
-    private var startedAt: Date?
-    private var loudnessEvents: [MeasurementTraceEvent] = []
-    private var ambientEvents: [MeasurementTraceEvent] = []
+    private var engine: TinnitusProtocolEngine
+    private let player: CalibratedTonePlaying?
+    private let guardrailMonitor: CalibratedAudioSessionGuardrailMonitor?
+    private let guardrailProvider: () -> CalibratedAudioGuardrailValidation
+    private let environmentMeter: EnvironmentSPLMeasuring
+    private let environmentGateMonitor: EnvironmentSPLGateMonitoring
+    private let allowsCalibratedPlayback: Bool
+    private let runtimeContextProvider: Phase6RuntimeContextProviding
+    private let submissionExporter: Phase6LoudnessMatchSubmissionExporter
+    private let dateProvider: () -> Date
+    private let researchProtocolResolver: ResearchProtocolCalibratedHeadphoneResolver?
+    private var environmentGateTask: Task<Void, Never>?
 
     init(
-        scheduledTask: ScheduledTask,
-        enrollment: StudyEnrollment,
-        studyService: StudyServiceProtocol,
-        routeMonitor: HeadphoneRouteMonitoring,
-        ambientNoiseMonitor: AmbientNoiseMonitoring,
-        tonePlayer: TonePlaying,
-        routeGate: AudioRouteGating,
-        deviceMetadataProvider: DeviceMetadataProviding,
-        resultBuilder: LoudnessMatchResultBuilding
+        engine: TinnitusProtocolEngine? = nil,
+        player: CalibratedTonePlaying? = nil,
+        guardrailProvider: (() -> CalibratedAudioGuardrailValidation)? = nil,
+        environmentMeter: EnvironmentSPLMeasuring? = nil,
+        environmentGateMonitor: EnvironmentSPLGateMonitoring? = nil,
+        allowsCalibratedPlayback: Bool = true,
+        runtimeContextProvider: Phase6RuntimeContextProviding? = nil,
+        submissionExporter: Phase6LoudnessMatchSubmissionExporter? = nil,
+        dateProvider: @escaping () -> Date = Date.init
     ) {
-        self.scheduledTask = scheduledTask
-        self.enrollment = enrollment
-        self.studyService = studyService
-        self.routeMonitor = routeMonitor
-        self.ambientNoiseMonitor = ambientNoiseMonitor
-        self.tonePlayer = tonePlayer
-        self.routeGate = routeGate
-        self.deviceMetadataProvider = deviceMetadataProvider
-        self.resultBuilder = resultBuilder
-    }
+        let resolvedEngine = engine ?? TinnitusProtocolEngine()
+        let resolver: ResearchProtocolCalibratedHeadphoneResolver?
+        let monitor: CalibratedAudioSessionGuardrailMonitor?
+        let resolvedPlayer: CalibratedTonePlaying?
+        let resolvedGuardrailProvider: () -> CalibratedAudioGuardrailValidation
 
-    var isSupportedRoute: Bool {
-        routeGate.isRouteSupported(currentRoute)
-    }
-
-    var isAmbientQuiet: Bool {
-        guard let ambientDB else { return false }
-        return ambientDB <= StudyNo1Configuration.ambientThresholdDB
-    }
-
-    var ambientDisplayText: String {
-        guard let ambientDB else {
-            return "Waiting for ambient reading..."
+        if let guardrailProvider {
+            resolver = nil
+            monitor = nil
+            resolvedGuardrailProvider = guardrailProvider
+            resolvedPlayer = player
+        } else {
+            let researchResolver = ResearchProtocolCalibratedHeadphoneResolver()
+            let guardrailMonitor = CalibratedAudioSessionGuardrailMonitor(profileResolver: researchResolver)
+            resolver = researchResolver
+            monitor = guardrailMonitor
+            resolvedGuardrailProvider = {
+                guardrailMonitor.validateCurrentGuardrails()
+            }
+            resolvedPlayer = player ?? CalibratedToneAudioPlayer()
         }
-        return String(format: "Ambient: %.1f dB (threshold: %.0f dB)", ambientDB, StudyNo1Configuration.ambientThresholdDB)
+
+        self.engine = resolvedEngine
+        self.player = resolvedPlayer
+        self.guardrailMonitor = monitor
+        self.guardrailProvider = resolvedGuardrailProvider
+        let resolvedEnvironmentMeter = environmentMeter ?? AVAudioEnvironmentSPLMeter()
+        self.environmentMeter = resolvedEnvironmentMeter
+        self.environmentGateMonitor = environmentGateMonitor
+            ?? (resolvedEnvironmentMeter as? EnvironmentSPLGateMonitoring)
+            ?? OneShotEnvironmentSPLGateMonitor(meter: resolvedEnvironmentMeter)
+        self.allowsCalibratedPlayback = allowsCalibratedPlayback
+        self.runtimeContextProvider = runtimeContextProvider ?? SystemPhase6RuntimeContextProvider()
+        self.submissionExporter = submissionExporter ?? Phase6LoudnessMatchSubmissionExporter()
+        self.dateProvider = dateProvider
+        self.researchProtocolResolver = resolver
+        protocolState = resolvedEngine.state
+        thresholdStaircase = TinnitusThresholdStaircase()
+        currentGuardrailValidation = self.guardrailProvider()
     }
 
-    func start() {
-        guard !hasStarted else { return }
-        hasStarted = true
+    var events: [TinnitusProtocolEvent] {
+        engine.events
+    }
 
-        ambientPermissionStatus = ambientNoiseMonitor.permissionStatus()
+    var canPlayTone: Bool {
+        allowsCalibratedPlayback
+            && currentGuardrailValidation.state == .passed
+            && preflightReady
+            && currentCandidateLevelDBHL != nil
+    }
 
-        routeMonitor.startMonitoring { [weak self] route in
-            guard let self else { return }
-            self.currentRoute = route
+    var canPlayThresholdTone: Bool {
+        allowsCalibratedPlayback
+            && currentGuardrailValidation.state == .passed
+            && preflightReady
+            && !thresholdStaircase.isComplete
+    }
 
-            if self.isSupportedRoute && self.step == .headphoneGate {
-                self.enterAmbientGate()
+    var preflightReady: Bool {
+        currentGuardrailValidation.state == .passed
+            && environmentGateResult?.passed == true
+            && fitSealConfirmed
+            && safetyAcknowledged
+    }
+
+    var canSubmit: Bool {
+        completedSummary != nil
+            && preflightReady
+            && !isSubmitting
+            && !hasSubmitted
+    }
+
+    var currentCandidateLevelDBHL: Double? {
+        engine.currentCandidateLevelDBHL
+    }
+
+    var isComplete: Bool {
+        completedSummary != nil
+    }
+
+    var currentTrialLabel: String {
+        if case .readyForTrial(let index, _) = protocolState {
+            return "Trial \(index) of 3"
+        }
+        if case .awaitingConfidence(let trial) = protocolState {
+            return "Trial \(trial.trialIndex) of 3"
+        }
+        return "Trial"
+    }
+
+    func refreshGuardrails() {
+        currentGuardrailValidation = guardrailProvider()
+        if currentGuardrailValidation.state != .passed, hasRequestedStimulus {
+            engine.applyGuardrailValidation(currentGuardrailValidation)
+            syncFromEngine()
+        }
+    }
+
+    func selectLaterality(_ laterality: TinnitusLaterality) {
+        selectedLaterality = laterality
+        thresholdStaircase = TinnitusThresholdStaircase()
+        engine.selectLaterality(laterality)
+        syncFromEngine()
+    }
+
+    func markThresholdUnavailable() {
+        engine.markThresholdUnavailable(reason: "Threshold estimator is not enabled in this Phase 4 scaffold.")
+        syncFromEngine()
+    }
+
+    func runEnvironmentGate() async {
+        guard !isRunningEnvironmentGate else {
+            return
+        }
+
+        isRunningEnvironmentGate = true
+        environmentGateResult = nil
+        environmentGateUpdate = TinnitusEnvironmentSPLGateUpdate(
+            samplesDBA: [],
+            latestSampleDBA: nil,
+            contiguousPassingSamples: 0,
+            status: .measuring,
+            result: nil
+        )
+        defer { isRunningEnvironmentGate = false }
+
+        do {
+            let result = try await environmentMeter.runGate(configuration: .studyA)
+            environmentGateResult = result
+            environmentGateUpdate = TinnitusEnvironmentSPLGateEvaluator().update(
+                samplesDBA: result.samplesDBA,
+                configuration: result.configuration
+            )
+            message = result.passed ? nil : .environmentGateFailed
+        } catch {
+            message = .environmentGateUnavailable(error.localizedDescription)
+        }
+    }
+
+    func startContinuousEnvironmentGate() {
+        guard !isRunningEnvironmentGate else {
+            return
+        }
+
+        environmentGateResult = nil
+        environmentGateUpdate = TinnitusEnvironmentSPLGateUpdate(
+            samplesDBA: [],
+            latestSampleDBA: nil,
+            contiguousPassingSamples: 0,
+            status: .measuring,
+            result: nil
+        )
+        isRunningEnvironmentGate = true
+        message = nil
+
+        let stream = environmentGateMonitor.monitorGate(configuration: .studyA)
+        environmentGateTask = Task { [weak self] in
+            do {
+                for try await update in stream {
+                    guard let self else {
+                        return
+                    }
+
+                    self.environmentGateUpdate = update
+                    if let result = update.result {
+                        self.environmentGateResult = result
+                        self.isRunningEnvironmentGate = false
+                        self.environmentGateTask = nil
+                        self.message = nil
+                        return
+                    }
+                }
+
+                guard let self else {
+                    return
+                }
+                self.isRunningEnvironmentGate = false
+                self.environmentGateTask = nil
+            } catch {
+                guard let self else {
+                    return
+                }
+                self.isRunningEnvironmentGate = false
+                self.environmentGateTask = nil
+                self.message = .environmentGateUnavailable(error.localizedDescription)
             }
         }
     }
 
-    func stop() {
-        routeMonitor.stopMonitoring()
-        ambientNoiseMonitor.stopMonitoring()
-        tonePlayer.stop()
-    }
-
-    func requestAmbientPermission() async {
-        let granted = await ambientNoiseMonitor.requestPermission()
-        ambientPermissionStatus = granted ? .granted : .denied
-
-        if granted {
-            startAmbientMonitoringIfNeeded()
+    func cancelEnvironmentGate() {
+        environmentGateTask?.cancel()
+        environmentGateTask = nil
+        isRunningEnvironmentGate = false
+        if environmentGateResult?.passed != true {
+            environmentGateResult = nil
         }
     }
 
-    func startMatching() {
-        guard step == .ambientGate else { return }
-        guard isAmbientQuiet else { return }
-
-        step = .matching
-        startedAt = Date()
-
-        tonePlayer.start()
-        tonePlayer.setVolume(loudnessLevel)
-
-        loudnessEvents.append(MeasurementTraceEvent(timestamp: Date(), value: loudnessLevel))
+    func completeFitConfirmation() {
+        fitSealConfirmed = true
     }
 
-    func updateLoudness(_ newValue: Double) {
-        guard step == .matching else { return }
-        guard isAmbientQuiet else { return }
+    func startVolumeGateMonitoring() {
+        isVolumeGateMonitoring = true
+        refreshGuardrails()
+        guard let guardrailMonitor else {
+            return
+        }
 
-        loudnessLevel = min(max(newValue, 0), 1)
-        tonePlayer.setVolume(loudnessLevel)
-        loudnessEvents.append(MeasurementTraceEvent(timestamp: Date(), value: loudnessLevel))
+        guardrailMonitor.startMonitoring { [weak self] validation in
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+                self.currentGuardrailValidation = validation
+            }
+        }
     }
 
-    func submitMatch() async -> Bool {
-        guard let startedAt else {
-            errorMessage = "Task start timestamp is missing."
+    func stopVolumeGateMonitoring() {
+        guardrailMonitor?.stopMonitoring()
+        isVolumeGateMonitoring = false
+    }
+
+    @discardableResult
+    func acknowledgeSafetyAndStartTest() -> Bool {
+        safetyAcknowledged = true
+        refreshGuardrails()
+
+        guard preflightReady else {
+            message = .missingPreflight("Complete quiet-room, fit, route, AirPods Pro 2 verification, and max-volume checks before starting the test.")
             return false
+        }
+
+        message = nil
+        return true
+    }
+
+    func playThresholdTone() {
+        guard allowsCalibratedPlayback else {
+            message = .playbackDisabled
+            return
+        }
+
+        guard preflightReady else {
+            message = .missingPreflight("Complete audio guardrails, AirPods Pro 2 research verification, quiet-room gate, fit/seal confirmation, and safety acknowledgement before threshold playback.")
+            return
+        }
+
+        currentGuardrailValidation = guardrailProvider()
+        guard currentGuardrailValidation.state == .passed else {
+            let attempt = engine.playThresholdTone(
+                levelDBHL: thresholdStaircase.currentLevelDBHL,
+                guardrailValidation: currentGuardrailValidation
+            )
+            message = attempt.refusalReason == nil ? .guardrailsUnavailable : .guardrailsUnavailable
+            syncFromEngine()
+            return
+        }
+
+        let attempt = engine.playThresholdTone(
+            levelDBHL: thresholdStaircase.currentLevelDBHL,
+            guardrailValidation: currentGuardrailValidation
+        )
+        guard let request = attempt.request, attempt.refusalReason == nil else {
+            message = .guardrailsUnavailable
+            syncFromEngine()
+            return
+        }
+
+        do {
+            _ = try player?.play(request)
+            isPlaying = true
+            canRecordThresholdResponse = true
+            startPlaybackGuardrailMonitoring()
+            message = nil
+        } catch {
+            message = .playbackFailed(error.localizedDescription)
+        }
+
+        syncFromEngine()
+    }
+
+    func recordThresholdResponse(_ response: TinnitusThresholdResponse) {
+        guard canRecordThresholdResponse else {
+            message = .missingPreflight("Play the threshold tone before recording a heard or not-heard response.")
+            return
+        }
+
+        let presentedLevel = thresholdStaircase.currentLevelDBHL
+        if isPlaying {
+            stopTone()
+        }
+        canRecordThresholdResponse = false
+
+        engine.recordThresholdResponse(levelDBHL: presentedLevel, response: response)
+        thresholdStaircase.recordResponse(response)
+
+        if let measuredThreshold = thresholdStaircase.measuredThresholdDBHL {
+            engine.recordThreshold(levelDBHL: measuredThreshold)
+        }
+
+        syncFromEngine()
+    }
+
+    func adjustLevel(_ adjustment: TinnitusLoudnessAdjustment) {
+        engine.adjustLevel(adjustment)
+        syncFromEngine()
+    }
+
+    func playTone() {
+        guard allowsCalibratedPlayback else {
+            message = .playbackDisabled
+            return
+        }
+
+        guard preflightReady else {
+            message = .missingPreflight("Complete audio guardrails, quiet-room samples, fit/seal confirmation, and safety acknowledgement before playback.")
+            return
+        }
+
+        currentGuardrailValidation = guardrailProvider()
+        guard currentGuardrailValidation.state == .passed else {
+            let attempt = engine.playCurrentTone(guardrailValidation: currentGuardrailValidation)
+            message = attempt.refusalReason == nil ? .guardrailsUnavailable : .guardrailsUnavailable
+            syncFromEngine()
+            return
+        }
+
+        let attempt = engine.playCurrentTone(guardrailValidation: currentGuardrailValidation)
+        guard let request = attempt.request, attempt.refusalReason == nil else {
+            message = .guardrailsUnavailable
+            syncFromEngine()
+            return
+        }
+
+        do {
+            _ = try player?.play(request)
+            isPlaying = true
+            startPlaybackGuardrailMonitoring()
+            message = nil
+        } catch {
+            message = .playbackFailed(error.localizedDescription)
+        }
+
+        syncFromEngine()
+    }
+
+    func stopTone() {
+        guardrailMonitor?.stopMonitoring()
+        let metadata = player?.stop()
+        isPlaying = false
+        canRecordThresholdResponse = false
+        engine.recordStop(playbackMetadata: metadata)
+        syncFromEngine()
+    }
+
+    func acceptCurrentLevel() {
+        if isPlaying {
+            stopTone()
+        }
+        engine.acceptCurrentLevel()
+        syncFromEngine()
+    }
+
+    func recordConfidence(_ confidence: TinnitusConfidenceRating) {
+        engine.recordConfidence(confidence)
+        syncFromEngine()
+    }
+
+    func abort() {
+        cancelEnvironmentGate()
+        stopVolumeGateMonitoring()
+        if isPlaying {
+            guardrailMonitor?.stopMonitoring()
+            _ = player?.stop()
+            isPlaying = false
+        }
+        engine.abort(.participantStopped)
+        syncFromEngine()
+    }
+
+    func makePhase6Payload(
+        scheduledTask: ScheduledTask,
+        enrollment: StudyEnrollment,
+        submittedAt: Date? = nil
+    ) throws -> Phase6LoudnessMatchRunPayload {
+        guard let summary = completedSummary else {
+            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A is not complete.")
+        }
+        guard let environment = environmentGateResult?.phase6Context else {
+            throw Phase6PayloadValidationError.missingRequiredFields(["environment.samplesDBA"])
+        }
+        guard fitSealConfirmed else {
+            throw Phase6PayloadValidationError.missingRequiredFields(["fitSeal.status"])
+        }
+        guard safetyAcknowledged else {
+            throw Phase6PayloadValidationError.missingRequiredFields(["safety.acknowledgedAt"])
+        }
+
+        currentGuardrailValidation = guardrailProvider()
+        let preflight = Phase6PreflightContext(
+            identifiers: Phase6IdentifierContext(
+                participantId: enrollment.userID.uuidString,
+                studySessionId: enrollment.id.uuidString,
+                enrollmentId: enrollment.id.uuidString,
+                scheduledTaskId: scheduledTask.id.uuidString
+            ),
+            startedAt: events.first?.timestamp ?? dateProvider(),
+            submittedAt: submittedAt,
+            guardrailValidation: currentGuardrailValidation,
+            device: runtimeContextProvider.deviceContext(),
+            airPods: runtimeContextProvider.airPodsContext(guardrailValidation: currentGuardrailValidation),
+            audioSession: runtimeContextProvider.audioSessionContext(),
+            environment: environment,
+            fitSeal: Phase6FitSealContext(
+                status: .confirmedPassed,
+                confirmedAt: dateProvider(),
+                limitations: "Participant confirmation; public iOS APIs do not expose Apple's Ear Tip Fit Test result."
+            ),
+            safety: Phase6SafetyContext(
+                acknowledgedAt: dateProvider(),
+                stopControlVisibleBeforePlayback: true,
+                maximumLevelDBHL: 100.0,
+                limitation: "Immediate stop is visible during playback; no clinical or diagnostic claim."
+            ),
+            thresholdSource: .measured
+        )
+
+        return try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+            summary: summary,
+            events: events,
+            preflight: preflight
+        )
+    }
+
+    func submitCompletedRun(
+        scheduledTask: ScheduledTask,
+        enrollment: StudyEnrollment,
+        studyService: StudyServiceProtocol
+    ) async {
+        guard !isSubmitting else {
+            return
         }
 
         isSubmitting = true
         defer { isSubmitting = false }
 
-        let completedAt = Date()
-        let submission = resultBuilder.makeSubmission(
-            from: LoudnessMatchResultInput(
-                scheduledTask: scheduledTask,
-                startedAt: startedAt,
-                completedAt: completedAt,
-                matchedLevel: loudnessLevel,
-                currentRoute: currentRoute,
-                isSupportedRoute: isSupportedRoute,
-                ambientDB: ambientDB,
-                isAmbientQuiet: isAmbientQuiet,
-                loudnessEvents: loudnessEvents,
-                ambientEvents: ambientEvents,
-                deviceInfo: deviceMetadataProvider.currentDeviceInfo(),
-                outputDeviceInfo: deviceMetadataProvider.outputDeviceInfo(for: currentRoute),
-                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-            )
-        )
-
         do {
+            let submittedAt = dateProvider()
+            let payload = try makePhase6Payload(
+                scheduledTask: scheduledTask,
+                enrollment: enrollment,
+                submittedAt: submittedAt
+            )
+            let submission = try submissionExporter.makeSubmission(from: payload)
             try await studyService.submitLoudnessMatch(
                 scheduledTaskID: scheduledTask.id,
                 enrollmentID: enrollment.id,
                 submission: submission
             )
-            return true
+            hasSubmitted = true
+            message = nil
+        } catch let error as Phase6PayloadValidationError {
+            message = .incompletePayload(String(describing: error))
         } catch {
-            errorMessage = error.localizedDescription
-            return false
+            message = .submissionFailed(error.localizedDescription)
         }
     }
 
-    private func enterAmbientGate() {
-        step = .ambientGate
+    func clearMessage() {
+        message = nil
+    }
 
-        if ambientPermissionStatus == .granted {
-            startAmbientMonitoringIfNeeded()
+    private func syncFromEngine() {
+        protocolState = engine.state
+        if case .completed(let summary) = engine.state {
+            completedSummary = summary
         }
     }
 
-    private func startAmbientMonitoringIfNeeded() {
-        do {
-            try ambientNoiseMonitor.startMonitoring { [weak self] db in
-                guard let self else { return }
-                self.ambientDB = db
-                self.ambientEvents.append(MeasurementTraceEvent(timestamp: Date(), value: db))
-                if self.ambientEvents.count > 2_000 {
-                    self.ambientEvents.removeFirst(self.ambientEvents.count - 2_000)
+    private func startPlaybackGuardrailMonitoring() {
+        guardrailMonitor?.startMonitoring { [weak self] validation in
+            guard validation.state != .passed else {
+                return
+            }
+
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+
+                if self.isPlaying {
+                    self.stopTone()
+                }
+                self.engine.applyGuardrailValidation(validation)
+                self.currentGuardrailValidation = validation
+                self.syncFromEngine()
+            }
+        }
+    }
+
+    private var hasRequestedStimulus: Bool {
+        events.contains { event in
+            event.kind == .thresholdToneRequested
+                || event.kind == .thresholdPlaybackPlanned
+                || event.kind == .playRequested
+                || event.kind == .playbackPlanned
+        }
+    }
+}
+
+private struct OneShotEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    let meter: EnvironmentSPLMeasuring
+
+    func monitorGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let result = try await meter.runGate(configuration: configuration)
+                    let update = TinnitusEnvironmentSPLGateEvaluator().update(
+                        samplesDBA: result.samplesDBA,
+                        configuration: result.configuration
+                    )
+                    continuation.yield(update)
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
             }
-        } catch {
-            errorMessage = error.localizedDescription
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
         }
     }
 }

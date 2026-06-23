@@ -5,11 +5,6 @@ enum StudyNo1Configuration {
     static let windowMinutes: Int = 60
     static let ambientThresholdDB: Double = 45
 
-    static func isSupportedHeadphoneRouteName(_ routeName: String) -> Bool {
-        let normalized = routeName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized.contains("airpods pro")
-    }
-
     static func firstScheduleLocalDate(
         now: Date,
         timeZone: TimeZone,

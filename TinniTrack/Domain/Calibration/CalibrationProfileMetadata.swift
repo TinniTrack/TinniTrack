@@ -1,7 +1,6 @@
 import Foundation
 
-enum CalibrationValidationStatus: String, Equatable {
-    case unvalidatedPrototype
+enum CalibrationValidationStatus: String, Codable, Equatable {
     case researchKitReferenceAvailable
     case labValidationRequired
 }
@@ -17,25 +16,23 @@ struct CalibrationProfileMetadata: Equatable {
 
 struct OutputDeviceMetadata: Equatable {
     let displayName: String
-    let routeNameMatchers: [String]
-    let researchKitHeadphoneTypeIdentifier: String?
+    let researchKitHeadphoneTypeIdentifier: String
     let notes: String
 }
 
 enum CalibrationProfileCatalog {
-    static let airPodsProPrototype = OutputDeviceMetadata(
-        displayName: "AirPods Pro family",
-        routeNameMatchers: ["airpods pro"],
-        researchKitHeadphoneTypeIdentifier: "AirPodsProV2",
-        notes: "Current app gate is broad route-name matching. Exact model/firmware verification remains future work."
+    static let airPodsPro2ResearchKitReference = OutputDeviceMetadata(
+        displayName: "AirPods Pro 2",
+        researchKitHeadphoneTypeIdentifier: "AIRPODSPROV2",
+        notes: "Supported calibration profile for pure conversion and Phase 2 guardrails. Exact AirPods model and firmware proof still requires a conservative verification source beyond route names."
     )
 
-    static let studyNo1Prototype = CalibrationProfileMetadata(
-        identifier: "study-no-1-unvalidated-normalized-output",
-        version: "2026-06-06",
-        source: "TinniTrack prototype tone generator plus route and ambient gates",
-        validationStatus: .unvalidatedPrototype,
-        supportedOutputDevices: [airPodsProPrototype],
-        notes: "Stores normalized amplitude and metadata for future calibration; not valid dB HL or dB SL."
+    static let airPodsPro2ResearchKitCalibration = CalibrationProfileMetadata(
+        identifier: "airpods-pro-2-researchkit-reference",
+        version: "2026-06-21",
+        source: "Vendored ResearchKit AirPods Pro 2 calibration tables",
+        validationStatus: .researchKitReferenceAvailable,
+        supportedOutputDevices: [airPodsPro2ResearchKitReference],
+        notes: "Pure dB HL, dB SPL, attenuation, linear-amplitude conversion, and route/volume guardrail metadata. Playback and study validation are separate phases."
     )
 }

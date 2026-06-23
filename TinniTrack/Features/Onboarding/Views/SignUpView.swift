@@ -464,9 +464,11 @@ private struct FloatingInputField: View {
     }
 }
 
+#if DEBUG
 #Preview {
     NavigationStack {
         SignUpView()
     }
     .environmentObject(SessionStoreFactory.makePreviewStore())
 }
+#endif

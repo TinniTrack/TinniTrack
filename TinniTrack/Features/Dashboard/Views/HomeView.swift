@@ -201,9 +201,13 @@ private struct StudyCardView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(18)
-        .background(Color.white)
+        .background(DashboardColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(DashboardColors.cardStroke, lineWidth: 1)
+        }
+        .shadow(color: DashboardColors.cardShadow, radius: 4, x: 0, y: 2)
     }
 }
 
@@ -281,9 +285,13 @@ private struct StudyDetailView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(DashboardColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(DashboardColors.cardStroke, lineWidth: 1)
+        }
+        .shadow(color: DashboardColors.cardShadow, radius: 3, x: 0, y: 1)
     }
 
     private func criteriaCard(title: String, items: [String]) -> some View {
@@ -301,9 +309,13 @@ private struct StudyDetailView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
+        .background(DashboardColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(DashboardColors.cardStroke, lineWidth: 1)
+        }
+        .shadow(color: DashboardColors.cardShadow, radius: 3, x: 0, y: 1)
     }
 
     @MainActor
@@ -338,7 +350,7 @@ private struct ShimmerStudyCardView: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color.white)
+            .fill(DashboardColors.cardBackground)
             .frame(height: 170)
             .overlay {
                 VStack(alignment: .leading, spacing: 14) {
@@ -380,7 +392,11 @@ private struct ShimmerStudyCardView: View {
                 .clipped()
             }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(DashboardColors.cardStroke, lineWidth: 1)
+            }
+            .shadow(color: DashboardColors.cardShadow, radius: 4, x: 0, y: 2)
             .onAppear {
                 shimmerOffset = -260
                 withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
@@ -392,6 +408,9 @@ private struct ShimmerStudyCardView: View {
 
 private enum DashboardColors {
     static let brandBlue = Color(red: 0.23, green: 0.43, blue: 0.73)
+    static let cardBackground = Color(uiColor: .secondarySystemGroupedBackground)
+    static let cardStroke = Color(uiColor: .separator).opacity(0.35)
+    static let cardShadow = Color.black.opacity(0.08)
 }
 
 private extension DashboardStudyCard {

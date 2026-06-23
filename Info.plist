@@ -34,9 +34,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>SUPABASE_ANON_KEY</key>
-	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4c2txeW9oY2ViaXhoamd6YWRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMDIyNjIsImV4cCI6MjA3Nzc3ODI2Mn0.QuAG8_ebHWVEuXzXDhUcH7xZbj5Y0Kp9oC0F-athaQM</string>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SUPABASE_ENVIRONMENT</key>
+	<string>$(SUPABASE_ENVIRONMENT)</string>
 	<key>SUPABASE_URL</key>
-	<string>https://kxskqyohcebixhjgzadp.supabase.co</string>
+	<string>$(SUPABASE_URL)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

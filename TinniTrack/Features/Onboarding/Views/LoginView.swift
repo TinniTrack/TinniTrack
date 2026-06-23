@@ -271,9 +271,11 @@ private struct LogoView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     NavigationStack {
         LoginView()
     }
     .environmentObject(SessionStoreFactory.makePreviewStore())
 }
+#endif

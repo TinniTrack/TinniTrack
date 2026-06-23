@@ -73,9 +73,11 @@ struct EmailVerificationPendingView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     EmailVerificationPendingView()
         .environmentObject(
             SessionStoreFactory.makePreviewStore(.awaitingEmailVerification(email: "pending@example.com"))
         )
 }
+#endif

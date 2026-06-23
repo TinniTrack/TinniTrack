@@ -37,12 +37,13 @@ struct StudyNo1ConfigurationTests {
     }
 
     @Test
-    func protocolMetadataKeepsPrototypeValidityExplicit() {
+    func protocolMetadataDoesNotAdvertisePrototypeNormalizedOutput() {
         let protocolDefinition = StudyProtocolCatalog.studyNo1
 
         #expect(protocolDefinition.version == "lm_v1")
-        #expect(protocolDefinition.tasks.first?.measurementUnit == .normalizedAmplitude)
-        #expect(protocolDefinition.calibrationProfile.validationStatus == .unvalidatedPrototype)
-        #expect(protocolDefinition.resultPayload.resultUnits == [.normalizedAmplitude, .estimatedDBA])
+        #expect(protocolDefinition.tasks.first?.measurementUnit == .dBHL)
+        #expect(protocolDefinition.tasks.first?.requiresCalibratedOutput == true)
+        #expect(protocolDefinition.calibrationProfile.validationStatus == .researchKitReferenceAvailable)
+        #expect(protocolDefinition.resultPayload.resultUnits == [.dBHL, .dBSPL, .dBSL])
     }
 }

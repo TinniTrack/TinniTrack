@@ -7,9 +7,12 @@ struct StudyTaskDashboardView: View {
 
     @Environment(\.openURL) private var openURL
     @StateObject private var viewModel: StudyTaskDashboardViewModel
+    #if DEBUG
+    @StateObject private var developerToolsViewModel: DeveloperToolsViewModel
+    #endif
     @State private var isOrientationPresented = false
     @State private var orientationStep: StudyTaskOrientationStep = .hearingTest
-    @State private var selectedTask: ScheduledTask?
+    @State private var activeLoudnessTask: ScheduledTask?
 
     private let studyService: StudyServiceProtocol
 
@@ -34,6 +37,11 @@ struct StudyTaskDashboardView: View {
                 profileTimezone: profileTimezone
             )
         )
+        #if DEBUG
+        _developerToolsViewModel = StateObject(
+            wrappedValue: DeveloperToolsViewModel(service: SupabaseDeveloperToolingService())
+        )
+        #endif
     }
 
     var body: some View {
@@ -46,8 +54,8 @@ struct StudyTaskDashboardView: View {
             .sheet(isPresented: $isOrientationPresented, onDismiss: handleOrientationDismissed) {
                 orientationSheet
             }
-            .navigationDestination(item: $selectedTask) { task in
-                LoudnessMatchTaskFlowView(
+            .fullScreenCover(item: $activeLoudnessTask) { task in
+                LoudnessMatchTaskModalFlowView(
                     scheduledTask: task,
                     enrollment: enrollment,
                     studyService: studyService
@@ -159,6 +167,12 @@ struct StudyTaskDashboardView: View {
                 }
             }
 
+            #if DEBUG
+            StudyTaskDeveloperToolsSection(viewModel: developerToolsViewModel) {
+                await viewModel.refresh()
+            }
+            #endif
+
             Section("Future Tasks") {
                 if viewModel.isLoadingTasks {
                     HStack {
@@ -174,7 +188,7 @@ struct StudyTaskDashboardView: View {
                         FutureStudyTaskRow(
                             task: task,
                             canStart: viewModel.canStart(task),
-                            onStart: { selectedTask = task }
+                            onStart: { activeLoudnessTask = task }
                         )
                     }
                 }

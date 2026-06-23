@@ -201,6 +201,64 @@ struct SessionStoreTests {
     }
 
     @Test
+    func resendVerificationEmailUsesVisibleRouteEmailWhenPendingStoreMissing() async {
+        let auth = MockAuthService(currentSession: nil)
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(
+            authService: auth,
+            profileService: profile,
+            emailVerificationPendingStore: pending,
+            initialState: SessionStore.SessionState(
+                route: .awaitingEmailVerification(email: " pending@example.com "),
+                activity: .idle,
+                banner: nil,
+                passwordResetPresented: false
+            ),
+            hasStarted: true
+        )
+
+        await store.resendVerificationEmail()
+
+        #expect(auth.resentVerificationEmail == "pending@example.com")
+        #expect(auth.resentVerificationRedirectURL == URL(string: "tinnitrack://auth/confirm")!)
+        #expect(pending.pending?.email == "pending@example.com")
+        #expect(pending.pending?.lastResendAt != nil)
+        #expect(store.state.banner == .info("Verification email sent."))
+    }
+
+    @Test
+    func resendVerificationEmailPrefersVisibleRouteEmailOverStalePendingStore() async {
+        let auth = MockAuthService(currentSession: nil)
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(
+            pending: PendingEmailVerification(
+                email: "stale@example.com",
+                createdAt: Date(),
+                lastResendAt: nil
+            )
+        )
+        let store = SessionStore(
+            authService: auth,
+            profileService: profile,
+            emailVerificationPendingStore: pending,
+            initialState: SessionStore.SessionState(
+                route: .awaitingEmailVerification(email: "current@example.com"),
+                activity: .idle,
+                banner: nil,
+                passwordResetPresented: false
+            ),
+            hasStarted: true
+        )
+
+        await store.resendVerificationEmail()
+
+        #expect(auth.resentVerificationEmail == "current@example.com")
+        #expect(pending.pending?.email == "current@example.com")
+        #expect(pending.pending?.lastResendAt != nil)
+    }
+
+    @Test
     func refreshFailurePreservesExistingRouteAndShowsError() async {
         let userID = UUID()
         let profile = Profile(
@@ -483,6 +541,8 @@ private final class MockAuthService: AuthServiceProtocol {
     private(set) var updatedEmail: String?
     private(set) var updatedEmailRedirectURL: URL?
     private(set) var deleteCurrentUserCallCount = 0
+    private(set) var resentVerificationEmail: String?
+    private(set) var resentVerificationRedirectURL: URL?
 
     init(
         currentSession: AuthSession?,
@@ -549,7 +609,10 @@ private final class MockAuthService: AuthServiceProtocol {
         }
     }
 
-    func resendSignUpVerification(email: String, redirectURL: URL) async throws {}
+    func resendSignUpVerification(email: String, redirectURL: URL) async throws {
+        resentVerificationEmail = email
+        resentVerificationRedirectURL = redirectURL
+    }
 
     func requestPasswordReset(email: String, redirectURL: URL) async throws {}
 

@@ -21,7 +21,6 @@ enum StudyTaskKind: String, Equatable {
 }
 
 enum MeasurementUnit: String, Equatable {
-    case normalizedAmplitude
     case estimatedDBA
     case dBSPL
     case dBHL
@@ -94,35 +93,43 @@ enum StudyProtocolCatalog {
                     channel: "current output route"
                 ),
                 outputDeviceRequirement: OutputDeviceRequirement(
-                    allowedDevices: [CalibrationProfileCatalog.airPodsProPrototype],
-                    enforcement: "route-name gate"
+                    allowedDevices: [CalibrationProfileCatalog.airPodsPro2ResearchKitReference],
+                    enforcement: "Phase 2 calibrated route and maximum-volume guardrails required before calibrated playback"
                 ),
                 ambientRequirement: AmbientNoiseRequirement(
                     threshold: StudyNo1Configuration.ambientThresholdDB,
                     unit: .estimatedDBA,
-                    source: "AVAudioRecorder metering heuristic"
+                    source: "deferred to calibrated quiet-room gate"
                 ),
-                measurementUnit: .normalizedAmplitude,
+                measurementUnit: .dBHL,
                 researchKitModule: nil,
-                requiresCalibratedOutput: false,
-                notes: "Current implementation stores normalized playback level and traces only."
+                requiresCalibratedOutput: true,
+                notes: "Phase 4 protocol scaffold supports fixed 1 kHz loudness matching decisions, repeated trials, and raw event logging; participant calibrated playback remains safety-gated until preflight proof is available."
             )
         ],
-        calibrationProfile: CalibrationProfileCatalog.studyNo1Prototype,
+        calibrationProfile: CalibrationProfileCatalog.airPodsPro2ResearchKitCalibration,
         resultPayload: MeasurementPayloadMetadata(
-            schemaVersion: "study-no-1-lm-payload-v1",
+            schemaVersion: "study-no-1-lm-phase-4-protocol-gated",
             protocolVersion: "lm_v1",
             rawPayloadKeys: [
                 "task_key",
                 "task_version",
-                "matched_level",
-                "loudness_trace",
-                "ambient_trace",
+                "laterality",
+                "playback_channel",
+                "threshold_dbhl",
+                "matched_level_dbhl",
+                "matched_level_dbspl",
+                "matched_level_dbsl",
+                "confidence",
+                "protocol_events",
+                "trial_summaries",
+                "quality_flags",
+                "calibration_metadata",
                 "measurement_metadata"
             ],
-            resultUnits: [.normalizedAmplitude, .estimatedDBA],
-            validityNotice: "Prototype payload is not yet calibrated to dB HL, dB SL, or verified dB SPL."
+            resultUnits: [.dBHL, .dBSPL, .dBSL],
+            validityNotice: "Phase 4 protocol logic is implemented, but participant calibrated result collection remains disabled until route, volume, quiet-room, and restart safety preflight are production-ready."
         ),
-        notes: "Defines the current app protocol without claiming scientific validity."
+        notes: "Defines the calibrated Study A protocol scaffold over Phase 1 conversion, Phase 2 guardrails, and Phase 3 playback planning. Persistence and production collection remain deferred."
     )
 }

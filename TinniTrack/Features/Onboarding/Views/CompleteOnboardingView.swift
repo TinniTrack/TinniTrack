@@ -56,7 +56,9 @@ struct CompleteOnboardingView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     CompleteOnboardingView()
         .environmentObject(SessionStoreFactory.makePreviewStore(.authenticatedNeedsOnboarding))
 }
+#endif

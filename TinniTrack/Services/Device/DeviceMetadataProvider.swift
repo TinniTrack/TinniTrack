@@ -18,8 +18,7 @@ struct SystemDeviceMetadataProvider: DeviceMetadataProviding {
     func outputDeviceInfo(for route: AudioOutputRoute?) -> [String: JSONValue] {
         [
             "route_name": .string(route?.name ?? ""),
-            "route_port_type": .string(route?.portType ?? ""),
-            "route_gate": .string("study-no-1-route-name-gate")
+            "route_port_type": .string(route?.portType ?? "")
         ]
     }
 }
