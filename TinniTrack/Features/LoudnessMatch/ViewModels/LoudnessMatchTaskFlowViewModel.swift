@@ -28,6 +28,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published var safetyAcknowledged = false
     @Published private(set) var environmentGateResult: TinnitusEnvironmentSPLGateResult?
     @Published private(set) var environmentGateUpdate: TinnitusEnvironmentSPLGateUpdate?
+    @Published private(set) var hasPassedEnvironmentGate = false
     @Published private(set) var isRunningEnvironmentGate = false
     @Published private(set) var headphoneRouteAssessment: HeadphoneRouteAssessment = .notEvaluated
     @Published private(set) var isHeadphoneRouteMonitoring = false
@@ -158,6 +159,12 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             && !hasSubmitted
     }
 
+    var isEnvironmentQuietnessInterrupted: Bool {
+        hasPassedEnvironmentGate
+            && environmentGateResult?.passed != true
+            && isRunningEnvironmentGate
+    }
+
     var currentCandidateLevelDBHL: Double? {
         engine.currentCandidateLevelDBHL
     }
@@ -234,7 +241,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
         airPodsContinuityObservation = headphoneRouteProvider.observeRouteChanges { [weak self] in
             Task { @MainActor in
-                self?.evaluateAirPodsContinuity()
+                guard let self else {
+                    return
+                }
+                self.evaluateAirPodsContinuity(refreshRouteAndVolume: !self.isRunningEnvironmentGate)
             }
         }
     }
@@ -248,12 +258,14 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
     }
 
-    func evaluateAirPodsContinuity() {
+    func evaluateAirPodsContinuity(refreshRouteAndVolume: Bool = true) {
         guard let headphoneRouteProvider else {
             return
         }
 
-        headphoneRouteProvider.refreshRouteAndVolume()
+        if refreshRouteAndVolume {
+            headphoneRouteProvider.refreshRouteAndVolume()
+        }
         let assessment = headphoneRouteAssessor.assess(
             outputs: headphoneRouteProvider.currentRouteOutputs(),
             outputVolume: headphoneRouteProvider.currentOutputVolume()
@@ -262,12 +274,13 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
         if assessment.passesAirPodsPro2Heuristic {
             isAirPodsRouteInterrupted = false
-            refreshGuardrails()
+            if refreshRouteAndVolume {
+                refreshGuardrails()
+            }
             return
         }
 
         isAirPodsRouteInterrupted = true
-        cancelEnvironmentGate()
         stopVolumeGateMonitoring()
         if isPlaying {
             stopTone()
@@ -359,6 +372,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         do {
             let result = try await environmentMeter.runGate(configuration: .studyA)
             environmentGateResult = result
+            hasPassedEnvironmentGate = result.passed
             environmentGateUpdate = TinnitusEnvironmentSPLGateEvaluator().update(
                 samplesDBA: result.samplesDBA,
                 configuration: result.configuration
@@ -393,14 +407,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                         return
                     }
 
-                    self.environmentGateUpdate = update
-                    if let result = update.result {
-                        self.environmentGateResult = result
-                        self.isRunningEnvironmentGate = false
-                        self.environmentGateTask = nil
-                        self.message = nil
-                        return
-                    }
+                    self.applyContinuousEnvironmentGateUpdate(update)
                 }
 
                 guard let self else {
@@ -415,6 +422,26 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 self.isRunningEnvironmentGate = false
                 self.environmentGateTask = nil
                 self.message = .environmentGateUnavailable(error.localizedDescription)
+            }
+        }
+    }
+
+    private func applyContinuousEnvironmentGateUpdate(_ update: TinnitusEnvironmentSPLGateUpdate) {
+        environmentGateUpdate = update
+
+        if let result = update.result {
+            environmentGateResult = result
+            if result.passed {
+                hasPassedEnvironmentGate = true
+            }
+            message = nil
+            return
+        }
+
+        if hasPassedEnvironmentGate {
+            environmentGateResult = nil
+            if isPlaying {
+                stopTone()
             }
         }
     }

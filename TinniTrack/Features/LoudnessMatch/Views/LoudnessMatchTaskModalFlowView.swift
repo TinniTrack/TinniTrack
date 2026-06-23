@@ -61,7 +61,11 @@ struct LoudnessMatchTaskModalFlowView: View {
             topControls
 
             if shouldShowAirPodsInterruptionOverlay {
-                airPodsInterruptionOverlay
+                airPodsInterruptionPopup
+                    .transition(.opacity)
+                    .zIndex(2)
+            } else if shouldShowQuietRoomInterruptionPopup {
+                quietRoomInterruptionPopup
                     .transition(.opacity)
                     .zIndex(2)
             }
@@ -143,45 +147,78 @@ struct LoudnessMatchTaskModalFlowView: View {
         viewModel.isAirPodsRouteInterrupted && step != .intro && step != .correctEar
     }
 
-    private var airPodsInterruptionOverlay: some View {
+    private var shouldShowQuietRoomInterruptionPopup: Bool {
+        viewModel.isEnvironmentQuietnessInterrupted
+            && step != .intro
+            && step != .correctEar
+            && step != .quietRoom
+    }
+
+    private var airPodsInterruptionPopup: some View {
+        interruptionPopup(
+            systemName: "airpodspro",
+            title: "Reconnect Your AirPods",
+            bodyText: "Please put both AirPods in your ears and reconnect to continue the task. The task will automatically resume once your AirPods are connected and in both ears.",
+            accessibilityIdentifier: "loudness_airpods_interruption_popup"
+        )
+    }
+
+    private var quietRoomInterruptionPopup: some View {
+        interruptionPopup(
+            systemName: "ear.badge.waveform",
+            title: "Find a Quiet Place",
+            bodyText: "The room is too loud for this task. The task will automatically resume once the room is quiet enough.",
+            accessibilityIdentifier: "loudness_quiet_room_interruption_popup"
+        )
+    }
+
+    private func interruptionPopup(
+        systemName: String,
+        title: String,
+        bodyText: String,
+        accessibilityIdentifier: String
+    ) -> some View {
         ZStack {
-            LoudnessMatchModalColors.background
+            Color.black.opacity(0.32)
                 .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 28) {
-                Spacer(minLength: 0)
-
-                Image(systemName: "airpodspro")
-                    .font(.system(size: 96, weight: .regular))
+            VStack(alignment: .leading, spacing: 18) {
+                Image(systemName: systemName)
+                    .font(.system(size: 58, weight: .regular))
                     .foregroundStyle(LoudnessMatchModalColors.primary)
                     .frame(maxWidth: .infinity)
                     .accessibilityHidden(true)
 
-                LoudnessMatchModalTitleBlock(
-                    title: "Reconnect Your AirPods",
-                    bodyText: "Please put both AirPods in your ears and reconnect to continue the task."
-                )
+                Text(title)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundStyle(LoudnessMatchModalColors.text)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .multilineTextAlignment(.center)
 
-                Text("The task will resume automatically when your AirPods Pro 2 playback route is detected again.")
+                Text(bodyText)
                     .font(.callout)
                     .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(5)
                     .minimumScaleFactor(0.82)
-
-                Spacer(minLength: 0)
 
                 LoudnessMatchModalPrimaryButton(
                     title: "Exit Task",
                     isEnabled: true
                 ) {
-                    requestClose()
+                    exitTask()
                 }
             }
-            .padding(.horizontal, 34)
-            .padding(.top, 104)
-            .padding(.bottom, 30)
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(LoudnessMatchModalColors.background)
+                    .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 12)
+            )
+            .padding(.horizontal, 30)
         }
-        .accessibilityIdentifier("loudness_airpods_interruption_overlay")
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var primaryButtonTitle: String {
@@ -287,6 +324,11 @@ struct LoudnessMatchTaskModalFlowView: View {
             cleanupForDismiss(abortActiveTest: false)
             dismiss()
         }
+    }
+
+    private func exitTask() {
+        cleanupForDismiss(abortActiveTest: hasStartedTest)
+        dismiss()
     }
 
     private func handleStepEntered(_ newStep: LoudnessMatchModalStep) {

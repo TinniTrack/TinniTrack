@@ -182,12 +182,68 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
 
         viewModel.startContinuousEnvironmentGate()
-        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(try await waitUntil {
+            viewModel.isRunningEnvironmentGate == false
+                && viewModel.environmentGateResult?.passed == true
+        })
 
         #expect(viewModel.isRunningEnvironmentGate == false)
         #expect(viewModel.environmentGateUpdate?.status == .passed)
         #expect(viewModel.environmentGateResult?.passed == true)
         #expect(viewModel.environmentGateResult?.samplesDBA == [44, 46, 40, 41, 42, 43, 44])
+        #expect(viewModel.hasPassedEnvironmentGate)
+    }
+
+    @Test
+    func continuousEnvironmentGateKeepsRunningAfterPassingUpdate() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
+                samplesByUpdate: [[40, 41, 42, 43, 44]],
+                finishAfterUpdates: false
+            )
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil {
+            viewModel.isRunningEnvironmentGate
+                && viewModel.environmentGateResult?.passed == true
+        })
+
+        #expect(viewModel.isRunningEnvironmentGate)
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.hasPassedEnvironmentGate)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func continuousEnvironmentGateClearsCurrentPassWhenRoomGetsLoudAgain() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
+                samplesByUpdate: [
+                    [40, 41, 42, 43, 44],
+                    [40, 41, 42, 43, 44, 50]
+                ],
+                finishAfterUpdates: false
+            )
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .tooLoud
+                && viewModel.hasPassedEnvironmentGate
+        })
+
+        #expect(viewModel.hasPassedEnvironmentGate)
+        #expect(viewModel.environmentGateUpdate?.status == .tooLoud)
+        #expect(viewModel.environmentGateResult == nil)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted)
+        viewModel.cancelEnvironmentGate()
     }
 
     @Test
@@ -338,6 +394,59 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func airPodsDisconnectDoesNotStopContinuousEnvironmentGate() async throws {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(samplesByUpdate: [[34]], finishAfterUpdates: false)
+        )
+
+        viewModel.startAirPodsContinuityMonitoring()
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil { viewModel.isRunningEnvironmentGate })
+
+        routeProvider.outputs = []
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isAirPodsRouteInterrupted)
+        #expect(viewModel.isRunningEnvironmentGate)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func airPodsRouteChangeDuringQuietRoomGateDoesNotForcePlaybackRefreshLoop() async throws {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(samplesByUpdate: [[34]], finishAfterUpdates: false)
+        )
+
+        viewModel.startAirPodsContinuityMonitoring()
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil { viewModel.isRunningEnvironmentGate })
+        let refreshCountBeforeRouteChange = routeProvider.refreshCallCount
+
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isRunningEnvironmentGate)
+        #expect(viewModel.isAirPodsRouteInterrupted == false)
+        #expect(routeProvider.refreshCallCount == refreshCountBeforeRouteChange)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
     func airPodsDisconnectDuringToneStopsPlaybackWithoutRestartingProtocol() async {
         let player = MockCalibratedTonePlayer()
         let routeProvider = MockAudioSessionRouteVolumeProvider(
@@ -455,6 +564,20 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.safetyAcknowledged = true
         viewModel.refreshGuardrails()
         await viewModel.runEnvironmentGate()
+    }
+
+    private func waitUntil(
+        timeoutNanoseconds: UInt64 = 1_000_000_000,
+        condition: @escaping () -> Bool
+    ) async throws -> Bool {
+        let start = DispatchTime.now().uptimeNanoseconds
+        while !condition() {
+            if DispatchTime.now().uptimeNanoseconds - start >= timeoutNanoseconds {
+                return false
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        return true
     }
 
     private func completeMeasuredThreshold(
