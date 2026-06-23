@@ -43,7 +43,10 @@ enum SupabaseConfiguration {
 
         return SupabaseClient(
             supabaseURL: resolved.environment.url,
-            supabaseKey: resolved.anonKey
+            supabaseKey: resolved.anonKey,
+            options: SupabaseClientOptions(
+                auth: .init(emitLocalSessionAsInitialSession: true)
+            )
         )
     }
 
