@@ -1,21 +1,291 @@
-# Tinnitus Research and Tracking App
+# TinniTrack
 
-## 1. Project Overview
-We are building an iOS research app for tinnitus loudness measurement using controlled headphone-based psychoacoustic tasks. The long-term goal is to support pitch-matching and loudness-matching workflows that produce scientifically interpretable, repeatable data.
+TinniTrack is an iOS research app for tinnitus study workflows. The current app supports participant authentication, profile onboarding, study enrollment, HealthKit audiogram import, Study No. 1 task scheduling, AirPods/quiet-room preflight checks, and a fixed 1 kHz tinnitus loudness-match task.
 
-**Current implementation status:**
-The app is an iOS research-app prototype for tinnitus study workflows. It currently supports account onboarding, study enrollment state, HealthKit audiogram import, scheduled Study No. 1 tasks, headphone/ambient gates, and a 1 kHz loudness-match prototype. The current loudness-match implementation is **not scientifically valid end-to-end yet**; it records normalized playback level and protocol/device/gating metadata so future calibrated work can map results to validated dB SPL, dB HL, or dB SL units.
+The long-term goal is to produce repeatable tinnitus measurements that can be interpreted scientifically across time and participants. The current implementation stores model-calibrated estimates and rich audit metadata, but it must not be described as exact patient-specific in-ear SPL or as clinically diagnostic. Public iOS APIs cannot prove exact AirPods Pro 2 identity, exact firmware/acoustic state, ear-tip seal, or actual in-ear SPL at runtime.
 
-**Data collection:**
-*   Baseline hearing thresholds (via HealthKit Audiograms).
-*   Longitudinal Tinnitus Loudness-Match (LM) measurements.
-*   Future Pitch-Match (PM) measurements for protocols that estimate tinnitus pitch before loudness matching.
+## Current App
+
+The app is a SwiftUI iOS research prototype targeting iOS 18.1+. It uses Supabase for Auth/Postgres/RPCs, HealthKit for audiogram import, AVFoundation for audio route, microphone, and playback work, and a vendored ResearchKit project as a reference and future task-presentation boundary.
+
+Current participant flow:
+
+1. Sign up or log in with Supabase Auth.
+2. Verify email when required by the Supabase project.
+3. Complete profile onboarding with first name, last name, and date of birth if those fields were not completed during signup.
+4. View recruiting studies on the dashboard.
+5. Enroll in Study No. 1.
+6. Complete Study No. 1 orientation:
+   - take or locate an Apple Hearing Test,
+   - authorize HealthKit audiogram access,
+   - import at least one audiogram,
+   - finish orientation so Supabase generates the task schedule.
+7. Complete scheduled loudness-match tasks during their active time windows.
+
+Study No. 1 is the only active study currently seeded by migrations. It schedules four `lm_1khz_v1` tasks per day for seven days at local hours 9, 13, 17, and 21, each with a 60-minute active window.
+
+## Source Layout
+
+The project intentionally uses a feature-first structure:
+
+- `TinniTrack/Features/`: product flows, SwiftUI screens, and flow view models.
+- `TinniTrack/Domain/`: pure domain models, calibration math, task protocols, and payload builders.
+- `TinniTrack/Services/`: external-system boundaries for Supabase, HealthKit, ResearchKit, AVFoundation audio/device services, and developer tooling.
+- `TinniTrack/Shared/`: app shell, session routing, and shared infrastructure.
+
+Dependency direction:
+
+- Features depend on domain types and service protocols.
+- Services implement external integrations.
+- Domain stays independent of Features and UI.
+- Feature UI should not import ResearchKit directly.
+
+## ResearchKit Boundary
+
+ResearchKit is vendored under `Frameworks/ResearchKit` and linked through the app project. It is valuable because it contains hearing-study surfaces and AirPods Pro 2 calibration reference data, but it is not the default dependency for feature UI.
+
+Use `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift` when the app needs ResearchKit task presentation or result handling. The adapter currently wraps:
+
+- `ORKInstructionStep`,
+- `ORKToneAudiometryStep`,
+- `ORKdBHLToneAudiometryStep`,
+- `ORKEnvironmentSPLMeterStep`,
+- `ORKSpeechInNoiseStep`.
+
+The current Study No. 1 loudness-match task is custom SwiftUI and domain-driven. ResearchKit informed the design, especially its dB HL audiometry and environment SPL task behavior, but feature code should remain SwiftUI-native unless a future task deliberately opts into the adapter.
+
+Do not depend directly on `ORKdBHLToneAudiometryAudioGenerator` from app code. In the inspected ResearchKit source it is a private ResearchKitActiveTask implementation detail. TinniTrack instead owns its calibration and playback services in `TinniTrack/Domain/Calibration` and `TinniTrack/Services/Audio`.
+
+## Study No. 1
+
+Study No. 1 is a fixed-frequency loudness-match workflow. It deliberately avoids pitch matching for now so the app can collect a simpler standardized measure at 1,000 Hz.
+
+Current task flow:
+
+1. Intro modal.
+2. AirPods correct-ear route step.
+3. Continuous quiet-room gate.
+4. AirPods fit/seal participant confirmation.
+5. Maximum-volume and calibrated route guardrail step.
+6. Active tinnitus task:
+   - select tinnitus laterality,
+   - collect a 1 kHz threshold with a staircase,
+   - complete three loudness-match trials,
+   - record confidence after each trial,
+   - submit the completed run.
+
+For unilateral tinnitus, playback uses the affected ear. For bilateral, central, or unclear tinnitus, the current Study A rule uses the left channel and records an ambiguous-laterality quality flag.
+
+The active protocol lives in `TinnitusProtocolEngine`. The SwiftUI modal and `LoudnessMatchTaskFlowViewModel` coordinate user flow, playback, guardrails, environment monitoring, and Supabase submission without reimplementing the domain state machine.
+
+## Loudness-Match Domain Logic
+
+Study A uses `TinnitusProtocolConfiguration.studyAFixedOneKilohertz`:
+
+- stimulus: pure tone,
+- frequency: 1,000 Hz,
+- required trials: 3,
+- tone duration: 1.0 second,
+- ramp duration: 0.2 seconds,
+- minimum/maximum levels: -10 to 100 dB HL,
+- initial loudness trial level: measured threshold + 5 dB SL,
+- high within-session spread flag: spread greater than 10 dB.
+
+Threshold collection uses `TinnitusThresholdStaircase`:
+
+- start at 30 dB HL,
+- step down 10 dB after `heard`,
+- step up 5 dB after `not heard`,
+- stop after two ascending hits at the same level,
+- clamp to -10...100 dB HL.
+
+Loudness adjustment uses four buttons:
+
+- `muchSofter`: -5 dB,
+- `softer`: -1 dB,
+- `louder`: +1 dB,
+- `muchLouder`: +5 dB.
+
+Each trial stores accepted dB HL, estimated dB SPL, dB SL, confidence, and timestamp. The summary stores median dB HL, median estimated dB SPL, median dB SL, within-session spread, and quality flags.
+
+## Calibration Model
+
+TinniTrack uses an app-owned AirPods Pro 2 calibration profile derived from ResearchKit reference tables:
+
+- `frequency_dBSPL_AIRPODSPROV2.plist`,
+- `retspl_AIRPODSPROV2.plist`,
+- `volume_curve_AIRPODSPROV2.plist`,
+- `retspl_dBFS_AIRPODSPROV2.plist` as recorded reference data.
+
+The active conversion path is in `CalibratedAudioConverter`:
+
+```text
+target_dBSPL = RETSPL(frequency, headphone) + requested_dBHL
+
+estimated_full_scale_dBSPL =
+    frequencySensitivity_dBSPL(frequency, headphone)
+    + volumeCurveOffset_dB(iOSOutputVolume, headphone)
+    + dBFSCalibrationOffset
+
+attenuation_dB = target_dBSPL - estimated_full_scale_dBSPL
+linearAmplitude = 10 ^ (attenuation_dB / 20)
+```
+
+The current AirPods Pro 2 profile supports 125, 250, 500, 750, 1000, 1500, 2000, 3000, 4000, 6000, and 8000 Hz. Study No. 1 uses only 1000 Hz.
+
+Important 1000 Hz example:
+
+- RETSPL at 1000 Hz: 9.27 dB SPL,
+- frequency sensitivity at 1000 Hz: 83.67 dB SPL,
+- volume offset at maximum iOS volume: 0 dB,
+- dBFS calibration offset: +30 dB.
+
+For a 30 dB HL request at max volume:
+
+```text
+target_dBSPL = 9.27 + 30 = 39.27 dB SPL
+estimated_full_scale_dBSPL = 83.67 + 0 + 30 = 113.67 dB SPL
+attenuation = 39.27 - 113.67 = -74.40 dB
+linearAmplitude ~= 0.0001905
+```
+
+`CalibratedTonePlaybackPlanner` validates guardrails before producing a playback plan. `CalibratedToneAudioPlayer` then renders a stereo 44.1 kHz Float32 sine wave through `AVAudioEngine` and `AVAudioSourceNode`, writes samples only to the selected channel, fixes the mixer output at 1.0, and applies ramp-in/ramp-out to avoid clicks.
+
+## Measurement Limits
+
+The app can know exactly what PCM values it renders and can estimate model-calibrated output for AirPods Pro 2 under controlled conditions. It cannot know exact patient-specific in-ear SPL without additional hardware or private Apple APIs.
+
+Known confounders include:
+
+- AirPods unit variation and firmware,
+- iPhone model and OS,
+- Bluetooth route/profile behavior,
+- system output volume,
+- Headphone Accommodations, Media Assist, EQ, Sound Check, Reduce Loud Audio, and other output modifiers,
+- ANC/transparency/adaptive settings,
+- ear-tip seal and insertion depth,
+- ear canal acoustics,
+- environmental noise,
+- dirty or obstructed microphones/speakers.
+
+The payload explicitly records this limitation: output is estimated from ResearchKit AirPods Pro 2 tables, route, and system output volume, and is not exact patient-specific in-ear SPL.
+
+## AirPods Runtime Verification
+
+Public iOS APIs do not expose a signed AirPods identity, generation, serial number, firmware version, model number, Bluetooth MAC address, or Apple Hearing Test fit/noise state.
+
+Current runtime verification therefore uses two layers:
+
+- `HeadphoneRouteAssessor` checks the live AVAudioSession route and classifies it.
+- `CalibratedAudioGuardrailPolicy` requires a single `.bluetoothA2DP` output, an AirPods Pro 2-looking route name resolved to `AIRPODSPROV2`, and maximum system volume.
+
+The route-name check is a heuristic. It helps block obviously wrong outputs, but it cannot prove AirPods Pro 2 because users can rename devices and public APIs do not expose model identity.
+
+The current guardrails require:
+
+- exactly one active output route,
+- Bluetooth A2DP rather than speaker, receiver, wired, AirPlay, car audio, Bluetooth HFP, or Bluetooth LE,
+- route resolver verification for the AirPods Pro 2 calibration identifier,
+- `AVAudioSession.outputVolume == 1.0` within `0.0001`,
+- restart or interruption handling when route or volume changes after validation.
+
+The app records route output count, port type, port name, UID, channel names, output volume, verification source, and calibration identifier when available. UID may be useful for audit/correlation but is not stable model proof.
+
+Future supervised workflows should add explicit participant or researcher model confirmation using Apple Settings > Bluetooth > AirPods > Info. AirPods Pro 2 model numbers include A2931, A2699, A2698, A3047, A3048, and A3049.
+
+## Quiet-Room Gate
+
+Study No. 1 uses `TinnitusEnvironmentSPLGateConfiguration.studyA`:
+
+- threshold: 45 dBA,
+- required contiguous passing samples: 5,
+- sampling interval: 1 second,
+- one-shot max sample count: 12.
+
+The modal task uses continuous monitoring via `EnvironmentSPLGateMonitoring`. The current concrete service, `AVAudioEnvironmentSPLMeter`, uses `AVAudioRecorder` metering, requests microphone permission, temporarily configures the audio session for `playAndRecord` + `measurement`, adds a sensitivity offset, emits updates until pass or cancellation, and restores the previous audio session afterward.
+
+Status behavior:
+
+- `In Progress...`: measuring and not yet passed,
+- `Too much noise`: latest sample is at or above threshold and the gate continues sampling,
+- `Noise Ok`: enough contiguous samples were below threshold and the Next button is enabled.
+
+ResearchKit's `ORKEnvironmentSPLMeterStep` uses an A-weighted AVAudioEngine path and is the reference for a future higher-fidelity implementation. The current app-owned meter should be validated against reference equipment before being treated as a calibrated environmental SPL instrument.
+
+## Payload And Submission
+
+Completed Study No. 1 runs are built with `Phase6LoudnessMatchPayloadBuilder` and submitted through `Phase6LoudnessMatchSubmissionExporter`.
+
+The payload version is `phase-6-study-a-v1` and validates that a completed Study A run has:
+
+- enrollment and scheduled-task identifiers,
+- device and audio-session context,
+- AirPods/calibration metadata,
+- audio route outputs,
+- maximum-volume metadata and volume-curve bucket,
+- passed environment samples,
+- participant fit/seal confirmation,
+- safety acknowledgement and visible stop control,
+- fixed 1000 Hz pure-tone stimulus,
+- measured 1000 Hz threshold,
+- three loudness-match trials,
+- finite estimated dB SPL and dB SL values,
+- protocol events, playback events, refusals, lifecycle timestamps, and limitations.
+
+The exported Supabase `LoudnessMatchSubmission` stores:
+
+- `matched_level`: median matched dB HL,
+- `gating`: environment, fit/seal, safety, and volume context,
+- `raw_payload`: full Phase 6 payload plus `matched_level`,
+- `device_info`,
+- `headphone_info`,
+- app version,
+- calibration asset version.
+
+Submission calls the `submit_study_no_1_loudness_match` RPC. The RPC verifies the task belongs to the authenticated enrolled user, verifies the task is still scheduled and inside its active window, inserts a `task_runs` row, and marks the scheduled task completed.
+
+## Supabase Backend
+
+Supabase is the backend for authentication, study state, schedule state, audiogram records, and task runs. Schema changes must be append-only SQL migrations under `supabase/migrations/`; do not rewrite migrations that may already have been applied remotely.
+
+Current core tables:
+
+- `auth.users`: Supabase-managed user accounts.
+- `public.profiles`: app profile metadata, participant id, optional timezone, onboarding completion.
+- `public.studies`: recruiting study definitions.
+- `public.study_enrollments`: user-study enrollment state and Study No. 1 onboarding completion.
+- `public.consents`: consent records and signed PDF storage paths. The current UI still uses a simple enrollment action rather than a production ResearchKit consent flow.
+- `public.audiograms`: HealthKit-imported audiogram records, HealthKit sample UUID, source, optional headphone/device name, and JSON frequency data.
+- `public.scheduled_tasks`: generated task schedule with task key/version, windows, status, day index, and slot index.
+- `public.task_runs`: completed/aborted/failed task execution data and raw payloads.
+- `public.developer_accounts`: allow-list for developer-only reset/replay RPCs in non-production projects.
+
+Current RLS and access model:
+
+- `studies`: authenticated users can read recruiting studies.
+- `profiles`: users can select, insert, and update only their own profile row.
+- `audiograms`: users can select, insert, and update only their own rows.
+- `study_enrollments`: users can select, insert, and update only their own enrollments.
+- `scheduled_tasks`: users can select, insert, and update tasks through their own enrollment.
+- `task_runs`: users can select, insert, and update only their own runs.
+- `developer_accounts`: table access is revoked from public, anon, and authenticated roles; RPCs call a security-definer assertion function.
+
+Current RPCs:
+
+- `complete_study_no_1_onboarding(enrollment_id, timezone)`: verifies an active Study No. 1 enrollment for the authenticated user, stamps onboarding completion, and generates 7 days of task slots.
+- `submit_study_no_1_loudness_match(...)`: verifies task ownership/window/status, inserts `task_runs`, and completes the scheduled task.
+- `dev_reset_profile_onboarding()`: developer-only profile onboarding reset.
+- `dev_reset_study_no_1_orientation()`: developer-only orientation reset and scheduled-task deletion for the current user's Study No. 1 enrollment.
+- `dev_make_next_loudness_match_available_now()`: developer-only replay helper that moves the next scheduled task window to now.
+- `dev_reopen_last_completed_loudness_match()`: developer-only helper that deletes the current user's latest task run for a completed task and reopens that task.
+
+Do not put service-role keys, secrets, real participant data, screenshots with identifiers, or private seed data in the repository or app bundle. Client code must use only anon/publishable credentials.
 
 ## Local Setup
 
 This repo uses Apple ResearchKit as a git submodule at `Frameworks/ResearchKit`.
 
-For a fresh clone, include submodules:
+For a fresh clone:
 
 ```sh
 git clone --recurse-submodules <repo-url>
@@ -23,383 +293,75 @@ cd Tinnitus-Capstone
 git -C Frameworks/ResearchKit lfs pull --include='LFS-Files/**' --exclude=''
 ```
 
-If you already cloned the repo without submodules:
+If the repo was cloned without submodules:
 
 ```sh
 git submodule update --init --recursive
 git -C Frameworks/ResearchKit lfs pull --include='LFS-Files/**' --exclude=''
 ```
 
-Then drag `Frameworks/ResearchKit/ResearchKit.xcodeproj` into `TinniTrack.xcodeproj` in Xcode and embed `ResearchKit.framework`, `ResearchKitUI.framework`, and `ResearchKitActiveTask.framework` in the app target.
+Then ensure `Frameworks/ResearchKit/ResearchKit.xcodeproj` is present in `TinniTrack.xcodeproj` and that `ResearchKit.framework`, `ResearchKitUI.framework`, and `ResearchKitActiveTask.framework` are embedded in the app target.
 
-## 2. Why we’re building it
-*   **Objectivity:** Tinnitus is subjective; standardized calibration (dB SPL/dB HL and dB SL relative to participant threshold) can support inter-subject and longitudinal comparison.
-*   **Hardware Consistency:** AirPods Pro (2nd generation) have ResearchKit calibration tables that can support model-calibrated output estimates under controlled conditions.
-*   **Temporal Resolution:** Daily measurements could capture the volatile nature of tinnitus, revealing patterns missed in infrequent clinical visits.
+Open `TinniTrack.xcodeproj` in Xcode. Use schemes intentionally:
 
-## 3. V1 User Journey
+- `TinniTrack Local Dev`: simulator testing against local development settings.
+- `TinniTrack iPhone Dev`: physical-device testing against the separate development database.
+- `TinniTrack`: production physical-device testing.
 
-### A. Authentication (Login / Sign Up)
-Upon downloading the app, the user is prompted to either **Log In** or **Sign Up**.
+Run only one iOS Simulator at a time.
 
-*   **Log In:** If the user already has an account, they authenticate and proceed into the app.
-*   **Sign Up:** If the user is new, they create an account using email/password. During signup, we collect:
-    *   First name
-    *   Last name
-    *   Date of birth
-
-After signup, the user proceeds to the home dashboard.
-
-### B. Home Dashboard (Studies List)
-The home screen shows a list of available recruiting studies.
-
-For each study, the user can see:
-*   Study title
-*   Brief description
-*   Current recruitment status (recruiting, recruiting paused, closed)
-
-The user can tap into a study to view its details.
-*   If the user is **not enrolled** in a study, selecting a study displays:
-    *   Study description
-    *   Inclusion criteria
-    *   Exclusion criteria
-*   The user can then choose to:
-    *   **Enroll** in the study, or
-    *   **Exit** (return to the studies list)
-
-### C. Enrollment & eConsent
-To participate in a study, the user must:
-
-1.  Review study details:
-    *   Study purpose
-    *   Inclusion / exclusion criteria
-    *   Time commitment
-    *   Data collected
-2.  Complete eConsent:
-    *   The user signs an electronic consent form.
-    *   The app stores the signed consent in the backend.
-3.  Enrollment confirmation:
-    *   Once consent is completed, the user becomes “enrolled” in the study.
-
-### D. Study No. 1: Audiogram Import (HealthKit) Prerequisite
-For Study No. 1, the first requirement is importing an **audiogram from HealthKit**.
-
-*   **Audiogram Check:** The app queries HealthKit for an existing valid audiogram.
-*   **If no audiogram is available:** the app prompts the user to complete a hearing test from the native Apple flow (via **Apple Settings** or the **Health app**, depending on iOS version/device).
-*   **Import:** Once available, the app imports the audiogram data and proceeds to enable the study tasks.
-
-### E. Study No. 1: Loudness-Match (LM) Tasks
-Users complete loudness-matching tasks at specific times of day.
-
-*   The Study Home Page shows:
-    *   A list of **future tasks**, sorted **soonest → latest**
-    *   A list of **completed tasks**
-*   A task is only available to start if the user is currently within the **active time window** for that task.
-*   **Schedule:** 4 tasks per day for 7 consecutive days.
-*   **Task execution:** Each task follows a structured validation and measurement flow:
-    1.  **Headphone gating (AirPods Pro 2 required):**
-        *   When the user taps **Start Task**, the app verifies the connected audio output device.
-        *   Only **AirPods Pro (2nd generation)** are permitted for Study No. 1.
-        *   If the correct headphones are **not connected**, the task cannot proceed.
-            *   The user is shown a blocking message instructing them to connect AirPods Pro (2nd generation).
-            *   The task remains locked until the correct headphones are detected.
-        *   If the correct headphones are connected, the app proceeds to environmental validation.
-    2.  **Volume, fit, and audio-state checks:**
-        *   The calibrated protocol should require a stable, known system output volume, preferably maximum volume.
-        *   The app records `AVAudioSession.outputVolume` and should abort, restart, or recalculate if volume changes during the task.
-        *   Participants should confirm AirPods fit/seal before testing; a study-specific fit check is future validation work.
-        *   The app should avoid audio modes or settings that alter generated tones, including voice processing, EQ, loudness normalization, compressors, and unintended mixing.
-    3.  **Quiet-room gating (environmental noise check):**
-        *   The user is prompted to confirm they are in a quiet environment.
-        *   The app measures ambient environmental noise using the device microphone.
-        *   A predefined environmental threshold (study-defined dBA; ResearchKit's dB HL audiometry task uses 45 dBA) determines acceptability and must be finalized during validation testing.
-        *   If environmental noise exceeds the threshold:
-            *   The task cannot begin.
-            *   The user is instructed to move to a quieter location.
-            *   Ambient noise is continuously monitored.
-        *   Once environmental noise falls below the threshold:
-            *   The task becomes available to start.
-    4.  **Continuous monitoring during task:**
-        *   Environmental noise continues to be monitored throughout the Loudness-Match task.
-        *   If ambient noise rises above the allowed threshold at any point:
-            *   A visible on-screen alert indicates that the environment is too loud.
-            *   Tone adjustment is temporarily paused or disabled.
-        *   When environmental noise returns below the threshold:
-            *   The alert automatically disappears.
-            *   The user may resume the task.
-    5.  **Loudness-matching procedure:**
-        *   The user adjusts the volume of a **1,000 Hz pure tone** until it matches their tinnitus loudness.
-        *   The current prototype records normalized amplitude, loudness trace, ambient trace, route/device metadata, and protocol metadata.
-        *   Validated dB SPL, dB HL, and/or dB SL values are deferred until calibration and device validation work is complete.
-        *   The user submits the match and receives a confirmation that the task has been completed.
-
-## 4. Scientific & Engineering Core
-*   **Calibration:** Planned calibrated output uses ResearchKit-style AirPods Pro 2 frequency sensitivity, RETSPL, and iOS volume-curve tables to estimate dB SPL and dB HL. dB SL requires a participant threshold at the same frequency and ear (`dB SL = matched dB HL - threshold dB HL`).
-*   **Hardware Gating:** Allow-list enforcement for AirPods Pro (2nd generation) prevents unsupported routes from being treated as calibrated data sources.
-*   **Measurement Metadata:** Study protocols, audio task definitions, calibration profile metadata, output device metadata, and task result payload metadata are modeled so future calibrated measurements can be reproduced and audited.
-*   **Boundary Cleanup:** Playback, route gating, ambient monitoring, device metadata, and result packaging are separated behind small interfaces to reduce direct singleton coupling in feature code.
-
-## 5. System Architecture
-
-### Frontend (iOS)
-*   **Deployment target:** iOS 18.1+
-*   **UI/UX:** SwiftUI
-*   **Frameworks:**
-    *   **HealthKit:** For audiogram retrieval.
-    *   **ResearchKit:** We use Apple ResearchKit frameworks via `ResearchKit.xcodeproj`.
-
-### ResearchKit Direction
-
-ResearchKit is integrated for continued hearing-study development, but feature views should not import ResearchKit directly as the default path. Use `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift` as the thin boundary for task presentation/result handling so ResearchKit choices remain isolated from feature UI.
-
-See `docs/adr/0001-researchkit-and-measurement-architecture.md` for the short architecture decision note covering ResearchKit use, measurement-readiness boundaries, and deferred scientific-validation work.
-
-Relevant ResearchKit surfaces for future work:
-
-*   **Consent / instruction steps:** `ORKInstructionStep` for consent and participant instruction flows.
-*   **Forms / surveys:** `ORKFormStep` and `ORKFormItem` for demographics, screening, EMA, and questionnaires.
-*   **Tone Audiometry:** `ORKToneAudiometryStep` or `ORKOrderedTask.toneAudiometryTask(...)` for non-HL tone threshold workflows.
-*   **dBHL Tone Audiometry:** `ORKdBHLToneAudiometryStep` is useful as a template and for future calibrated threshold work after validation. Do not rely on `ORKOrderedTask.dBHLToneAudiometryTask(...)` unchanged for Study No. 1 because the inspected predefined task is threshold-oriented and defaults to older AirPods identifiers rather than AirPods Pro 2.
-*   **SPL / environmental noise:** `ORKEnvironmentSPLMeterStep` is available for ResearchKit-backed environmental SPL checks.
-*   **Speech-in-Noise:** `ORKSpeechInNoiseStep` or `ORKOrderedTask.speechInNoiseTask(...)` is relevant for later hearing studies, not current Study No. 1 readiness.
-*   **Calibrated tone generation:** Treat `ORKdBHLToneAudiometryAudioGenerator` as a reference implementation, not a stable app dependency, because it is a private ResearchKitActiveTask header in the inspected ResearchKit source.
-
-### Backend
-*   **Supabase:** PostgreSQL + Auth.
-
-### Source Layout (iOS)
-
-We use a **feature-first** structure in a single app target for V1, with clear seams for future module extraction:
-
-*   `TinniTrack/Features/`
-    *   UI screens and flow state organized by product area.
-    *   Current areas: `Onboarding`, `Dashboard`, `LoudnessMatch`.
-*   `TinniTrack/Domain/`
-    *   Pure domain logic and models (no direct UI dependencies).
-    *   Includes audio engine protocols, calibration metadata, study/task definitions, and result payload builders.
-*   `TinniTrack/Services/`
-    *   Integration boundaries for external systems (`Supabase`, `HealthKit`, `ResearchKit`) and device/audio services.
-    *   Prefer protocol-based interfaces so features depend on abstractions.
-*   `TinniTrack/Shared/`
-    *   Cross-feature app infrastructure (app root, navigation shell, shared UI primitives).
-
-Dependency direction for maintainability:
-
-*   `Features` → depends on `Domain` and service protocols.
-*   `Services` implements protocol contracts used by `Features`.
-*   `Domain` should not depend on `Features`.
-
-The unused prototype/placeholders that were not referenced by the app target have been removed so the active code is easier to distinguish from future study work.
-
-## 6. Backend Responsibilities
-*   **Authentication:** Email/password login and account signup via Supabase Auth. Users authenticate by logging in to an existing account or signing up for a new account (collecting name and DOB during signup).
-*   **Row Level Security (RLS):** Policies ensuring users can only insert/read their own data, while researchers can read all anonymized data.
-
-### Database (Supabase Postgres)
-
-The backend database lives in **Supabase (PostgreSQL)**. We treat the database schema as *version-controlled infrastructure*:
-
-*   **All schema changes must be made via SQL migration files** (no “click ops” in the Supabase UI for anything that affects tables/columns/constraints). This keeps the schema reproducible across environments and makes review/rollback possible.
-*   Migrations should be **additive and explicit** (create/alter/drop with clear intent) and committed to the repo alongside the code that depends on them.
-*   Do **not** rewrite migrations that may have already been applied remotely; add a new migration for schema changes.
-*   Do **not** commit secrets, service-role keys, real participant data, or private seed data. Client code should only use anon/public credentials.
-
-#### Current Schema:
-
-Below is the initial data model and how each table fits into the picture.
-
-##### 1) `auth.users` (Supabase Auth)
-*   Supabase manages credentials and the canonical user id (`uuid`).
-*   All app-owned tables that are user-scoped reference `auth.users.id`.
-
-##### 2) `public.profiles`
-**Purpose:** Store participant metadata collected during signup.
-
-*   `id` (`uuid`): Primary key. Defaults to `auth.uid()` and is a foreign key to `auth.users(id)`.
-*   `participant_id` (`integer`, identity, unique): A stable, sequential participant identifier for research-facing workflows/exports.
-*   `first_name`, `last_name`, `date_of_birth`: Required demographic fields captured at signup.
-*   `timezone`: Optional (useful for scheduling task windows).
-*   `created_at`: Server timestamp.
-
-Relationship notes:
-*   `profiles.id` → `auth.users.id` with **ON DELETE CASCADE** (deleting an auth user cleans up the profile).
-
-##### 3) `public.studies`
-**Purpose:** Define research studies that appear in the Home Dashboard.
-
-*   `id` (`uuid`): Primary key.
-*   `slug` (`text`, unique): Stable identifier used by the client (deep links, routing, etc.).
-*   `title`, `description`: User-facing study content.
-*   `status` (`text`): Constrained to `recruiting`, `recruiting paused`, or `closed`.
-*   `created_at`: Server timestamp.
-
-##### 4) `public.study_enrollments`
-**Purpose:** Link a user to a study and track enrollment state.
-
-*   `id` (`uuid`): Primary key.
-*   `user_id` (`uuid`): FK → `auth.users(id)`.
-*   `study_id` (`uuid`): FK → `public.studies(id)`.
-*   `status` (`text`): One of `enrolled`, `withdrawn`, `completed`, `screen_failed`.
-*   `enrolled_at`, `created_at`: Timestamps (note: `enrolled_at` is the domain timestamp; `created_at` is record creation).
-
-Constraints:
-*   Unique `(user_id, study_id)` so a user has at most one enrollment record per study.
-
-##### 5) `public.consents`
-**Purpose:** Store eConsent signatures per user per study per consent version.
-
-*   `id` (`uuid`): Primary key.
-*   `user_id` (`uuid`): FK → `auth.users(id)` (defaults to `auth.uid()`).
-*   `study_id` (`uuid`): FK → `public.studies(id)`.
-*   `consent_version` (`text`): Version string (e.g., `v1`, `2026-02-01`).
-*   `consent_pdf_path` (`text`): Storage path for the signed PDF (Supabase Storage).
-*   `signed_at`: Timestamp.
-
-Constraints:
-*   Unique `(user_id, study_id, consent_version)` so a user can’t sign the same version twice.
-
-##### 6) `public.audiograms`
-**Purpose:** Persist baseline hearing threshold data (from HealthKit audiograms) needed for calibration and analysis.
-
-*   `id` (`uuid`): Primary key.
-*   `user_id` (`uuid`): FK → `auth.users(id)` (defaults to `auth.uid()`).
-*   `created_at`: Timestamp (record creation).
-*   `measured_at` (`timestamptz`): When the audiogram was measured.
-*   `source` (`text`): Where the audiogram came from (e.g., HealthKit / manual import).
-*   `headphone_name` (`text`): The output route/headphone used when relevant.
-*   `frequency_data` (`jsonb`): Frequency→threshold payload. We store this as JSONB because HealthKit audiograms can be sparse and device-dependent.
-
-##### 7) `public.scheduled_tasks`
-**Purpose:** Generate the *planned* schedule of tasks for a user’s study enrollment (what should happen, when).
-
-This table is intentionally minimal about “what the task does” — the task algorithms live in the client code, while the DB stores scheduling + lifecycle.
-
-*   `id` (`uuid`): Primary key.
-*   `enrollment_id` (`uuid`): FK → `public.study_enrollments(id)`.
-*   `task_key` (`text`): Minimal task identifier (e.g., `lm_1khz_v1`).
-*   `task_version` (`int`): Schema-level versioning for task definition changes.
-*   `scheduled_for`, `window_start`, `window_end`: The intended time and gating window.
-*   `status` (`text`): One of `scheduled`, `completed`, `missed`, `skipped`, `cancelled`.
-*   `day_index` (`int`): Deterministic ordering (0..6).
-*   `slot_index` (`int`): Deterministic ordering (0..3).
-*   `created_at`, `completed_at`: Timestamps.
-
-Constraints:
-*   Unique `(enrollment_id, day_index, slot_index)` to prevent duplicate slots.
-
-##### 8) `public.task_runs`
-**Purpose:** Store the *actual* execution data for a task (what happened) — this is the core research dataset.
-
-*   `id` (`uuid`): Primary key.
-*   `scheduled_task_id` (`uuid`): FK → `public.scheduled_tasks(id)`.
-*   `enrollment_id` (`uuid`): FK → `public.study_enrollments(id)`.
-*   `user_id` (`uuid`): FK → `auth.users(id)` (defaults to `auth.uid()`).
-*   `run_status` (`text`): One of `completed`, `aborted`, `failed`.
-*   `started_at`, `completed_at`, `submitted_at`: Timing metadata.
-*   `app_version`, `protocol_version`, `calibration_version`: Reproducibility fields for analysis.
-*   `device_info` (`jsonb`): Model / iOS version / etc.
-*   `headphone_info` (`jsonb`): Route name, model id, firmware if available.
-*   `gating` (`jsonb`): Persist outputs of gating logic (computed in app code).
-*   `raw_payload` (`jsonb`): The full task payload (trials, slider moves, responses, measurement metadata, validity notice, etc.).
-*   `created_at`: Server timestamp.
-
-Current Study No. 1 task run payloads include normalized `matched_level`, `loudness_trace`, `ambient_trace`, route/device metadata, gating outputs, protocol metadata, calibration-profile metadata, and an explicit validity notice. They do **not** yet include validated dB HL, dB SL, or calibrated dB SPL.
-
-#### Data Flow Summary
-*   **Sign up / login:** `auth.users` is created by Supabase Auth → we insert a matching `public.profiles` row.
-*   **Study discovery:** Client reads from `public.studies` (filtered by status).
-*   **Enrollment:** Client creates `public.study_enrollments` and then generates `public.scheduled_tasks` for the protocol.
-*   **Consent:** Client writes `public.consents` + stores the PDF in Supabase Storage.
-*   **Measurements:** Audiograms → `public.audiograms`; task executions → `public.task_runs` (linked back to `scheduled_tasks` and `study_enrollments`).
-
-#### Access Control (RLS Plan)
-RLS policies are required on all user-scoped tables (`profiles`, `consents`, `audiograms`, `study_enrollments`, `scheduled_tasks`, `task_runs`) so:
-
-*   Participants can only read/insert/update rows that belong to their own `auth.uid()`.
-*   Research/admin access is granted via Supabase roles/claims (e.g., service role for ETL/exports, or a dedicated “researcher” role) and should never be shipped to the client.
-
-(Policies are not defined in the initial schema migration yet, but this is the intended enforcement model.)
-
-## 7. Version Plan
-
-### Version 1 (MVP)
-*   User account creation and login (signup collects name and DOB)
-*   Home dashboard that lists available recruiting studies
-*   Users can view study description + inclusion/exclusion criteria
-*   Users can enroll in a study via eConsent
-*   Study No. 1 built and available for loudness matching
-*   For study No. 1:
-    *   Consent + permissions
-    *   Prompt Apple hearing test (if needed) and import audiogram via HealthKit
-    *   Headphone gating for AirPods Pro (2nd generation)
-    *   Stable volume, route-change, audio-state, and fit/seal guardrails
-    *   Quiet-room gating with stored environment samples
-    *   Single-frequency (1 kHz) threshold and LM flow
-    *   Repeated LM trials with median and within-session variability
-    *   4 tasks per day for 7 days
-    *   Daily local push notifications
-
-### V2 (Future Work)
-*   Home screen lists all available studies
-*   Users can enroll in multiple studies
-*   Study No. 2 built and available for LM and multi-frequency PM (Pitch Match) testing. Have the user both frequency match and loudness match their tinnitus.
-*   Add compatibility for AirPods Pro 3
-*   Login with biometric auth (faceid or fingerprint)
-*   EMA Questionnaires.
-*   Researcher dashboard to access participant data.
-*   In-app hearing test (bypassing Apple native test).
-*   Production ResearchKit consent/instruction flow.
-*   Model-aware headphone metadata collection and gating.
-*   App-owned calibrated tone service based on ResearchKit-style AirPods Pro 2 tables, with unit-tested dB HL/dB SPL/amplitude conversion.
-*   Acoustic calibration-validation plan before collecting study data that makes dB HL/dB SL claims.
-*   Export/analysis documentation for `task_runs.raw_payload`.
-
-## 8. Local Development
-
-Open `TinniTrack.xcodeproj` in Xcode, or build from the command line:
+Command-line build:
 
 ```sh
-xcodebuild -project TinniTrack.xcodeproj -scheme TinniTrack -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project TinniTrack.xcodeproj -scheme "TinniTrack Local Dev" -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
 ```
 
 Run unit tests:
 
 ```sh
-xcodebuild test -project TinniTrack.xcodeproj -scheme TinniTrack -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:TinniTrackTests CODE_SIGNING_ALLOWED=NO
+xcodebuild test -project TinniTrack.xcodeproj -scheme "TinniTrack Local Dev" -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -only-testing:TinniTrackTests CODE_SIGNING_ALLOWED=NO
 ```
 
----
+For physical-device development, do not point the app at `http://127.0.0.1:54321`; on a phone that address points to the phone itself. Use a hosted development Supabase project and set the Debug scheme environment variables:
 
-## Appendix: Scientific Background & Vocabulary
+- `SUPABASE_URL`,
+- `SUPABASE_ANON_KEY`,
+- `SUPABASE_ENVIRONMENT=Development`.
 
-### Decibels, Loudness, and Hearing Background
+## Future Plans
 
-**What sound is:**
-Sound is vibrating air creating pressure waves.
-*   **Frequency (Hz):** cycles per second → pitch
-*   **Amplitude:** size of pressure swings → loudness
-*   **Phase:** timing within the cycle
-*   **Pressure:** Measured in Pascals (Pa). Speech is a few mPa; threshold of hearing ≈ 20 µPa.
-*   **RMS amplitude:** The standard measure for loudness.
+High-priority validation and research-readiness work:
 
-**How do we measure loudness:**
-The ear reacts to sound logarithmically. Large physical changes in sound often feel like small changes in loudness. Decibels (dB) are a way to describe sound levels on this logarithmic scale. A dB value always compares a sound to a reference point.
+- Validate calibrated output on supported device/OS/AirPods firmware combinations before making research-grade dB HL, dB SPL, or dB SL claims.
+- Validate or replace the current AVAudioRecorder-based quiet-room meter with an A-weighted AVAudioEngine or ResearchKit-backed SPL implementation.
+- Add explicit participant/researcher AirPods Pro 2 model confirmation and store confirmation metadata separately from route-name heuristics.
+- Define controls for system audio modifiers such as Headphone Accommodations, Media Assist, Sound Check/EQ, Reduce Loud Audio, Personalized Volume, and noise-control modes.
+- Build a validated fit/seal workflow or a supervised study procedure for documenting fit checks.
+- Create export and analysis documentation for `task_runs.raw_payload`.
 
-### The Decibel Scales (Critical for Calibration)
-*   **dB SPL (Sound Pressure Level):** Absolute loudness relative to 20 µPa (physical pressure). Nearly all real‑world sound numbers use dB SPL.
-*   **dB HL (Hearing Level):** Normalized clinical scale where "0 dB HL" represents the average human hearing threshold for a specific frequency. Corrects for the ear's varying sensitivity across pitches (e.g., quiet tones at 250 Hz are harder to hear than at 1000 Hz).
-*   **dB SL (Sensation Level):** Relative loudness above the user's individual threshold. It expresses loudness relative to your personal ability to hear at a specific frequency.
-    *   *Example:* If a user hears a tone at 10 dB HL, and plays a sound at 40 dB HL, the sound is 30 dB SL.
+Product and study expansion:
 
-### RETSPL: The Glue Between SPL and HL
-**RETSPL = Reference Equivalent Threshold Sound Pressure Level.**
-It’s a table (per frequency) giving the SPL that corresponds to 0 dB HL for a specific transducer measured on a standard ear coupler.
-*   **Convert HL → SPL:** `SPL = HL + RETSPL(f, transducer)`
-*   **Convert SPL → HL:** `HL = SPL − RETSPL(f, transducer)`
+- Production eConsent using ResearchKit instruction/consent surfaces or another auditable consent flow.
+- EMA questionnaires for tinnitus context, mood, annoyance, sleep, medication, noise exposure, and daily events.
+- Pitch-match study workflow before loudness matching.
+- Multi-frequency and pitch-matched loudness workflows.
+- Speech-in-noise or other hearing-function studies.
+- Researcher dashboard and analysis exports.
+- Local notifications for upcoming task windows.
+- Biometric unlock for returning participants.
+- AirPods Pro 3 or other headphone calibration profiles after compatible reference tables and validation exist.
+- Optional SensorKit research entitlement spike for acoustic-settings confounders. SensorKit should not be assumed to prove AirPods model identity.
 
-Apple's ResearchKit framework provides RETSPL tables, AirPods Pro 2 sensitivity tables, and iOS volume-curve mappings that can support estimated dB HL/dB SPL output from a phone. Those estimates are not exact individual in-ear SPL and must be validated for the app, route, OS, firmware, and study protocol before being treated as research-grade measurements.
+## Vocabulary
 
-### Other Vocabulary
-*   **EMA:** Ecological Momentary Assessment — brief, in‑the‑moment self‑report questions (e.g., tinnitus loudness, annoyance, mood).
-*   **Hearing threshold:** (for a given frequency & ear) = the quietest level that a person detects reliably (e.g., 50% of trials).
-*   **Audiogram:** a plot of hearing threshold vs frequency for the left and right ear.
+- dB SPL: sound pressure level, an absolute physical pressure scale relative to 20 uPa.
+- dB HL: hearing level, a clinical scale normalized by frequency/transducer RETSPL values.
+- dB SL: sensation level, a level relative to an individual's hearing threshold at the same frequency and ear. `dB SL = matched dB HL - threshold dB HL`.
+- RETSPL: reference equivalent threshold sound pressure level. It maps 0 dB HL to dB SPL for a frequency and transducer.
+- Audiogram: hearing threshold by frequency and ear.
+- EMA: ecological momentary assessment, usually brief in-the-moment questionnaires.
+- A2DP: Bluetooth high-quality playback profile. The app rejects HFP for calibrated playback because HFP is the headset/call profile.
+
+## Historical Docs
+
+Older planning documents under `docs/` are useful for provenance and research notes, but this README is the current source of truth for app behavior and implementation decisions. If a planning document conflicts with current code or this README, update the README first and treat the older document as historical context.
