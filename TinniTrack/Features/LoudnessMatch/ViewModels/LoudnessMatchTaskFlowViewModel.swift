@@ -30,6 +30,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var isRunningEnvironmentGate = false
     @Published private(set) var headphoneRouteAssessment: HeadphoneRouteAssessment = .notEvaluated
     @Published private(set) var isHeadphoneRouteMonitoring = false
+    @Published private(set) var isAirPodsContinuityMonitoring = false
+    @Published private(set) var isAirPodsRouteInterrupted = false
     @Published private(set) var isVolumeGateMonitoring = false
     @Published private(set) var thresholdStaircase: TinnitusThresholdStaircase
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
@@ -54,6 +56,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let dateProvider: () -> Date
     private var environmentGateTask: Task<Void, Never>?
     private var headphoneRouteObservation: AudioSessionObservation?
+    private var airPodsContinuityObservation: AudioSessionObservation?
 
     init(
         engine: TinnitusProtocolEngine? = nil,
@@ -122,6 +125,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         allowsCalibratedPlayback
             && currentGuardrailValidation.state == .passed
             && preflightReady
+            && !isAirPodsRouteInterrupted
             && currentCandidateLevelDBHL != nil
     }
 
@@ -129,12 +133,14 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         allowsCalibratedPlayback
             && currentGuardrailValidation.state == .passed
             && preflightReady
+            && !isAirPodsRouteInterrupted
             && !thresholdStaircase.isComplete
     }
 
     var preflightReady: Bool {
         currentGuardrailValidation.state == .passed
             && headphoneRouteAssessment.passesAirPodsPro2Heuristic
+            && !isAirPodsRouteInterrupted
             && environmentGateResult?.passed == true
             && fitSealConfirmed
             && safetyAcknowledged
@@ -208,6 +214,58 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         headphoneRouteObservation?.invalidate()
         headphoneRouteObservation = nil
         isHeadphoneRouteMonitoring = false
+    }
+
+    func startAirPodsContinuityMonitoring() {
+        guard let headphoneRouteProvider else {
+            evaluateAirPodsContinuity()
+            return
+        }
+
+        stopAirPodsContinuityMonitoring(clearInterruption: false)
+        isAirPodsContinuityMonitoring = true
+        evaluateAirPodsContinuity()
+
+        airPodsContinuityObservation = headphoneRouteProvider.observeRouteChanges { [weak self] in
+            Task { @MainActor in
+                self?.evaluateAirPodsContinuity()
+            }
+        }
+    }
+
+    func stopAirPodsContinuityMonitoring(clearInterruption: Bool = true) {
+        airPodsContinuityObservation?.invalidate()
+        airPodsContinuityObservation = nil
+        isAirPodsContinuityMonitoring = false
+        if clearInterruption {
+            isAirPodsRouteInterrupted = false
+        }
+    }
+
+    func evaluateAirPodsContinuity() {
+        guard let headphoneRouteProvider else {
+            return
+        }
+
+        headphoneRouteProvider.refreshRouteAndVolume()
+        let assessment = headphoneRouteAssessor.assess(
+            outputs: headphoneRouteProvider.currentRouteOutputs(),
+            outputVolume: headphoneRouteProvider.currentOutputVolume()
+        )
+        headphoneRouteAssessment = assessment
+
+        if assessment.passesAirPodsPro2Heuristic {
+            isAirPodsRouteInterrupted = false
+            refreshGuardrails()
+            return
+        }
+
+        isAirPodsRouteInterrupted = true
+        cancelEnvironmentGate()
+        stopVolumeGateMonitoring()
+        if isPlaying {
+            stopTone()
+        }
     }
 
     @discardableResult
@@ -525,6 +583,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
     func abort() {
         cancelEnvironmentGate()
+        stopAirPodsContinuityMonitoring()
         stopVolumeGateMonitoring()
         if isPlaying {
             guardrailMonitor?.stopMonitoring()
@@ -645,6 +704,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                     return
                 }
 
+                if self.shouldPauseForRouteInterruption(validation) {
+                    self.evaluateAirPodsContinuity()
+                    return
+                }
+
                 if self.isPlaying {
                     self.stopTone()
                 }
@@ -652,6 +716,15 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 self.currentGuardrailValidation = validation
                 self.syncFromEngine()
             }
+        }
+    }
+
+    private func shouldPauseForRouteInterruption(_ validation: CalibratedAudioGuardrailValidation) -> Bool {
+        switch validation.error {
+        case .routeChanged, .unsupportedRoute, .unverifiedHeadphoneProfile, .unavailableAudioSessionData:
+            return true
+        case .invalidVolume, .volumeChanged, .missingCalibrationProfile, nil:
+            return false
         }
     }
 

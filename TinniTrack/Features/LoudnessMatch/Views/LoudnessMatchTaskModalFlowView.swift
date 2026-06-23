@@ -59,6 +59,12 @@ struct LoudnessMatchTaskModalFlowView: View {
             }
 
             topControls
+
+            if shouldShowAirPodsInterruptionOverlay {
+                airPodsInterruptionOverlay
+                    .transition(.opacity)
+                    .zIndex(2)
+            }
         }
         .foregroundStyle(LoudnessMatchModalColors.text)
         .interactiveDismissDisabled(true)
@@ -67,6 +73,11 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
         .onChange(of: step) { newStep in
             handleStepEntered(newStep)
+        }
+        .onChange(of: viewModel.isAirPodsRouteInterrupted) { isInterrupted in
+            if !isInterrupted {
+                resumeCurrentStepAfterAirPodsReconnect()
+            }
         }
         .onDisappear {
             cleanupForDismiss(abortActiveTest: false)
@@ -128,6 +139,51 @@ struct LoudnessMatchTaskModalFlowView: View {
         .padding(.top, 18)
     }
 
+    private var shouldShowAirPodsInterruptionOverlay: Bool {
+        viewModel.isAirPodsRouteInterrupted && step != .intro && step != .correctEar
+    }
+
+    private var airPodsInterruptionOverlay: some View {
+        ZStack {
+            LoudnessMatchModalColors.background
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 28) {
+                Spacer(minLength: 0)
+
+                Image(systemName: "airpodspro")
+                    .font(.system(size: 96, weight: .regular))
+                    .foregroundStyle(LoudnessMatchModalColors.primary)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
+
+                LoudnessMatchModalTitleBlock(
+                    title: "Reconnect Your AirPods",
+                    bodyText: "Please put both AirPods in your ears and reconnect to continue the task."
+                )
+
+                Text("The task will resume automatically when your AirPods Pro 2 playback route is detected again.")
+                    .font(.callout)
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.82)
+
+                Spacer(minLength: 0)
+
+                LoudnessMatchModalPrimaryButton(
+                    title: "Exit Task",
+                    isEnabled: true
+                ) {
+                    requestClose()
+                }
+            }
+            .padding(.horizontal, 34)
+            .padding(.top, 104)
+            .padding(.bottom, 30)
+        }
+        .accessibilityIdentifier("loudness_airpods_interruption_overlay")
+    }
+
     private var primaryButtonTitle: String {
         switch step {
         case .intro:
@@ -178,6 +234,7 @@ struct LoudnessMatchTaskModalFlowView: View {
                 return
             }
             viewModel.stopHeadphoneRouteMonitoring()
+            viewModel.startAirPodsContinuityMonitoring()
             step = .quietRoom
         case .quietRoom:
             guard viewModel.environmentGateResult?.passed == true else {
@@ -208,6 +265,7 @@ struct LoudnessMatchTaskModalFlowView: View {
             break
         case .quietRoom:
             viewModel.cancelEnvironmentGate()
+            viewModel.stopAirPodsContinuityMonitoring()
             step = .correctEar
         case .correctEar:
             viewModel.stopHeadphoneRouteMonitoring()
@@ -234,6 +292,7 @@ struct LoudnessMatchTaskModalFlowView: View {
     private func handleStepEntered(_ newStep: LoudnessMatchModalStep) {
         switch newStep {
         case .correctEar:
+            viewModel.stopAirPodsContinuityMonitoring()
             viewModel.stopVolumeGateMonitoring()
             viewModel.cancelEnvironmentGate()
             viewModel.startHeadphoneRouteMonitoring()
@@ -250,8 +309,22 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
     }
 
+    private func resumeCurrentStepAfterAirPodsReconnect() {
+        switch step {
+        case .quietRoom:
+            if viewModel.environmentGateResult?.passed != true {
+                viewModel.startContinuousEnvironmentGate()
+            }
+        case .maxVolume:
+            viewModel.startVolumeGateMonitoring()
+        default:
+            break
+        }
+    }
+
     private func cleanupForDismiss(abortActiveTest: Bool) {
         viewModel.stopHeadphoneRouteMonitoring()
+        viewModel.stopAirPodsContinuityMonitoring()
         viewModel.cancelEnvironmentGate()
         viewModel.stopVolumeGateMonitoring()
 

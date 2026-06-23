@@ -307,6 +307,69 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func airPodsContinuityMonitoringPausesOnDisconnectAndClearsOnReconnect() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.startAirPodsContinuityMonitoring()
+        #expect(viewModel.isAirPodsContinuityMonitoring)
+        #expect(viewModel.isAirPodsRouteInterrupted == false)
+
+        routeProvider.outputs = []
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+        #expect(viewModel.isAirPodsRouteInterrupted)
+        #expect(viewModel.headphoneRouteAssessment.primaryIssue == .noOutput)
+
+        routeProvider.outputs = [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+        #expect(viewModel.isAirPodsRouteInterrupted == false)
+
+        viewModel.stopAirPodsContinuityMonitoring()
+        #expect(viewModel.isAirPodsContinuityMonitoring == false)
+    }
+
+    @Test
+    func airPodsDisconnectDuringToneStopsPlaybackWithoutRestartingProtocol() async {
+        let player = MockCalibratedTonePlayer()
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.startAirPodsContinuityMonitoring()
+        await completePreflight(viewModel)
+        viewModel.selectLaterality(.left)
+        viewModel.playThresholdTone()
+        #expect(viewModel.isPlaying)
+
+        routeProvider.outputs = []
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isAirPodsRouteInterrupted)
+        #expect(viewModel.isPlaying == false)
+        #expect(player.stopCallCount == 1)
+        if case .restartRequired = viewModel.protocolState {
+            Issue.record("AirPods route interruption should pause instead of requiring protocol restart.")
+        }
+    }
+
+    @Test
     func completedStudyABuildsPhase6PayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
         let viewModel = await completedViewModel()
         let payload = try viewModel.makePhase6Payload(
@@ -555,7 +618,7 @@ private final class MockAudioSessionRouteVolumeProvider: AudioSessionRouteVolume
     var outputs: [AudioSessionRouteOutputSnapshot]
     var outputVolume: Double?
     private(set) var refreshCallCount = 0
-    private var routeHandler: (() -> Void)?
+    private var routeHandlers: [UUID: () -> Void] = [:]
     private(set) var routeObservation: MockAudioSessionObservation?
 
     init(outputs: [AudioSessionRouteOutputSnapshot], outputVolume: Double?) {
@@ -576,8 +639,11 @@ private final class MockAudioSessionRouteVolumeProvider: AudioSessionRouteVolume
     }
 
     func observeRouteChanges(_ handler: @escaping () -> Void) -> AudioSessionObservation {
-        routeHandler = handler
-        let observation = MockAudioSessionObservation()
+        let id = UUID()
+        routeHandlers[id] = handler
+        let observation = MockAudioSessionObservation { [weak self] in
+            self?.routeHandlers[id] = nil
+        }
         routeObservation = observation
         return observation
     }
@@ -587,18 +653,30 @@ private final class MockAudioSessionRouteVolumeProvider: AudioSessionRouteVolume
     }
 
     func triggerRouteChange() {
-        guard routeObservation?.isInvalidated != true else {
-            return
+        let currentHandlers = routeHandlers
+        for (id, handler) in currentHandlers {
+            guard routeHandlers[id] != nil else {
+                continue
+            }
+            handler()
         }
-        routeHandler?()
     }
 }
 
 private final class MockAudioSessionObservation: AudioSessionObservation {
+    private let onInvalidate: () -> Void
     private(set) var isInvalidated = false
 
+    init(onInvalidate: @escaping () -> Void = {}) {
+        self.onInvalidate = onInvalidate
+    }
+
     func invalidate() {
+        guard !isInvalidated else {
+            return
+        }
         isInvalidated = true
+        onInvalidate()
     }
 }
 
