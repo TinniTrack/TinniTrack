@@ -62,13 +62,28 @@ enum SupabaseConfiguration {
         }
     }
 
+    static func currentEnvironment(bundleInfo: [String: Any], processEnvironment: [String: String]) -> SupabaseEnvironmentDescriptor {
+        do {
+            return try resolve(bundleInfo: bundleInfo, processEnvironment: processEnvironment).environment
+        } catch {
+            return SupabaseEnvironmentDescriptor(
+                url: URL(string: "about:blank")!,
+                name: "Unconfigured",
+                isProduction: false
+            )
+        }
+    }
+
     private static func resolve(bundle: Bundle, processInfo: ProcessInfo) throws -> ResolvedConfiguration {
-        let env = processInfo.environment
-        let bundledURLString = bundle.object(forInfoDictionaryKey: "SUPABASE_URL") as? String
+        try resolve(bundleInfo: bundle.infoDictionary ?? [:], processEnvironment: processInfo.environment)
+    }
+
+    private static func resolve(bundleInfo: [String: Any], processEnvironment env: [String: String]) throws -> ResolvedConfiguration {
+        let bundledURLString = bundleInfo["SUPABASE_URL"] as? String
         let urlString = firstNonEmptyValue(env["SUPABASE_URL"], bundledURLString)
         let anonKey = firstNonEmptyValue(
             env["SUPABASE_ANON_KEY"],
-            bundle.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String
+            bundleInfo["SUPABASE_ANON_KEY"] as? String
         )
 
         guard !urlString.isEmpty else { throw SupabaseConfigurationError.missingURL }
@@ -77,7 +92,7 @@ enum SupabaseConfiguration {
 
         let explicitEnvironment = firstNonEmptyValue(
             env["SUPABASE_ENVIRONMENT"],
-            bundle.object(forInfoDictionaryKey: "SUPABASE_ENVIRONMENT") as? String
+            bundleInfo["SUPABASE_ENVIRONMENT"] as? String
         )
         let name = environmentName(explicitEnvironment, supabaseURL: supabaseURL, bundledURLString: bundledURLString)
         let isProduction = name.caseInsensitiveCompare("Production") == .orderedSame
