@@ -12,7 +12,7 @@ struct StudyTaskDashboardView: View {
     #endif
     @State private var isOrientationPresented = false
     @State private var orientationStep: StudyTaskOrientationStep = .hearingTest
-    @State private var selectedTask: ScheduledTask?
+    @State private var activeLoudnessTask: ScheduledTask?
 
     private let studyService: StudyServiceProtocol
 
@@ -54,8 +54,8 @@ struct StudyTaskDashboardView: View {
             .sheet(isPresented: $isOrientationPresented, onDismiss: handleOrientationDismissed) {
                 orientationSheet
             }
-            .navigationDestination(item: $selectedTask) { task in
-                LoudnessMatchTaskFlowView(
+            .fullScreenCover(item: $activeLoudnessTask) { task in
+                LoudnessMatchTaskModalFlowView(
                     scheduledTask: task,
                     enrollment: enrollment,
                     studyService: studyService
@@ -188,7 +188,7 @@ struct StudyTaskDashboardView: View {
                         FutureStudyTaskRow(
                             task: task,
                             canStart: viewModel.canStart(task),
-                            onStart: { selectedTask = task }
+                            onStart: { activeLoudnessTask = task }
                         )
                     }
                 }
