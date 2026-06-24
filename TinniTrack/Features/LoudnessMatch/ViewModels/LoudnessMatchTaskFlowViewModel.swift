@@ -40,6 +40,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
     @Published private(set) var message: FlowMessage?
     @Published private(set) var isPlaying = false
+    @Published private(set) var playbackPulseCycleDuration: TimeInterval = 2.0
     @Published private(set) var isSubmitting = false
     @Published private(set) var hasSubmitted = false
     @Published private(set) var completedSummary: TinnitusLoudnessMatchSummary?
@@ -540,6 +541,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             return
         }
 
+        playbackPulseCycleDuration = pulseCycleDuration(after: pulseDuration)
         isPlaying = true
         startPlaybackGuardrailMonitoring()
         scheduleNextTonePulse(after: pulseDuration)
@@ -597,6 +599,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                     self.finishPulsedPlaybackAfterFailure()
                     break
                 }
+                self.playbackPulseCycleDuration = self.pulseCycleDuration(after: playedPulseDuration)
                 nextPulseDuration = playedPulseDuration
             }
 
@@ -607,8 +610,12 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     private func pulseDelayNanoseconds(after pulseDuration: TimeInterval) -> UInt64 {
-        let delay = max(0.0, pulseDuration + playbackPulseGapDuration)
+        let delay = pulseCycleDuration(after: pulseDuration)
         return UInt64((delay * 1_000_000_000).rounded())
+    }
+
+    private func pulseCycleDuration(after pulseDuration: TimeInterval) -> TimeInterval {
+        max(0.0, pulseDuration + playbackPulseGapDuration)
     }
 
     private func finishPulsedPlaybackAfterFailure() {

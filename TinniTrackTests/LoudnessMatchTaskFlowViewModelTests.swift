@@ -41,6 +41,31 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func playbackPulseCycleDurationTracksAudioPulseCadence() async throws {
+        let pulseGapDuration = 0.42
+        let player = MockCalibratedTonePlayer()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            ),
+            playbackPulseGapDuration: pulseGapDuration
+        )
+
+        await completePreflight(viewModel)
+        await completeAudiogramThreshold(viewModel, laterality: .left)
+        viewModel.playTone()
+
+        let request = try #require(player.playedRequests.last)
+        #expect(viewModel.playbackPulseCycleDuration == request.duration + pulseGapDuration)
+
+        viewModel.stopTone()
+    }
+
+    @Test
     func pulsedPlaybackRepeatsLatestCandidateLevelUntilStopped() async throws {
         let player = MockCalibratedTonePlayer()
         let viewModel = LoudnessMatchTaskFlowViewModel(
