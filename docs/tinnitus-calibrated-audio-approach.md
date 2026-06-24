@@ -439,7 +439,7 @@ Before either study starts:
 
 For unilateral tinnitus, play to the affected ear. For bilateral or central tinnitus, define this in the protocol before data collection. The cleanest research design is to test left and right ears separately when possible, because it avoids ambiguity in channel-specific thresholds and dB SL calculations.
 
-### Study A: fixed 1000 Hz loudness matching
+### Study No. 1: fixed 1000 Hz loudness matching
 
 This study intentionally removes pitch matching to produce a simpler, standardized measure. The stimulus is always a 1000 Hz pure tone.
 
@@ -465,7 +465,7 @@ Recommended flow:
 3. Run pitch matching.
 4. Confirm matched pitch with one or more replay checks.
 5. Measure hearing threshold at the matched pitch.
-6. Run the same loudness-match UI used in Study A.
+6. Run the same loudness-match UI used in Study No. 1.
 7. Repeat loudness matching three times.
 8. Report median matched dB SL, estimated dB SPL, dB HL, pitch, and confidence.
 
@@ -775,7 +775,7 @@ participantId/studySessionId
 timestamp
 iPhone/iPad model
 iOS version
-AirPods model identifier if available
+AirPods model identifier if available 
 AirPods firmware if available
 ResearchKit commit/calibration asset version
 audio route port type/name/UID
@@ -822,4 +822,3 @@ The technically sound approach is:
 4. Report loudness both acoustically and clinically: estimated dB SPL, dB HL, and dB SL relative to the patient's threshold at the matched pitch.
 5. Treat "exact volume in the ear" as an estimate unless validated with external acoustic measurements or a public/private AirPods calibration API.
 6. Validate the entire pipeline before collecting study data.
-

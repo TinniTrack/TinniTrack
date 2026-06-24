@@ -4,11 +4,9 @@ TinniTrack is an iOS research app for tinnitus study workflows. The current app 
 
 The goal is to make repeated tinnitus measurements more structured and interpretable than informal self-report. The app is not a diagnostic device. Current loudness-match results are model-calibrated estimates derived from public iOS audio route data, ResearchKit AirPods Pro 2 calibration reference tables, system output volume, and app-owned playback logic. They are not exact patient-specific in-ear SPL values.
 
-This README is the source of truth for project behavior and technical decisions. The older planning documents under `docs/` remain useful historical context, but they describe a mix of research, proposed work, and earlier implementations. When this README says something is current, it has been cross-checked against the codebase. When something is not implemented yet, it is called out under future plans.
-
 ## Current State
 
-The app is a SwiftUI iOS research app targeting iOS 18.1+. It uses:
+This project is a SwiftUI iOS research app targeting iOS 18.1+. It uses:
 
 - SwiftUI for the product UI and task flows.
 - HealthKit for importing participant audiograms from Apple Hearing Test or other HealthKit audiogram sources.
@@ -43,9 +41,9 @@ The currently implemented participant path is:
 
 The current implementation stores estimated dB HL, estimated dB SPL, dB SL, route metadata, AirPods heuristic evidence, quiet-room samples, guardrail metadata, playback metadata, protocol events, quality flags, and explicit measurement limitations.
 
-## What The App Does Not Claim
+## App Limitations
 
-TinniTrack should not be described as measuring exact in-ear loudness. Public iOS APIs do not expose enough information to prove the exact acoustic output at the eardrum.
+TinniTrack is unable to measure exact in-ear loudness. Public iOS APIs do not expose enough information to prove the exact acoustic output at the eardrum. We are, however, able to make informed estimates. 
 
 Current limitations are intentional and are represented in code and payloads:
 
@@ -53,7 +51,6 @@ Current limitations are intentional and are represented in code and payloads:
 - AVAudioSession exposes route category data, route names, route UIDs, channels, and `outputVolume`, but not a verified acoustic device identity.
 - HealthKit audiograms provide participant hearing thresholds, but they do not make this app's own tone playback clinically validated.
 - Ambient noise sampling is app-owned and currently simpler than ResearchKit's A-weighted SPL meter implementation.
-- The calibration model uses ResearchKit reference tables and app-owned playback. It still needs acoustic validation on supported iPhone, iOS, and AirPods firmware combinations before research-grade claims.
 
 The code and payload wording use "estimated model-calibrated output" rather than "exact SPL."
 
@@ -76,8 +73,6 @@ The project uses a feature-first iOS structure:
   - Unit tests for calibration, guardrails, protocol state machines, payload builders, HealthKit import coordination, dashboard state, session state, and configuration.
 - `supabase/migrations/`
   - Append-only SQL migrations. Do not rewrite migrations that may already have been applied remotely.
-- `docs/`
-  - Historical research and implementation planning documents. Use them as context, but reconcile them against this README and current code before acting.
 
 ## Code Map
 
@@ -91,6 +86,8 @@ Important current implementation areas:
   - Supabase URL/key resolution from environment or bundle configuration, environment badge naming, and shared client creation.
 - `TinniTrack/Features/Dashboard/`
   - Study list, enrollment state, orientation sheet, task dashboard, scheduled task lists, and task entrypoints.
+- `TinniTrack/Services/Studies/SupabaseStudyService.swift`
+  - Study/enrollment/task fetches, orientation completion RPC, and loudness-match submission RPC.
 - `TinniTrack/Services/HealthKit/HealthKitManager.swift`
   - HealthKit audiogram authorization and sample parsing.
 - `TinniTrack/Services/Audiograms/`
@@ -105,8 +102,6 @@ Important current implementation areas:
   - AVAudioSession route/volume providers, AirPods route heuristic resolver, quiet-room SPL meter, guardrail monitor, and AVAudioEngine playback service.
 - `TinniTrack/Domain/TinnitusProtocol/StudyNo1LoudnessMatchPayload.swift`
   - Current loudness-match payload builder and validation rules.
-- `TinniTrack/Services/Studies/SupabaseStudyService.swift`
-  - Study/enrollment/task fetches, orientation completion RPC, and loudness-match submission RPC.
 - `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift`
   - The boundary for presenting ResearchKit tasks when needed.
 
@@ -425,7 +420,7 @@ The engine records events throughout the session: session start, laterality sele
 
 ## Calibrated Audio Engine
 
-The calibrated audio engine is app-owned. ResearchKit informed the design, but the current app does not call ResearchKit's internal generator for Study No. 1 playback.
+The calibrated audio engine is app-owned. ResearchKit informed the design, but the app does not call ResearchKit's internal generator for Study No. 1 playback.
 
 The relevant domain files are:
 
@@ -662,14 +657,6 @@ It cannot expose:
 CoreBluetooth, ExternalAccessory, AccessorySetupKit, HealthKit, and CMHeadphoneMotionManager do not solve exact AirPods Pro 2 identity verification for this app. CMHeadphoneMotion can be a supporting signal in future, but it is not model proof.
 
 ### Implemented Verification Levels
-
-The historical runtime-verification plan described five levels:
-
-- failed,
-- compatible Bluetooth playback route,
-- likely AirPods Pro route,
-- participant confirmed AirPods Pro 2,
-- researcher confirmed AirPods Pro 2.
 
 The current code implements:
 
@@ -1047,17 +1034,6 @@ Typical Xcode test execution should use the local-dev scheme. For documentation-
 
 ## Future Plans
 
-### Calibration And Validation
-
-Before making stronger research-grade claims:
-
-- acoustically validate output on supported iPhone, iOS, and AirPods Pro 2 firmware combinations,
-- validate the AVAudioEngine path against expected output from the ResearchKit reference math,
-- validate the quiet-room meter against a known SPL meter or coupler setup,
-- document acceptable route, firmware, OS, and hardware combinations,
-- decide whether max-volume-only remains the study rule or whether lower volume buckets are allowed,
-- decide whether route-name heuristics are enough or whether researcher confirmation is required.
-
 ### ResearchKit Parity
 
 ResearchKit remains useful for:
@@ -1118,22 +1094,6 @@ dB SL = matched dB HL - threshold dB HL
 
 That requires a participant threshold at the selected frequency and ear, not only a pitch estimate.
 
-### EMA And Context
-
-Future ecological momentary assessment features could collect:
-
-- tinnitus annoyance,
-- perceived loudness,
-- mood,
-- sleep,
-- medication,
-- caffeine,
-- noise exposure,
-- stress,
-- recent events,
-- environment context.
-
-These should be separate from calibrated psychoacoustic measurements but linked by session/task time.
 
 ### Product And Study Expansion
 
@@ -1298,20 +1258,9 @@ Because tinnitus is subjective, the app cannot directly measure the tinnitus its
 
 Loudness matching asks the participant to adjust or choose an external sound until it matches the perceived loudness of their tinnitus.
 
-The current Study No. 1 task uses:
-
-- fixed 1000 Hz pure tone,
-- selected playback channel based on laterality,
-- participant threshold measurement,
-- three repeated matches,
-- confidence rating per match,
-- median summary.
-
 ### Pitch Matching
 
 Pitch matching asks the participant to identify the external sound frequency or noise band that best matches their tinnitus pitch.
-
-Pitch matching is not implemented in the current Study No. 1 task. It remains a future study direction. If implemented, it must be reconciled with calibration tables because not every arbitrary frequency is currently calibrated.
 
 ### EMA
 
@@ -1373,20 +1322,3 @@ The app uses ResearchKit as:
 - a source of audiometry design patterns,
 - a source of AirPods Pro 2 calibration reference data,
 - a reference for ambient SPL gating behavior.
-
-The app does not currently use a stock ResearchKit dB HL task for Study No. 1 loudness matching.
-
-## Historical Documents
-
-These documents informed this README:
-
-- `docs/tinnitus-calibrated-audio-approach.md`
-  - ResearchKit audiometry research, AirPods Pro 2 tables, calibration math, SPL meter notes, and future pitch-match thinking.
-- `docs/loudness-match-modal-implementation-plan.md`
-  - Modal flow plan, ResearchKit SPL gate observations, UI/flow requirements, and test plan.
-- `docs/airpods-pro-2-runtime-verification.md`
-  - Public API limits, route verification levels, guardrail recommendations, and logging policy.
-- `docs/adr/0001-researchkit-and-measurement-architecture.md`
-  - Historical architecture decision record. Some implementation-status statements in the ADR are now stale, but the boundary decision remains valid.
-
-When a historical document conflicts with this README, trust this README and then inspect the current code before changing behavior.
