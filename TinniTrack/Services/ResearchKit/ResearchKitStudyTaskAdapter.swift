@@ -171,12 +171,6 @@ final class ResearchKitStudyTaskAdapter: NSObject, ResearchStudyTaskAdapting, OR
     }
 
     private func makeStudyNo1OrientationThresholdTask(identifier: String) -> ORKOrderedTask {
-        let environmentStep = ORKEnvironmentSPLMeterStep(identifier: Self.studyNo1EnvironmentStepIdentifier)
-        environmentStep.thresholdValue = 45
-        environmentStep.requiredContiguousSamples = 5
-        environmentStep.title = "Quiet-room check"
-        environmentStep.text = "Stay in a quiet room before the 1 kHz threshold check begins."
-
         let rightInstruction = ORKInstructionStep(identifier: "\(identifier).right-ear-instruction")
         rightInstruction.title = "Right ear"
         rightInstruction.text = "Tap whenever you hear the tone."
@@ -204,7 +198,6 @@ final class ResearchKitStudyTaskAdapter: NSObject, ResearchStudyTaskAdapting, OR
         return ORKOrderedTask(
             identifier: identifier,
             steps: [
-                environmentStep,
                 rightInstruction,
                 rightStep,
                 leftInstruction,
@@ -248,7 +241,6 @@ private extension ResearchTaskFinishState {
 }
 
 private extension ResearchKitStudyTaskAdapter {
-    static let studyNo1EnvironmentStepIdentifier = "study-no-1.orientation-threshold.environment"
     static let studyNo1RightEarStepIdentifier = "study-no-1.orientation-threshold.right-ear"
     static let studyNo1LeftEarStepIdentifier = "study-no-1.orientation-threshold.left-ear"
 
@@ -261,12 +253,6 @@ private extension ResearchKitStudyTaskAdapter {
             return nil
         }
 
-        let environmentStep = result.stepResult(forStepIdentifier: studyNo1EnvironmentStepIdentifier)
-        let environment = environmentStep == nil ? nil : StudyNo1OrientationThresholdEnvironmentResult(
-            thresholdDBA: 45,
-            requiredContiguousSamples: 5
-        )
-
         return StudyNo1OrientationThresholdResearchKitResult(
             taskIdentifier: taskIdentifier,
             rightEar: dBHLResults
@@ -275,7 +261,7 @@ private extension ResearchKitStudyTaskAdapter {
             leftEar: dBHLResults
                 .first { $0.identifier == studyNo1LeftEarStepIdentifier }
                 .map { StudyNo1OrientationThresholdEarResult($0, fallbackChannel: .left) },
-            environment: environment
+            environment: nil
         )
     }
 

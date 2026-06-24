@@ -546,6 +546,89 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(viewModel.completedSummary == nil)
     }
 
+    @Test
+    func scheduledLoudnessTaskStartsFromAudiogramWithoutManualThresholdEvents() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            )
+        )
+
+        await completePreflight(viewModel)
+        await viewModel.selectLaterality(.right)
+
+        guard case .readyForTrial(_, let candidateLevel) = viewModel.protocolState else {
+            Issue.record("Expected scheduled loudness task to start trial after audiogram threshold resolution")
+            return
+        }
+
+        #expect(candidateLevel == 25)
+        #expect(viewModel.events.contains { $0.kind == .thresholdRecorded && $0.response == "healthkit_audiogram" })
+        #expect(viewModel.events.contains { $0.kind == .thresholdToneRequested } == false)
+        #expect(viewModel.events.contains { $0.kind == .thresholdPlaybackPlanned } == false)
+    }
+
+    @Test
+    func orientationThresholdSubmissionUsesAppOwnedQuietRoomGate() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            runtimeContextProvider: MockStudyNo1RuntimeContextProvider(),
+            orientationThresholdExporter: StudyNo1OrientationThresholdSubmissionExporter(appVersion: "1.2.3"),
+            dateProvider: { timestamp }
+        )
+        await completePreflight(viewModel)
+
+        let service = MockStudyService()
+        let task = scheduledTask(dayIndex: -1, slotIndex: 0)
+        let submitted = await viewModel.submitOrientationThreshold(
+            result: orientationThresholdResult(),
+            scheduledTask: task,
+            enrollment: enrollment(),
+            studyService: service
+        )
+
+        #expect(submitted)
+        #expect(viewModel.hasSubmitted)
+        #expect(service.orientationSubmissions.count == 1)
+        #expect(service.orientationSubmissions.first?.scheduledTaskID == task.id)
+        #expect(service.orientationSubmissions.first?.submission.gating["environment"] != nil)
+        #expect(service.orientationSubmissions.first?.submission.rawPayload["environment"] != nil)
+    }
+
+    @Test
+    func orientationThresholdSubmissionFailsWithoutAppQuietRoomGate() async {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            runtimeContextProvider: MockStudyNo1RuntimeContextProvider(),
+            orientationThresholdExporter: StudyNo1OrientationThresholdSubmissionExporter(appVersion: "1.2.3"),
+            dateProvider: { timestamp }
+        )
+
+        let service = MockStudyService()
+        let submitted = await viewModel.submitOrientationThreshold(
+            result: orientationThresholdResult(),
+            scheduledTask: scheduledTask(dayIndex: -1, slotIndex: 0),
+            enrollment: enrollment(),
+            studyService: service
+        )
+
+        #expect(submitted == false)
+        #expect(viewModel.hasSubmitted == false)
+        #expect(service.orientationSubmissions.isEmpty)
+        if case .incompletePayload(let message) = viewModel.message {
+            #expect(message.contains("environment.samplesDBA"))
+        } else {
+            Issue.record("Expected missing app quiet-room gate payload error")
+        }
+    }
+
     private func acceptCurrentTrial(
         _ viewModel: LoudnessMatchTaskFlowViewModel,
         adjustment: TinnitusLoudnessAdjustment,
@@ -645,7 +728,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
     }
 
-    private func scheduledTask() -> ScheduledTask {
+    private func scheduledTask(dayIndex: Int = 0, slotIndex: Int = 0) -> ScheduledTask {
         ScheduledTask(
             id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
             enrollmentID: enrollment().id,
@@ -655,9 +738,48 @@ struct LoudnessMatchTaskFlowViewModelTests {
             windowStart: timestamp.addingTimeInterval(-60),
             windowEnd: timestamp.addingTimeInterval(3_600),
             status: .scheduled,
-            dayIndex: 0,
-            slotIndex: 0,
+            dayIndex: dayIndex,
+            slotIndex: slotIndex,
             completedAt: nil
+        )
+    }
+
+    private func orientationThresholdResult() -> StudyNo1OrientationThresholdResearchKitResult {
+        StudyNo1OrientationThresholdResearchKitResult(
+            taskIdentifier: "study-no-1-orientation-threshold",
+            rightEar: orientationEar(channel: .right, threshold: 18),
+            leftEar: orientationEar(channel: .left, threshold: 12),
+            environment: nil
+        )
+    }
+
+    private func orientationEar(
+        channel: CalibratedTonePlaybackChannel,
+        threshold: Double
+    ) -> StudyNo1OrientationThresholdEarResult {
+        StudyNo1OrientationThresholdEarResult(
+            channel: channel,
+            thresholdDBHL: threshold,
+            outputVolume: 1.0,
+            headphoneType: "airPodsProGen2",
+            tonePlaybackDuration: 1.0,
+            postStimulusDelay: 1.0,
+            samples: [
+                StudyNo1OrientationThresholdFrequencySample(
+                    frequencyHz: 1_000,
+                    calculatedThresholdDBHL: threshold,
+                    channel: channel,
+                    units: [
+                        StudyNo1OrientationThresholdUnit(
+                            levelDBHL: threshold,
+                            startOfUnitTimeStamp: 0.1,
+                            preStimulusDelay: 0.2,
+                            userTapTimeStamp: 0.6,
+                            timeoutTimeStamp: nil
+                        )
+                    ]
+                )
+            ]
         )
     }
 
@@ -867,13 +989,20 @@ private struct MockStudyNo1RuntimeContextProvider: StudyNo1RuntimeContextProvidi
 }
 
 private final class MockStudyService: StudyServiceProtocol {
-    struct Submission: Equatable {
+    struct Submission {
         let scheduledTaskID: UUID
         let enrollmentID: UUID
         let submission: LoudnessMatchSubmission
     }
 
+    struct OrientationSubmission {
+        let scheduledTaskID: UUID
+        let enrollmentID: UUID
+        let submission: StudyNo1OrientationThresholdSubmission
+    }
+
     var submissions: [Submission] = []
+    var orientationSubmissions: [OrientationSubmission] = []
 
     func fetchStudies() async throws -> [Study] { [] }
     func fetchMyEnrollments() async throws -> [StudyEnrollment] { [] }
@@ -905,5 +1034,11 @@ private final class MockStudyService: StudyServiceProtocol {
         scheduledTaskID: UUID,
         enrollmentID: UUID,
         submission: StudyNo1OrientationThresholdSubmission
-    ) async throws {}
+    ) async throws {
+        orientationSubmissions.append(OrientationSubmission(
+            scheduledTaskID: scheduledTaskID,
+            enrollmentID: enrollmentID,
+            submission: submission
+        ))
+    }
 }
