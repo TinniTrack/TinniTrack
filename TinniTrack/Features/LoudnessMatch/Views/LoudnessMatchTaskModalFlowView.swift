@@ -36,7 +36,7 @@ struct LoudnessMatchTaskModalFlowView: View {
                     scheduledTask: scheduledTask,
                     enrollment: enrollment,
                     studyService: studyService
-                ) {
+                ) { @MainActor in
                     onSubmitted()
                     dismiss()
                 }

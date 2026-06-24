@@ -37,6 +37,8 @@ final class StudyTaskDashboardViewModel: ObservableObject {
     @Published private(set) var isLoadingTasks = false
     @Published private(set) var taskLoadErrorMessage: String?
     @Published private(set) var isCompletingStudyOnboarding = false
+    @Published private(set) var onboardingLoudnessTask: ScheduledTask?
+    @Published private(set) var isPreparingOnboardingLoudnessTask = false
 
     private let study: Study
     private var enrollment: StudyEnrollment?
@@ -121,6 +123,46 @@ final class StudyTaskDashboardViewModel: ObservableObject {
         await evaluatePrerequisite(showLoadingState: false)
     }
 
+    func prepareStudyOnboardingLoudnessTask() async -> ScheduledTask? {
+        guard requiresStudyOnboardingCompletion else {
+            return onboardingLoudnessTask
+        }
+
+        guard isAudiogramPrerequisiteMet else {
+            taskLoadErrorMessage = "Import your Apple hearing test before starting the onboarding loudness task."
+            return nil
+        }
+
+        guard let enrollment else {
+            taskLoadErrorMessage = "Unable to find enrollment for this study."
+            return nil
+        }
+
+        if let onboardingLoudnessTask, onboardingLoudnessTask.status == .scheduled {
+            return onboardingLoudnessTask
+        }
+
+        isPreparingOnboardingLoudnessTask = true
+        defer { isPreparingOnboardingLoudnessTask = false }
+
+        do {
+            let task = try await studyService.beginStudyNo1OnboardingLoudnessTask(enrollmentID: enrollment.id)
+            if task.status == .completed {
+                onboardingLoudnessTask = nil
+                taskLoadErrorMessage = nil
+                await completeStudyOnboarding()
+                return nil
+            }
+
+            onboardingLoudnessTask = task
+            taskLoadErrorMessage = nil
+            return task
+        } catch {
+            taskLoadErrorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func completeStudyOnboarding() async {
         guard requiresStudyOnboardingCompletion else {
             return
@@ -156,6 +198,7 @@ final class StudyTaskDashboardViewModel: ObservableObject {
             )
 
             taskLoadErrorMessage = nil
+            onboardingLoudnessTask = nil
             await reloadScheduledTasksIfReady(force: true)
         } catch {
             taskLoadErrorMessage = error.localizedDescription

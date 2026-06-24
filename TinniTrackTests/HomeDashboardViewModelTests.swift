@@ -136,6 +136,14 @@ private actor MockStudyService: StudyServiceProtocol {
         []
     }
 
+    func beginStudyNo1OnboardingLoudnessTask(enrollmentID: UUID) async throws -> ScheduledTask {
+        throw NSError(
+            domain: "MockStudyService",
+            code: 404,
+            userInfo: [NSLocalizedDescriptionKey: "No onboarding task configured."]
+        )
+    }
+
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
 
     func submitLoudnessMatch(

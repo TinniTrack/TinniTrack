@@ -91,6 +91,30 @@ final class SupabaseStudyService: StudyServiceProtocol {
         }
     }
 
+    func beginStudyNo1OnboardingLoudnessTask(enrollmentID: UUID) async throws -> ScheduledTask {
+        let params: [String: String] = [
+            "p_enrollment_id": enrollmentID.uuidString
+        ]
+
+        let rows: [ScheduledTaskRow] = try await client
+            .rpc(
+                "begin_study_no_1_onboarding_loudness_task",
+                params: params
+            )
+            .execute()
+            .value
+
+        guard let row = rows.first else {
+            throw NSError(
+                domain: "StudyService",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to prepare the onboarding loudness-match task."]
+            )
+        }
+
+        return row.toDomain()
+    }
+
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {
         let params: [String: String] = [
             "p_enrollment_id": enrollmentID.uuidString,

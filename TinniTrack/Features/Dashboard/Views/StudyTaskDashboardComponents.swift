@@ -1,9 +1,14 @@
 import SwiftUI
 
-enum StudyTaskOrientationStep {
+enum StudyTaskOrientationStep: Equatable {
+    case welcome
     case hearingTest
-    case importAudiogram
-    case nextSteps
+    case taskIntro
+    case correctEar
+    case quietRoom
+    case fit
+    case maxVolume
+    case activeTest
 }
 
 struct StudyPrerequisiteCard: View {

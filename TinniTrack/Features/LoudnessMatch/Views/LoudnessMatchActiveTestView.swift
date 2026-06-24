@@ -5,7 +5,8 @@ struct LoudnessMatchActiveTestView: View {
     let scheduledTask: ScheduledTask
     let enrollment: StudyEnrollment
     let studyService: StudyServiceProtocol
-    let onSubmitted: () -> Void
+    var completedBodyText = "Submit this loudness-match result to finish the scheduled task."
+    let onSubmitted: () async -> Void
 
     var body: some View {
         LoudnessMatchModalContentLayout {
@@ -155,7 +156,7 @@ struct LoudnessMatchActiveTestView: View {
             VStack(alignment: .leading, spacing: 22) {
                 LoudnessMatchModalTitleBlock(
                     title: "Test Complete",
-                    bodyText: "Submit this loudness-match result to finish the scheduled task."
+                    bodyText: completedBodyText
                 )
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -176,7 +177,7 @@ struct LoudnessMatchActiveTestView: View {
                             studyService: studyService
                         )
                         if viewModel.hasSubmitted {
-                            onSubmitted()
+                            await onSubmitted()
                         }
                     }
                 }
