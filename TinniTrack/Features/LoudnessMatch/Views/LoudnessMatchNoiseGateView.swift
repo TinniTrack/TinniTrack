@@ -91,7 +91,7 @@ struct LoudnessMatchNoiseGateView: View {
 
         return min(
             1,
-            Double(update.contiguousPassingSamples) / Double(TinnitusEnvironmentSPLGateConfiguration.studyA.requiredContiguousSamples)
+            Double(update.contiguousPassingSamples) / Double(TinnitusEnvironmentSPLGateConfiguration.studyNo1.requiredContiguousSamples)
         )
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 
 enum Phase6PayloadValidationError: Error, Equatable {
     case missingRequiredFields([String])
-    case incompleteStudyA(reason: String)
+    case incompleteStudyNo1(reason: String)
 }
 
 enum Phase6GateResult: String, Codable, Equatable {
@@ -186,7 +186,7 @@ struct Phase6RefusalContext: Codable, Equatable {
 }
 
 struct Phase6LoudnessMatchRunPayload: Codable, Equatable {
-    static let payloadVersion = "phase-6-study-a-v1"
+    static let payloadVersion = "phase-6-study-no-1-v1"
     static let modelCalibratedOutputLimitation = "Estimated model-calibrated output from ResearchKit AirPods Pro 2 tables, route, and system output volume. This is not exact patient-specific in-ear SPL."
 
     let payloadVersion: String
@@ -211,7 +211,7 @@ struct Phase6LoudnessMatchRunPayload: Codable, Equatable {
     let refusals: [Phase6RefusalContext]
     let limitations: [String]
 
-    func validateCompletedStudyA() throws {
+    func validateCompletedStudyNo1() throws {
         var missing: [String] = []
 
         if identifiers.enrollmentId?.isEmpty ?? true {
@@ -255,26 +255,26 @@ struct Phase6LoudnessMatchRunPayload: Codable, Equatable {
             throw Phase6PayloadValidationError.missingRequiredFields(missing)
         }
 
-        guard protocolKind == "studyAFixedOneKilohertz" else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Payload is not Study A.")
+        guard protocolKind == "studyNo1FixedOneKilohertz" else {
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Payload is not Study No. 1.")
         }
         guard stimulus.kind == "pureTone", stimulus.frequencyHz == 1_000 else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A must use a fixed 1000 Hz pure tone.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 must use a fixed 1000 Hz pure tone.")
         }
         guard threshold.source == .measured else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Completed Study A requires a measured 1000 Hz threshold source.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a measured 1000 Hz threshold source.")
         }
         guard threshold.frequencyHz == 1_000 else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A threshold must be recorded at 1000 Hz.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 threshold must be recorded at 1000 Hz.")
         }
         guard trials.count == 3 else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A requires three loudness-match trials.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires three loudness-match trials.")
         }
         guard trials.allSatisfy({ $0.estimatedDBSPL.isFinite && $0.dbSL.isFinite }) else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A requires estimated dB SPL and dB SL for each trial.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires estimated dB SPL and dB SL for each trial.")
         }
         guard environment.gateResult == .passed else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Completed Study A requires a passed environment SPL gate.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a passed environment SPL gate.")
         }
     }
 }
@@ -300,21 +300,21 @@ struct Phase6LoudnessMatchPayloadBuilder {
         self.calibrationMetadata = calibrationMetadata
     }
 
-    func buildStudyAPayload(
+    func buildStudyNo1Payload(
         summary: TinnitusLoudnessMatchSummary,
         events: [TinnitusProtocolEvent],
         preflight: Phase6PreflightContext
     ) throws -> Phase6LoudnessMatchRunPayload {
         guard summary.frequencyHz == 1_000 else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A summary must be fixed at 1000 Hz.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 summary must be fixed at 1000 Hz.")
         }
         guard case .measured(let thresholdDBHL) = summary.thresholdStatus else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A cannot complete Phase 6 without a recorded threshold.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 cannot complete Phase 6 without a recorded threshold.")
         }
         guard let medianEstimatedDBSPL = summary.medianEstimatedDBSPL,
               let medianDBSL = summary.medianDBSL
         else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A requires estimated dB SPL and dB SL medians.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires estimated dB SPL and dB SL medians.")
         }
 
         let guardrailMetadata = latestGuardrailMetadata(from: events) ?? preflight.guardrailValidation.metadata
@@ -331,7 +331,7 @@ struct Phase6LoudnessMatchPayloadBuilder {
         )
         let payload = Phase6LoudnessMatchRunPayload(
             payloadVersion: Phase6LoudnessMatchRunPayload.payloadVersion,
-            protocolKind: "studyAFixedOneKilohertz",
+            protocolKind: "studyNo1FixedOneKilohertz",
             identifiers: preflight.identifiers,
             lifecycle: Phase6RunLifecycle(
                 startedAt: preflight.startedAt,
@@ -379,7 +379,7 @@ struct Phase6LoudnessMatchPayloadBuilder {
             ]
         )
 
-        try payload.validateCompletedStudyA()
+        try payload.validateCompletedStudyNo1()
         return payload
     }
 

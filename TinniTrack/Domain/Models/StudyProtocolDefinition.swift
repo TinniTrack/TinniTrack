@@ -130,6 +130,6 @@ enum StudyProtocolCatalog {
             resultUnits: [.dBHL, .dBSPL, .dBSL],
             validityNotice: "Phase 4 protocol logic is implemented, but participant calibrated result collection remains disabled until route, volume, quiet-room, and restart safety preflight are production-ready."
         ),
-        notes: "Defines the calibrated Study A protocol scaffold over Phase 1 conversion, Phase 2 guardrails, and Phase 3 playback planning. Persistence and production collection remain deferred."
+        notes: "Defines the calibrated Study No. 1 protocol scaffold over Phase 1 conversion, Phase 2 guardrails, and Phase 3 playback planning. Persistence and production collection remain deferred."
     )
 }

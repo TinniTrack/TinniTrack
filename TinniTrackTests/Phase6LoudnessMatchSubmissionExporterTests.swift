@@ -23,8 +23,8 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
         #expect(submission.gating["environment"] != nil)
         #expect(submission.gating["fit_seal"] != nil)
         #expect(submission.gating["safety"] != nil)
-        #expect(submission.rawPayload["payloadVersion"] == .string("phase-6-study-a-v1"))
-        #expect(submission.rawPayload["protocolKind"] == .string("studyAFixedOneKilohertz"))
+        #expect(submission.rawPayload["payloadVersion"] == .string("phase-6-study-no-1-v1"))
+        #expect(submission.rawPayload["protocolKind"] == .string("studyNo1FixedOneKilohertz"))
 
         guard case .object(let summary)? = submission.rawPayload["summary"] else {
             Issue.record("Expected summary object in raw payload")
@@ -82,7 +82,7 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
     private func makePayload() -> Phase6LoudnessMatchRunPayload {
         Phase6LoudnessMatchRunPayload(
             payloadVersion: Phase6LoudnessMatchRunPayload.payloadVersion,
-            protocolKind: "studyAFixedOneKilohertz",
+            protocolKind: "studyNo1FixedOneKilohertz",
             identifiers: Phase6IdentifierContext(
                 participantId: "participant-1",
                 studySessionId: "session-1",

@@ -16,7 +16,7 @@ struct TinnitusProtocolEngine {
     private var sessionQualityFlags: [TinnitusProtocolQualityFlag] = []
 
     init(
-        configuration: TinnitusProtocolConfiguration = .studyAFixedOneKilohertz,
+        configuration: TinnitusProtocolConfiguration = .studyNo1FixedOneKilohertz,
         converter: CalibratedAudioConverter = CalibratedAudioConverter(),
         playbackPlanner: CalibratedTonePlaybackPlanner = CalibratedTonePlaybackPlanner(),
         dateProvider: @escaping () -> Date = Date.init
@@ -25,7 +25,7 @@ struct TinnitusProtocolEngine {
         self.converter = converter
         self.playbackPlanner = playbackPlanner
         self.dateProvider = dateProvider
-        pitchMatchStatus = configuration.kind == .studyAFixedOneKilohertz
+        pitchMatchStatus = configuration.kind == .studyNo1FixedOneKilohertz
             ? .notRequiredFixedFrequency
             : .deferred
 
@@ -61,7 +61,7 @@ struct TinnitusProtocolEngine {
             kind: .lateralitySelected,
             channel: selectedChannel,
             laterality: laterality,
-            response: "study_a_rule_unilateral_affected_else_left_first"
+            response: "study_no_1_rule_unilateral_affected_else_left_first"
         )
     }
 

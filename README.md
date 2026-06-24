@@ -157,7 +157,7 @@ ResearchKit's dB HL audiometry behavior is still important because it documents 
 But the Study No. 1 app flow needs behavior ResearchKit does not provide as a stock task:
 
 - Tinnitus laterality selection.
-- A fixed Study A 1 kHz protocol.
+- A fixed Study No. 1 1 kHz protocol.
 - A participant threshold at the same frequency and ear used for dB SL.
 - Repeated loudness-match trials.
 - Participant confidence per accepted match.
@@ -312,11 +312,11 @@ The current UI shows the participant numerical dB HL readouts during active test
 
 The protocol state machine lives in `TinnitusProtocolEngine`. It is intentionally independent from SwiftUI.
 
-### Study A Configuration
+### Study No. 1 Configuration
 
-The current configuration is `TinnitusProtocolConfiguration.studyAFixedOneKilohertz`:
+The current configuration is `TinnitusProtocolConfiguration.studyNo1FixedOneKilohertz`:
 
-- protocol kind: `studyAFixedOneKilohertz`
+- protocol kind: `studyNo1FixedOneKilohertz`
 - stimulus: pure tone
 - frequency: 1000 Hz
 - trial count: 3
@@ -347,7 +347,7 @@ The current channel rule is:
 - right tinnitus uses right channel,
 - bilateral, central, or unclear tinnitus uses left channel and records `ambiguousLaterality`.
 
-The engine records this rule in the event response as `study_a_rule_unilateral_affected_else_left_first`.
+The engine records this rule in the event response as `study_no_1_rule_unilateral_affected_else_left_first`.
 
 ### Threshold Collection
 
@@ -775,13 +775,13 @@ The current payload builder is `Phase6LoudnessMatchPayloadBuilder`. The name is 
 Payload version:
 
 ```text
-phase-6-study-a-v1
+phase-6-study-no-1-v1
 ```
 
 Protocol kind:
 
 ```text
-studyAFixedOneKilohertz
+studyNo1FixedOneKilohertz
 ```
 
 The builder validates:

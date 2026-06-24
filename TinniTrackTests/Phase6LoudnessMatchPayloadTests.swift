@@ -6,11 +6,11 @@ struct Phase6LoudnessMatchPayloadTests {
     private let timestamp = Date(timeIntervalSince1970: 1_800_030_000)
 
     @Test
-    func studyAPayloadCapturesRequiredPhase6ContextAndEncodes() throws {
+    func studyNo1PayloadCapturesRequiredPhase6ContextAndEncodes() throws {
         let payload = try makeCompletedPayload()
 
-        #expect(payload.payloadVersion == "phase-6-study-a-v1")
-        #expect(payload.protocolKind == "studyAFixedOneKilohertz")
+        #expect(payload.payloadVersion == "phase-6-study-no-1-v1")
+        #expect(payload.protocolKind == "studyNo1FixedOneKilohertz")
         #expect(payload.identifiers.enrollmentId == enrollmentID.uuidString)
         #expect(payload.identifiers.scheduledTaskId == scheduledTaskID.uuidString)
         #expect(payload.device.deviceModel == "iPhone17,2")
@@ -87,7 +87,7 @@ struct Phase6LoudnessMatchPayloadTests {
         )
 
         do {
-            try payload.validateCompletedStudyA()
+            try payload.validateCompletedStudyNo1()
             Issue.record("Expected missing preflight metadata to fail validation")
         } catch Phase6PayloadValidationError.missingRequiredFields(let fields) {
             #expect(fields.contains("environment.samplesDBA"))
@@ -112,13 +112,13 @@ struct Phase6LoudnessMatchPayloadTests {
         }
 
         do {
-            _ = try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+            _ = try Phase6LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
                 summary: summary,
                 events: engine.events,
                 preflight: preflightContext()
             )
             Issue.record("Expected Phase 6 builder to reject threshold-unavailable completion")
-        } catch Phase6PayloadValidationError.incompleteStudyA(let reason) {
+        } catch Phase6PayloadValidationError.incompleteStudyNo1(let reason) {
             #expect(reason.contains("threshold"))
         } catch {
             Issue.record("Unexpected error \(error)")
@@ -126,7 +126,7 @@ struct Phase6LoudnessMatchPayloadTests {
     }
 
     @Test
-    func completedStudyAValidationRefusesManualScaffoldThresholdSource() throws {
+    func completedStudyNo1ValidationRefusesManualScaffoldThresholdSource() throws {
         let valid = try makeCompletedPayload()
         let invalid = Phase6LoudnessMatchRunPayload(
             payloadVersion: valid.payloadVersion,
@@ -159,15 +159,15 @@ struct Phase6LoudnessMatchPayloadTests {
         )
 
         do {
-            try invalid.validateCompletedStudyA()
-            Issue.record("Expected completed Study A validation to reject manual scaffold thresholds")
-        } catch Phase6PayloadValidationError.incompleteStudyA(let reason) {
+            try invalid.validateCompletedStudyNo1()
+            Issue.record("Expected completed Study No. 1 validation to reject manual scaffold thresholds")
+        } catch Phase6PayloadValidationError.incompleteStudyNo1(let reason) {
             #expect(reason.contains("measured"))
         }
     }
 
     @Test
-    func builderRefusesNonStudyAFrequency() {
+    func builderRefusesNonStudyNo1Frequency() {
         var summary = TinnitusLoudnessMatchSummary(
             frequencyHz: 2_000,
             channel: .left,
@@ -208,13 +208,13 @@ struct Phase6LoudnessMatchPayloadTests {
         _ = summary
 
         do {
-            _ = try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+            _ = try Phase6LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
                 summary: summary,
                 events: [],
                 preflight: preflightContext()
             )
             Issue.record("Expected non-1000 Hz summary to be rejected")
-        } catch Phase6PayloadValidationError.incompleteStudyA(let reason) {
+        } catch Phase6PayloadValidationError.incompleteStudyNo1(let reason) {
             #expect(reason.contains("1000"))
         } catch {
             Issue.record("Unexpected error \(error)")
@@ -234,10 +234,10 @@ struct Phase6LoudnessMatchPayloadTests {
         acceptCurrentTrial(&engine, adjustment: .muchLouder, confidence: .low)
 
         guard case .completed(let summary) = engine.state else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Expected completed test fixture.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Expected completed test fixture.")
         }
 
-        return try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+        return try Phase6LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
             summary: summary,
             events: engine.events,
             preflight: preflightContext()

@@ -31,12 +31,12 @@ struct AVAudioEnvironmentSPLMeter: EnvironmentSPLMeasuring, EnvironmentSPLGateMo
         self.sensitivityOffsetDB = sensitivityOffsetDB
     }
 
-    func runGate(configuration: TinnitusEnvironmentSPLGateConfiguration = .studyA) async throws -> TinnitusEnvironmentSPLGateResult {
+    func runGate(configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1) async throws -> TinnitusEnvironmentSPLGateResult {
         try await sampleGate(configuration: configuration, maximumSamples: configuration.maximumSamples) { _ in }
     }
 
     func monitorGate(
-        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyA
+        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
     ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {

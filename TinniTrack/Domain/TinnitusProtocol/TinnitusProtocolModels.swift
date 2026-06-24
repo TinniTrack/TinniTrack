@@ -1,7 +1,7 @@
 import Foundation
 
 enum TinnitusStudyProtocolKind: Equatable {
-    case studyAFixedOneKilohertz
+    case studyNo1FixedOneKilohertz
     case studyBTablePitchMatched
 }
 
@@ -101,8 +101,8 @@ struct TinnitusProtocolConfiguration: Equatable {
     let highSpreadThresholdDB: Double
     let supportedPitchFrequenciesHz: [Double]
 
-    static let studyAFixedOneKilohertz = TinnitusProtocolConfiguration(
-        kind: .studyAFixedOneKilohertz,
+    static let studyNo1FixedOneKilohertz = TinnitusProtocolConfiguration(
+        kind: .studyNo1FixedOneKilohertz,
         stimulusKind: .pureTone,
         frequencyHz: 1_000,
         requiredTrialCount: 3,

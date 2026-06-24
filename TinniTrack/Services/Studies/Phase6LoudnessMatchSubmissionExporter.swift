@@ -21,7 +21,7 @@ struct Phase6LoudnessMatchSubmissionExporter {
     }
 
     func makeSubmission(from payload: Phase6LoudnessMatchRunPayload) throws -> LoudnessMatchSubmission {
-        try payload.validateCompletedStudyA()
+        try payload.validateCompletedStudyNo1()
         guard let completedAt = payload.lifecycle.completedAt else {
             throw Phase6LoudnessMatchSubmissionExportError.missingCompletedAt
         }

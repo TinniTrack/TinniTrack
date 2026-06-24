@@ -370,7 +370,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         defer { isRunningEnvironmentGate = false }
 
         do {
-            let result = try await environmentMeter.runGate(configuration: .studyA)
+            let result = try await environmentMeter.runGate(configuration: .studyNo1)
             environmentGateResult = result
             hasPassedEnvironmentGate = result.passed
             environmentGateUpdate = TinnitusEnvironmentSPLGateEvaluator().update(
@@ -399,7 +399,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         isRunningEnvironmentGate = true
         message = nil
 
-        let stream = environmentGateMonitor.monitorGate(configuration: .studyA)
+        let stream = environmentGateMonitor.monitorGate(configuration: .studyNo1)
         environmentGateTask = Task { [weak self] in
             do {
                 for try await update in stream {
@@ -646,7 +646,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         submittedAt: Date? = nil
     ) throws -> Phase6LoudnessMatchRunPayload {
         guard let summary = completedSummary else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Study A is not complete.")
+            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 is not complete.")
         }
         guard let environment = environmentGateResult?.phase6Context else {
             throw Phase6PayloadValidationError.missingRequiredFields(["environment.samplesDBA"])
@@ -687,7 +687,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             thresholdSource: .measured
         )
 
-        return try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+        return try Phase6LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
             summary: summary,
             events: events,
             preflight: preflight

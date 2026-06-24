@@ -382,7 +382,7 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .playbackDisabled:
             return "Calibrated playback is still disabled for this participant workflow."
         case .environmentGateFailed:
-            return "The quiet-room gate did not collect enough consecutive samples below the Study A threshold."
+            return "The quiet-room gate did not collect enough consecutive samples below the Study No. 1 threshold."
         case .airPodsNotInEar:
             return "Please place your AirPods in your ear."
         case .unsupportedHeadphones:

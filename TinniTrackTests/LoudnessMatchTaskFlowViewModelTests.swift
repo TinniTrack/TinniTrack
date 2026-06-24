@@ -479,7 +479,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func completedStudyABuildsPhase6PayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
+    func completedStudyNo1BuildsPhase6PayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
         let viewModel = await completedViewModel()
         let payload = try viewModel.makePhase6Payload(
             scheduledTask: scheduledTask(),
@@ -518,11 +518,11 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(service.submissions.first?.scheduledTaskID == task.id)
         #expect(service.submissions.first?.enrollmentID == currentEnrollment.id)
         #expect(service.submissions.first?.submission.matchedLevel == 16)
-        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("phase-6-study-a-v1"))
+        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("phase-6-study-no-1-v1"))
     }
 
     @Test
-    func thresholdUnavailablePathPreservesQualityFlagsButCannotSubmitStudyA() async {
+    func thresholdUnavailablePathPreservesQualityFlagsButCannotSubmitStudyNo1() async {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },

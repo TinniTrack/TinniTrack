@@ -7,7 +7,7 @@ struct TinnitusEnvironmentSPLGateConfiguration: Equatable {
     let maximumSamples: Int
     let sensitivityOffsetDB: Double?
 
-    static let studyA = TinnitusEnvironmentSPLGateConfiguration(
+    static let studyNo1 = TinnitusEnvironmentSPLGateConfiguration(
         thresholdDBA: 45.0,
         requiredContiguousSamples: 5,
         samplingInterval: 1.0,
@@ -58,7 +58,7 @@ struct TinnitusEnvironmentSPLGateUpdate: Equatable {
 struct TinnitusEnvironmentSPLGateEvaluator {
     func evaluate(
         samplesDBA: [Double],
-        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyA
+        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
     ) -> TinnitusEnvironmentSPLGateResult {
         let finiteSamples = samplesDBA.filter(\.isFinite)
         var contiguous = 0
@@ -85,7 +85,7 @@ struct TinnitusEnvironmentSPLGateEvaluator {
 
     func update(
         samplesDBA: [Double],
-        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyA
+        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
     ) -> TinnitusEnvironmentSPLGateUpdate {
         let finiteSamples = samplesDBA.filter(\.isFinite)
         var contiguous = 0
