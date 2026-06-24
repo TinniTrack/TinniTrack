@@ -279,7 +279,7 @@ struct TinnitusProtocolEngineTests {
 
     private func unsupportedFrequencyConfiguration() -> TinnitusProtocolConfiguration {
         TinnitusProtocolConfiguration(
-            kind: .studyBTablePitchMatched,
+            kind: .studyNo2TablePitchMatched,
             stimulusKind: .pureTone,
             frequencyHz: 999,
             requiredTrialCount: 3,

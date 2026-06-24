@@ -329,7 +329,7 @@ The current configuration is `TinnitusProtocolConfiguration.studyNo1FixedOneKilo
 - high spread threshold: 10 dB
 - supported pitch frequencies: inherited from the AirPods Pro 2 calibration profile
 
-Although the configuration type includes `studyBTablePitchMatched`, Study B pitch matching is not implemented in the product flow today.
+Although the configuration type includes `studyNo2TablePitchMatched`, Study No. 2 pitch matching is not implemented in the product flow today.
 
 ### Laterality
 
@@ -1096,7 +1096,7 @@ Potential future improvements:
 
 ### Pitch-Match Study
 
-A future Study B can add pitch matching before loudness matching.
+A future Study No. 2 can add pitch matching before loudness matching.
 
 Open design choices:
 

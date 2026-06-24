@@ -454,7 +454,7 @@ Recommended flow:
 
 Also store estimated dB SPL and dB HL, but dB SL is the most interpretable value because it accounts for that participant's threshold at the tested frequency.
 
-### Study B: pitch matching plus loudness matching
+### Study No. 2: pitch matching plus loudness matching
 
 This study estimates tinnitus pitch first, then runs the same loudness-matching flow at that pitch.
 
@@ -480,9 +480,9 @@ There are three reasonable pitch-matching approaches:
    Let the participant scrub frequency until it sounds closest. This is fast, but noisier and more prone to anchoring or accidental overshoot.
 
 3. **Hybrid**
-   Start with coarse two-choice bracketing, then allow fine adjustment with constrained buttons or a narrow slider. This is the best balance for Study B.
+   Start with coarse two-choice bracketing, then allow fine adjustment with constrained buttons or a narrow slider. This is the best balance for Study No. 2.
 
-Recommended Study B pitch UI:
+Recommended Study No. 2 pitch UI:
 
 ```text
 Which tone is closer to your tinnitus?

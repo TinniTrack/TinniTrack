@@ -2,7 +2,7 @@ import Foundation
 
 enum TinnitusStudyProtocolKind: Equatable {
     case studyNo1FixedOneKilohertz
-    case studyBTablePitchMatched
+    case studyNo2TablePitchMatched
 }
 
 enum TinnitusLaterality: String, CaseIterable, Equatable {
