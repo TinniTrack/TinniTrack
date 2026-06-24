@@ -26,7 +26,7 @@ The currently implemented participant path is:
    - grant HealthKit audiogram read permission,
    - import at least one audiogram,
    - pass the same modal preflight used by Study No. 1 tasks,
-   - complete and submit the onboarding 1 kHz loudness-match active test,
+   - complete and submit the one-time ResearchKit 1 kHz orientation threshold validation,
    - finish orientation, which generates the ongoing scheduled tasks through a Supabase RPC.
 6. Start an available Study No. 1 scheduled loudness-match task during its active window.
 7. Pass the modal preflight:
@@ -37,7 +37,7 @@ The currently implemented participant path is:
    - visible stop/safety acknowledgement.
 8. Complete the active tinnitus task:
    - select tinnitus laterality,
-   - measure a 1 kHz threshold with a 10-down/5-up staircase,
+   - resolve the selected-ear 1 kHz threshold from the imported HealthKit audiogram,
    - complete three loudness-match trials,
    - record confidence for each accepted match.
 9. Submit a structured payload to Supabase.
@@ -90,7 +90,7 @@ Important current implementation areas:
 - `TinniTrack/Features/Dashboard/`
   - Study list, enrollment state, Study No. 1 orientation flow, task dashboard, scheduled task lists, and task entrypoints.
 - `TinniTrack/Services/Studies/SupabaseStudyService.swift`
-  - Study/enrollment/task fetches, onboarding loudness-task RPC, orientation completion RPC, and loudness-match submission RPC.
+  - Study/enrollment/task fetches, orientation threshold RPCs, orientation completion RPC, and loudness-match submission RPC.
 - `TinniTrack/Services/HealthKit/HealthKitManager.swift`
   - HealthKit audiogram authorization and sample parsing.
 - `TinniTrack/Services/Audiograms/`
@@ -135,10 +135,11 @@ ResearchKit has several relevant modules:
 - `.instruction`
 - `.toneAudiometry`
 - `.dBHLToneAudiometry`
+- `.studyNo1OrientationThreshold`
 - `.environmentSPLMeter`
 - `.speechInNoise`
 
-The adapter creates an `ORKOrderedTask`, wraps it in `ORKTaskViewController`, maps `ORKTaskFinishReason` into the app's `ResearchTaskFinishState`, and returns a compact result summary. This keeps ResearchKit UI and delegates inside `TinniTrack/Services/ResearchKit/`.
+The adapter creates an `ORKOrderedTask`, wraps it in `ORKTaskViewController`, maps `ORKTaskFinishReason` into the app's `ResearchTaskFinishState`, and returns a compact result summary. The Study No. 1 orientation request presents only the threshold task; the app-owned preflight and quiet-room gate run before ResearchKit is launched. This keeps ResearchKit UI and delegates inside `TinniTrack/Services/ResearchKit/`.
 
 ### Why Stock dB HL Audiometry Is Not The Main Loudness Task
 
@@ -156,7 +157,8 @@ But the Study No. 1 app flow needs behavior ResearchKit does not provide as a st
 
 - Tinnitus laterality selection.
 - A fixed Study No. 1 1 kHz protocol.
-- A participant threshold at the same frequency and ear used for dB SL.
+- A HealthKit audiogram threshold at the same frequency and ear used for dB SL in recurring tasks.
+- A one-time orientation threshold validation record against that imported audiogram.
 - Repeated loudness-match trials.
 - Participant confidence per accepted match.
 - Study-specific quality flags.
@@ -228,7 +230,7 @@ The current study is centered on a fixed 1 kHz pure tone loudness match. Pitch m
 
 ### Orientation
 
-Study No. 1 requires an audiogram and one completed onboarding loudness-match run before ongoing task scheduling. The orientation is a full-screen modal flow that uses the same visual structure, controls, cleanup behavior, and active-test components as the scheduled Study No. 1 modal task flow.
+Study No. 1 requires an audiogram and one completed orientation threshold validation before ongoing task scheduling. The orientation is a full-screen modal flow that uses the same visual structure, controls, cleanup behavior, and preflight components as the scheduled Study No. 1 modal task flow.
 
 The onboarding step order is:
 
@@ -240,26 +242,28 @@ The onboarding step order is:
    - The app requests HealthKit audiogram read permission.
    - If permission is granted, it imports HealthKit audiogram samples into Supabase.
    - If no audiogram is found, the participant is asked to complete the Apple Hearing Test and check again.
-3. Modal loudness-match flow
-   - The participant continues through the same modal step order used by the scheduled task flow: intro, correct ear / AirPods route check, quiet room, fit confirmation, max volume, and active test.
-   - Before the active test starts, the app calls `begin_study_no_1_onboarding_loudness_task` to create or reuse a special onboarding scheduled task.
-   - The onboarding active test submits through the same `submit_study_no_1_loudness_match` path as scheduled tasks.
+3. Modal orientation threshold flow
+   - The participant continues through the same preflight step order used by the scheduled task flow: intro, correct ear / AirPods route check, quiet room, fit confirmation, and max volume.
+   - The quiet-room gate is app-owned and uses the shared animated gate visualization before ResearchKit starts.
+   - Before the ResearchKit threshold task starts, the app calls `begin_study_no_1_orientation_threshold_task` to create or reuse a special onboarding scheduled task.
+   - ResearchKit presents only the 1 kHz threshold task and returns threshold result traces through `ResearchKitStudyTaskAdapter`.
+   - The orientation threshold validation submits through `submit_study_no_1_orientation_threshold`.
 4. Finish orientation
-   - After the onboarding active test is submitted, the app calls `complete_study_no_1_onboarding`.
+   - After the orientation threshold validation is submitted, the app calls `complete_study_no_1_onboarding`.
    - The backend marks the enrollment orientation complete and generates ongoing scheduled loudness-match tasks.
 
-The dashboard stays blocked until the audiogram prerequisite is met, the onboarding loudness-match task is submitted, and Study No. 1 onboarding completion succeeds. Once tasks have been unlocked, later HealthKit sync failures are shown as warnings instead of re-locking previously available tasks.
+The dashboard stays blocked until the audiogram prerequisite is met, the orientation threshold validation task is submitted, and Study No. 1 onboarding completion succeeds. Once tasks have been unlocked, later HealthKit sync failures are shown as warnings instead of re-locking previously available tasks.
 
 ### Schedule Generation
 
-The one-time onboarding active test is prepared by the Supabase RPC `begin_study_no_1_onboarding_loudness_task(p_enrollment_id)`. It creates or returns a special `lm_1khz_v1` scheduled task with `day_index = -1` and `slot_index = 0`, a current active window, and the normal scheduled-task submission requirements.
+The one-time orientation threshold validation is prepared by the Supabase RPC `begin_study_no_1_orientation_threshold_task(p_enrollment_id)`. It creates or returns a special `lm_1khz_v1` scheduled task with `day_index = -1` and `slot_index = 0`, a current active window, and the normal scheduled-task ownership requirements.
 
 The ongoing 7-day schedule is generated by the Supabase RPC `complete_study_no_1_onboarding(p_enrollment_id, p_timezone)`.
 
 Current scheduling behavior:
 
 - Only enrolled users in Study No. 1 can complete onboarding for their own enrollment.
-- Onboarding completion requires a completed `task_runs` row for the special onboarding loudness-match task.
+- Onboarding completion requires a completed `task_runs` row for the special orientation threshold task.
 - The function validates the timezone and falls back to UTC if invalid.
 - If local time is after 9:00 AM, scheduling starts the next local date; otherwise it starts the current local date.
 - It creates 7 days of tasks.
@@ -288,7 +292,7 @@ The modal step order in code is:
 5. Max volume
 6. Active test
 
-The full-screen modal owns its local step state and performs cleanup when dismissed. If a scheduled task or onboarding active test has started, closing the modal requires confirmation. Cleanup stops active tone playback, route monitoring, continuity monitoring, quiet-room monitoring, volume monitoring, and aborts the active protocol run if needed.
+The full-screen modal owns its local step state and performs cleanup when dismissed. If a scheduled task or orientation threshold task has started, closing the modal requires confirmation. Cleanup stops active tone playback, route monitoring, continuity monitoring, quiet-room monitoring, volume monitoring, and aborts active protocol state if needed.
 
 ### Preflight Gates
 
@@ -316,7 +320,7 @@ The active Study No. 1 protocol has these states:
 - aborted,
 - restart required.
 
-The current UI shows the participant numerical dB HL readouts during active testing. Earlier planning suggested hiding numeric dB values to reduce anchoring; that is not the current implemented behavior. If blinding or anchoring reduction becomes important, that should be treated as a future UI change and tested against the active view.
+Scheduled tasks move from laterality selection directly into loudness-match trials after resolving the selected-ear 1 kHz threshold from the latest imported HealthKit audiogram. They do not launch ResearchKit threshold steps and do not ask the participant to complete threshold testing. The current UI shows the participant numerical dB HL readouts during active testing. Earlier planning suggested hiding numeric dB values to reduce anchoring; that is not the current implemented behavior. If blinding or anchoring reduction becomes important, that should be treated as a future UI change and tested against the active view.
 
 ## Tinnitus Protocol Domain Logic
 
@@ -359,15 +363,15 @@ The current channel rule is:
 
 The engine records this rule in the event response as `study_no_1_rule_unilateral_affected_else_left_first`.
 
-### Threshold Collection
+### Threshold Source
 
-Study No. 1 measures a participant threshold at 1000 Hz before loudness matching. The threshold is needed for dB SL:
+Study No. 1 uses the imported HealthKit audiogram threshold at 1000 Hz for the selected playback ear before loudness matching. The threshold is needed for dB SL:
 
 ```text
 dB SL = matched dB HL - threshold dB HL
 ```
 
-The threshold staircase lives in `TinnitusThresholdStaircase`:
+The in-app threshold staircase still lives in `TinnitusThresholdStaircase` as pure domain logic and for test coverage, but it is not part of scheduled Study No. 1 tasks. The one-time ResearchKit orientation threshold task is used only during onboarding as a validation record against the imported audiogram.
 
 - start: 30 dB HL
 - minimum: -10 dB HL
@@ -376,11 +380,11 @@ The threshold staircase lives in `TinnitusThresholdStaircase`:
 - step up after not-heard response: 5 dB
 - completion criterion: two ascending hits at the same level after a miss below that candidate level
 
-The engine can represent an unavailable threshold, but the current Study No. 1 loudness-match payload builder rejects submissions without a measured threshold. In practice, current Study No. 1 submissions require a measured 1000 Hz threshold.
+The engine can represent an unavailable threshold, but the current Study No. 1 loudness-match payload builder rejects submissions without a measured threshold. In practice, current recurring Study No. 1 submissions require a 1000 Hz HealthKit audiogram threshold.
 
 ### Loudness Matching
 
-After threshold measurement, each trial starts at threshold + 5 dB SL. Participants adjust the candidate tone level using four adjustments:
+After threshold resolution, each trial starts at threshold + 5 dB SL. Participants adjust the candidate tone level using four adjustments:
 
 - much softer: -5 dB
 - softer: -1 dB
@@ -431,7 +435,7 @@ Current quality flags include:
 - `safetyLimitRefused`
 - `unsupportedFrequency`
 
-The engine records events throughout the session: session start, laterality selection, threshold tone requests, playback planning, threshold responses, trial starts, level adjustments, playback requests, accepted levels, confidence, guardrail changes, aborts, and completion.
+The engine records events throughout the session: session start, laterality selection, HealthKit audiogram threshold recording, trial starts, level adjustments, playback requests, accepted levels, confidence, guardrail changes, aborts, and completion. Manual threshold tone events remain in the domain model but are not emitted by scheduled Study No. 1 tasks.
 
 ## Calibrated Audio Engine
 
@@ -727,7 +731,7 @@ The modal quiet-room UI reports states such as:
 - too loud,
 - passed.
 
-The quiet-room screen also offers suggestions such as moving rooms, closing windows, turning off fans or AC, and trying again later.
+The quiet-room screen uses the shared animated level visualization for both onboarding orientation and scheduled tasks. It also offers suggestions such as moving rooms, closing windows, turning off fans or AC, and trying again later.
 
 Current implementation details:
 
@@ -807,7 +811,7 @@ The builder validates:
 - visible stop control,
 - lifecycle timestamps,
 - 1000 Hz pure tone protocol,
-- measured threshold at 1000 Hz,
+- HealthKit audiogram threshold at 1000 Hz,
 - exactly three trials,
 - finite estimated dB SPL and dB SL values.
 
@@ -859,7 +863,7 @@ Additional limitations document:
 submit_study_no_1_loudness_match
 ```
 
-The RPC verifies that the authenticated user owns the enrollment, the enrollment belongs to Study No. 1, the scheduled task is still scheduled, and the current time is within the task window. This applies to both regular scheduled tasks and the special onboarding loudness-match task. It inserts a `task_runs` row, sets protocol version `lm_v1`, merges `matched_level` into `raw_payload`, and marks the scheduled task completed.
+The RPC verifies that the authenticated user owns the enrollment, the enrollment belongs to Study No. 1, the scheduled task is still scheduled, and the current time is within the task window. This applies to regular scheduled loudness-match tasks. It inserts a `task_runs` row, sets protocol version `lm_v1`, merges `matched_level` into `raw_payload`, and marks the scheduled task completed.
 
 ## Supabase Backend
 
@@ -909,9 +913,9 @@ Current schema is migration-driven. Important tables include:
   - Includes user ID, measured time, source, optional headphone/device name, HealthKit sample UUID, and JSON frequency data.
 - `study_enrollments`
   - User enrollment in a study.
-  - Includes onboarding completion for Study No. 1 task generation after the onboarding loudness-match run is complete.
+  - Includes onboarding completion for Study No. 1 task generation after the orientation threshold validation is complete.
 - `scheduled_tasks`
-  - Generated task schedule for an enrollment, plus the special Study No. 1 onboarding loudness-match task.
+  - Generated task schedule for an enrollment, plus the special Study No. 1 orientation threshold task.
   - Includes task key, task version, scheduled time, window start/end, day index, slot index, status, and completion time.
 - `task_runs`
   - Submitted task executions.
@@ -937,10 +941,12 @@ RPC functions are `SECURITY DEFINER` where needed, revoke execution from `PUBLIC
 
 Study No. 1 onboarding RPCs include:
 
-- `begin_study_no_1_onboarding_loudness_task`
+- `begin_study_no_1_orientation_threshold_task`
   - Creates or returns the special onboarding `lm_1khz_v1` scheduled task after audiogram import.
+- `submit_study_no_1_orientation_threshold`
+  - Stores the one-time orientation threshold validation payload and marks the special onboarding scheduled task complete.
 - `complete_study_no_1_onboarding`
-  - Requires the onboarding loudness-match task to have a completed `task_runs` row before marking enrollment onboarding complete and generating the ongoing schedule.
+  - Requires the orientation threshold task to have a completed `task_runs` row before marking enrollment onboarding complete and generating the ongoing schedule.
 
 ### Developer Tooling
 
@@ -1262,13 +1268,13 @@ HealthKit audiogram points can include:
 - source app,
 - measured date.
 
-The current Study No. 1 prerequisite only needs evidence that an audiogram exists, but future analysis can use the imported thresholds for richer interpretation.
+The current Study No. 1 prerequisite needs an imported audiogram, and recurring loudness-match tasks use the imported 1000 Hz threshold for the selected ear when calculating dB SL.
 
 ### Hearing Threshold
 
 A hearing threshold is the quietest level a person detects reliably for a given frequency and ear under a specified protocol.
 
-Study No. 1 measures an in-task 1000 Hz threshold because dB SL for the loudness match must use a threshold at the same frequency and playback ear. The Apple Hearing Test audiogram is still important context, but the task-specific threshold is the value used for the current dB SL payload.
+Study No. 1 recurring tasks use the imported HealthKit audiogram 1000 Hz threshold because dB SL for the loudness match must use a threshold at the same frequency and playback ear. The one-time onboarding orientation threshold task is a validation record; it is not repeated in scheduled tasks.
 
 ### Tinnitus
 
