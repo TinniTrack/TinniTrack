@@ -544,6 +544,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
 
         do {
+            pausePassedEnvironmentGateForPlayback()
             _ = try player?.play(request)
             isPlaying = true
             startPlaybackGuardrailMonitoring()
@@ -553,6 +554,16 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
 
         syncFromEngine()
+    }
+
+    private func pausePassedEnvironmentGateForPlayback() {
+        guard isRunningEnvironmentGate,
+              environmentGateResult?.passed == true
+        else {
+            return
+        }
+
+        cancelEnvironmentGate()
     }
 
     func stopTone() {

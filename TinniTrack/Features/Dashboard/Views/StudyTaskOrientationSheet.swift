@@ -527,6 +527,7 @@ struct StudyTaskOrientationSheet: View {
             guard loudnessViewModel.environmentGateResult?.passed == true else {
                 return
             }
+            loudnessViewModel.cancelEnvironmentGate()
             step = .fit
         case .fit:
             loudnessViewModel.completeFitConfirmation()

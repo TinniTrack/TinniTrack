@@ -265,6 +265,41 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func playbackPausesPassedContinuousEnvironmentGateWithoutClearingPreflight() async throws {
+        let player = MockCalibratedTonePlayer()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
+                samplesByUpdate: [[40, 41, 42, 43, 44]],
+                finishAfterUpdates: false
+            ),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            )
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil {
+            viewModel.isRunningEnvironmentGate
+                && viewModel.environmentGateResult?.passed == true
+        })
+
+        viewModel.fitSealConfirmed = true
+        viewModel.safetyAcknowledged = true
+        viewModel.refreshGuardrails()
+        await completeAudiogramThreshold(viewModel, laterality: .left)
+        viewModel.playTone()
+
+        #expect(player.playedRequests.count == 1)
+        #expect(viewModel.isRunningEnvironmentGate == false)
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.preflightReady)
+    }
+
+    @Test
     func startTestRequiresPassedVolumeGuardrails() async {
         var validation = CalibratedAudioGuardrailPolicy().validate(
             route: supportedRoute(),
