@@ -455,7 +455,8 @@ struct StudyTaskOrientationSheet: View {
             systemName: "ear.badge.waveform",
             title: "Find a Quiet Place",
             bodyText: "The room is too loud for this task. Onboarding will resume once the room is quiet enough.",
-            accessibilityIdentifier: "study_onboarding_quiet_room_interruption_popup"
+            accessibilityIdentifier: "study_onboarding_quiet_room_interruption_popup",
+            quietRoomLevelRatio: quietRoomInterruptionLevelRatio
         )
     }
 
@@ -463,18 +464,29 @@ struct StudyTaskOrientationSheet: View {
         systemName: String,
         title: String,
         bodyText: String,
-        accessibilityIdentifier: String
+        accessibilityIdentifier: String,
+        quietRoomLevelRatio: Double? = nil
     ) -> some View {
         ZStack {
             Color.black.opacity(0.32)
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 18) {
-                Image(systemName: systemName)
-                    .font(.system(size: 58, weight: .regular))
-                    .foregroundStyle(LoudnessMatchModalColors.primary)
-                    .frame(maxWidth: .infinity)
+                if let quietRoomLevelRatio {
+                    LoudnessMatchNoiseGateMeter(
+                        status: .tooLoud,
+                        levelRatio: quietRoomLevelRatio,
+                        isCompact: true
+                    )
+                    .padding(.horizontal, 6)
                     .accessibilityHidden(true)
+                } else {
+                    Image(systemName: systemName)
+                        .font(.system(size: 58, weight: .regular))
+                        .foregroundStyle(LoudnessMatchModalColors.primary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
+                }
 
                 Text(title)
                     .font(.title3)
@@ -503,6 +515,14 @@ struct StudyTaskOrientationSheet: View {
             .padding(.horizontal, 30)
         }
         .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private var quietRoomInterruptionLevelRatio: Double {
+        guard let latestSampleDBA = loudnessViewModel.environmentGateUpdate?.latestSampleDBA else {
+            return 1.2
+        }
+
+        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
     }
 
     private func advance() {

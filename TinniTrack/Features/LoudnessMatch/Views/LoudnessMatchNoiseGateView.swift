@@ -13,7 +13,12 @@ struct LoudnessMatchNoiseGateView: View {
             Spacer(minLength: 0)
 
             VStack(spacing: 26) {
-                NoiseGateMeter(status: status, progress: progress)
+                LoudnessMatchNoiseGateMeter(
+                    status: status,
+                    levelRatio: levelRatio,
+                    passingProgress: passingProgress,
+                    isCompact: false
+                )
 
                 HStack(spacing: 10) {
                     statusIcon
@@ -86,7 +91,15 @@ struct LoudnessMatchNoiseGateView: View {
         }
     }
 
-    private var progress: Double {
+    private var levelRatio: Double {
+        guard let latestSampleDBA = update?.latestSampleDBA else {
+            return 0.66
+        }
+
+        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
+    }
+
+    private var passingProgress: Double {
         guard let update else {
             return 0
         }
@@ -100,44 +113,231 @@ struct LoudnessMatchNoiseGateView: View {
 
 struct LoudnessMatchNoiseGateMeter: View {
     let status: TinnitusEnvironmentSPLGateStatus
-    let progress: Double
+    let levelRatio: Double
+    var passingProgress: Double?
+    var isCompact = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var displayedIndex = 0
 
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(0..<16, id: \.self) { index in
-                Capsule()
-                    .fill(color(for: index))
-                    .frame(width: 7, height: height(for: index))
+        VStack(spacing: isCompact ? 12 : 18) {
+            ZStack {
+                Circle()
+                    .stroke(ringBackgroundColor, lineWidth: ringLineWidth)
+
+                Circle()
+                    .trim(from: 0, to: ringProgress)
+                    .stroke(
+                        ringColor,
+                        style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+
+                Image(systemName: ringSymbolName)
+                    .font(.system(size: isCompact ? 18 : 20, weight: .bold))
+                    .foregroundStyle(ringColor)
             }
+            .frame(width: isCompact ? 44 : 54, height: isCompact ? 44 : 54)
+            .animation(.easeInOut(duration: 0.22), value: status)
+            .animation(.easeInOut(duration: 0.22), value: ringProgress)
+
+            GeometryReader { proxy in
+                let columnCount = columnCount(for: proxy.size.width)
+                HStack(alignment: .top, spacing: Self.squareDistance) {
+                    ForEach(0..<columnCount, id: \.self) { index in
+                        meterColumn(
+                            color: columnColor(for: index, columnCount: columnCount),
+                            opacity: columnOpacity(for: index),
+                            dotSize: Self.squareSize
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .onAppear {
+                    displayedIndex = targetIndex(columnCount: columnCount)
+                }
+                .onChange(of: targetIndex(columnCount: columnCount)) { _, _ in
+                    if reduceMotion {
+                        displayedIndex = targetIndex(columnCount: columnCount)
+                    }
+                }
+                .task(id: animationTaskID(columnCount: columnCount)) {
+                    await animateDisplayedIndex(columnCount: columnCount)
+                }
+            }
+            .frame(height: Self.barHeight)
         }
         .frame(maxWidth: .infinity)
-        .animation(.easeInOut(duration: 0.18), value: status)
-        .animation(.easeInOut(duration: 0.18), value: progress)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
     }
 
-    private func height(for index: Int) -> CGFloat {
+    private static let squareSize: CGFloat = 8
+    private static let squareDistance: CGFloat = 4
+    private static let rowSpacing: CGFloat = 12
+    private static let rowCount = 4
+    private static let greenLimitRatio = 0.66
+    private static let barHeight: CGFloat = 44
+
+    private var clampedLevelRatio: Double {
+        min(1.5, max(0, levelRatio))
+    }
+
+    private var ringProgress: CGFloat {
         switch status {
+        case .passed:
+            return 1
         case .tooLoud:
-            return index > 10 ? 72 : 32
-        case .measuring, .passed:
-            return 7
+            return 1
+        case .measuring:
+            return min(0.94, max(0.08, passingProgress ?? 0))
         }
     }
 
-    private func color(for index: Int) -> Color {
+    private var ringSymbolName: String {
         switch status {
         case .measuring:
-            return LoudnessMatchModalColors.meterInactive
+            return "ellipsis"
+        case .tooLoud:
+            return "xmark"
+        case .passed:
+            return "checkmark"
+        }
+    }
+
+    private var ringColor: Color {
+        switch status {
+        case .measuring:
+            return LoudnessMatchModalColors.primary
         case .tooLoud:
             return LoudnessMatchModalColors.warning
         case .passed:
-            let filledCount = max(1, Int((progress * 16).rounded(.up)))
-            return index < filledCount ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.controlBackground
+            return LoudnessMatchModalColors.success
         }
     }
-}
 
-private typealias NoiseGateMeter = LoudnessMatchNoiseGateMeter
+    private var ringBackgroundColor: Color {
+        switch status {
+        case .tooLoud:
+            return LoudnessMatchModalColors.warning.opacity(0.22)
+        case .passed:
+            return LoudnessMatchModalColors.success.opacity(0.22)
+        case .measuring:
+            return LoudnessMatchModalColors.meterInactive.opacity(0.34)
+        }
+    }
+
+    private var ringLineWidth: CGFloat {
+        isCompact ? 4 : 5
+    }
+
+    private var accessibilityLabel: String {
+        switch status {
+        case .measuring:
+            return "Quiet-room meter measuring"
+        case .tooLoud:
+            return "Quiet-room meter too loud"
+        case .passed:
+            return "Quiet-room meter passed"
+        }
+    }
+
+    private func meterColumn(color: Color, opacity: Double, dotSize: CGFloat) -> some View {
+        VStack(spacing: Self.squareDistance) {
+            ForEach(0..<Self.rowCount, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: Self.squareDistance, style: .continuous)
+                    .fill(color)
+                    .frame(width: dotSize, height: dotSize)
+                    .opacity(opacity)
+            }
+        }
+    }
+
+    private func columnCount(for width: CGFloat) -> Int {
+        max(16, Int(floor(width / Self.rowSpacing)) + 1)
+    }
+
+    private func greenIndexLimit(columnCount: Int) -> Int {
+        Int(Double(columnCount) * Self.greenLimitRatio)
+    }
+
+    private func normalizedLevelRatio() -> Double {
+        if clampedLevelRatio <= 1 {
+            return Self.greenLimitRatio * clampedLevelRatio
+        }
+
+        let loudRangeProgress = min(1, (clampedLevelRatio - 1) / 0.5)
+        return Self.greenLimitRatio + ((1 - Self.greenLimitRatio) * loudRangeProgress)
+    }
+
+    private func targetIndex(columnCount: Int) -> Int {
+        switch status {
+        case .passed:
+            return greenIndexLimit(columnCount: columnCount)
+        case .tooLoud:
+            let minimumLoudIndex = greenIndexLimit(columnCount: columnCount) + 2
+            let currentLevelIndex = Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1
+            return min(columnCount - 1, max(minimumLoudIndex, currentLevelIndex))
+        case .measuring:
+            return min(columnCount - 1, max(0, Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1))
+        }
+    }
+
+    private func animationTaskID(columnCount: Int) -> String {
+        "\(columnCount)-\(targetIndex(columnCount: columnCount))-\(status)-\(reduceMotion)"
+    }
+
+    @MainActor
+    private func animateDisplayedIndex(columnCount: Int) async {
+        let target = targetIndex(columnCount: columnCount)
+        guard !reduceMotion, status != .passed else {
+            displayedIndex = target
+            return
+        }
+
+        if displayedIndex == 0 {
+            displayedIndex = target
+        }
+
+        while !Task.isCancelled {
+            if displayedIndex > target {
+                displayedIndex -= 1
+            } else if displayedIndex < target {
+                displayedIndex += 1
+            } else {
+                displayedIndex = min(columnCount - 1, max(0, target + Int.random(in: -1...1)))
+            }
+
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
+    private func columnColor(for index: Int, columnCount: Int) -> Color {
+        if index <= greenIndexLimit(columnCount: columnCount) {
+            return shouldHighlight(index: index) ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.meterInactive
+        }
+
+        return shouldHighlight(index: index) ? LoudnessMatchModalColors.warning : LoudnessMatchModalColors.meterInactive
+    }
+
+    private func columnOpacity(for index: Int) -> Double {
+        if index < displayedIndex {
+            return 1
+        }
+
+        let distance = index - displayedIndex
+        if distance < 3 {
+            return max(0.22, 0.5 - (0.1 * Double(distance)))
+        }
+
+        return 1
+    }
+
+    private func shouldHighlight(index: Int) -> Bool {
+        index < displayedIndex || index - displayedIndex < 3
+    }
+}
 
 struct LoudnessMatchNoiseSuggestionsView: View {
     let dismiss: () -> Void
