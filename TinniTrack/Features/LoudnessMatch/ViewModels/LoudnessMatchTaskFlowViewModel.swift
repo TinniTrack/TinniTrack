@@ -59,6 +59,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let submissionExporter: StudyNo1LoudnessMatchSubmissionExporter
     private let orientationThresholdExporter: StudyNo1OrientationThresholdSubmissionExporter
     private let dateProvider: () -> Date
+    private let playbackPulseGapDuration: TimeInterval
     private let routeDiagnosticsLogger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "TinniTrack",
         category: "LoudnessAirPodsGate"
@@ -66,6 +67,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private var environmentGateTask: Task<Void, Never>?
     private var headphoneRouteObservation: AudioSessionObservation?
     private var airPodsContinuityObservation: AudioSessionObservation?
+    private var playbackPulseTask: Task<Void, Never>?
 
     init(
         engine: TinnitusProtocolEngine? = nil,
@@ -81,6 +83,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         runtimeContextProvider: StudyNo1RuntimeContextProviding? = nil,
         submissionExporter: StudyNo1LoudnessMatchSubmissionExporter? = nil,
         orientationThresholdExporter: StudyNo1OrientationThresholdSubmissionExporter? = nil,
+        playbackPulseGapDuration: TimeInterval = 0.35,
         dateProvider: @escaping () -> Date = Date.init
     ) {
         let resolvedEngine = engine ?? TinnitusProtocolEngine()
@@ -125,6 +128,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         self.runtimeContextProvider = runtimeContextProvider ?? SystemStudyNo1RuntimeContextProvider()
         self.submissionExporter = submissionExporter ?? StudyNo1LoudnessMatchSubmissionExporter()
         self.orientationThresholdExporter = orientationThresholdExporter ?? StudyNo1OrientationThresholdSubmissionExporter()
+        self.playbackPulseGapDuration = playbackPulseGapDuration
         self.dateProvider = dateProvider
         protocolState = resolvedEngine.state
         currentGuardrailValidation = self.guardrailProvider()
@@ -518,6 +522,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func playTone() {
+        guard !isPlaying else {
+            return
+        }
+
         guard allowsCalibratedPlayback else {
             message = .playbackDisabled
             return
@@ -528,32 +536,86 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             return
         }
 
+        guard let pulseDuration = playCurrentTonePulse() else {
+            return
+        }
+
+        isPlaying = true
+        startPlaybackGuardrailMonitoring()
+        scheduleNextTonePulse(after: pulseDuration)
+    }
+
+    private func playCurrentTonePulse() -> TimeInterval? {
         currentGuardrailValidation = guardrailProvider()
         guard currentGuardrailValidation.state == .passed else {
             let attempt = engine.playCurrentTone(guardrailValidation: currentGuardrailValidation)
             message = attempt.refusalReason == nil ? .guardrailsUnavailable : .guardrailsUnavailable
             syncFromEngine()
-            return
+            return nil
         }
 
         let attempt = engine.playCurrentTone(guardrailValidation: currentGuardrailValidation)
         guard let request = attempt.request, attempt.refusalReason == nil else {
             message = .guardrailsUnavailable
             syncFromEngine()
-            return
+            return nil
         }
 
         do {
             pausePassedEnvironmentGateForPlayback()
             _ = try player?.play(request)
-            isPlaying = true
-            startPlaybackGuardrailMonitoring()
             message = nil
+            syncFromEngine()
+            return request.duration
         } catch {
             message = .playbackFailed(error.localizedDescription)
+            syncFromEngine()
+            return nil
         }
+    }
 
-        syncFromEngine()
+    private func scheduleNextTonePulse(after pulseDuration: TimeInterval) {
+        playbackPulseTask?.cancel()
+        playbackPulseTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            var nextPulseDuration = pulseDuration
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: self.pulseDelayNanoseconds(after: nextPulseDuration))
+                } catch {
+                    break
+                }
+
+                guard !Task.isCancelled, self.isPlaying else {
+                    break
+                }
+
+                guard let playedPulseDuration = self.playCurrentTonePulse() else {
+                    self.finishPulsedPlaybackAfterFailure()
+                    break
+                }
+                nextPulseDuration = playedPulseDuration
+            }
+
+            if self.playbackPulseTask != nil {
+                self.playbackPulseTask = nil
+            }
+        }
+    }
+
+    private func pulseDelayNanoseconds(after pulseDuration: TimeInterval) -> UInt64 {
+        let delay = max(0.0, pulseDuration + playbackPulseGapDuration)
+        return UInt64((delay * 1_000_000_000).rounded())
+    }
+
+    private func finishPulsedPlaybackAfterFailure() {
+        playbackPulseTask?.cancel()
+        playbackPulseTask = nil
+        guardrailMonitor?.stopMonitoring()
+        isPlaying = false
     }
 
     private func pausePassedEnvironmentGateForPlayback() {
@@ -567,6 +629,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func stopTone() {
+        playbackPulseTask?.cancel()
+        playbackPulseTask = nil
         guardrailMonitor?.stopMonitoring()
         let metadata = player?.stop()
         isPlaying = false
@@ -591,6 +655,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         cancelEnvironmentGate()
         stopAirPodsContinuityMonitoring()
         stopVolumeGateMonitoring()
+        playbackPulseTask?.cancel()
+        playbackPulseTask = nil
         if isPlaying {
             guardrailMonitor?.stopMonitoring()
             _ = player?.stop()

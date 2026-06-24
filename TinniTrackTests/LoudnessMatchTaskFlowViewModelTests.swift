@@ -41,6 +41,41 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func pulsedPlaybackRepeatsLatestCandidateLevelUntilStopped() async throws {
+        let player = MockCalibratedTonePlayer()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            ),
+            playbackPulseGapDuration: 0.01
+        )
+
+        await completePreflight(viewModel)
+        await completeAudiogramThreshold(viewModel, laterality: .left)
+        viewModel.playTone()
+        #expect(player.playedRequests.map(\.levelDBHL) == [15])
+
+        viewModel.adjustLevel(.louder)
+        #expect(try await waitUntil(timeoutNanoseconds: 2_200_000_000) {
+            player.playedRequests.count >= 2
+        })
+
+        #expect(player.playedRequests.prefix(2).map(\.levelDBHL) == [15, 16])
+        #expect(viewModel.isPlaying)
+
+        viewModel.stopTone()
+        let playbackCountAfterStop = player.playedRequests.count
+        try await Task.sleep(nanoseconds: 1_200_000_000)
+
+        #expect(viewModel.isPlaying == false)
+        #expect(player.playedRequests.count == playbackCountAfterStop)
+    }
+
+    @Test
     func lateralitySelectionResolvesHealthKitAudiogramThresholdAndStartsFirstTrial() async throws {
         let player = MockCalibratedTonePlayer()
         let viewModel = LoudnessMatchTaskFlowViewModel(
