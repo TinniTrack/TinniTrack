@@ -118,7 +118,8 @@ struct LoudnessMatchNoiseGateMeter: View {
     var isCompact = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var displayedIndex = 0
+    @State private var displayedPosition: Double = 0
+    @State private var pulsePhase: Double = 0
 
     var body: some View {
         VStack(spacing: isCompact ? 12 : 18) {
@@ -147,23 +148,23 @@ struct LoudnessMatchNoiseGateMeter: View {
                 HStack(alignment: .top, spacing: Self.squareDistance) {
                     ForEach(0..<columnCount, id: \.self) { index in
                         meterColumn(
-                            color: columnColor(for: index, columnCount: columnCount),
-                            opacity: columnOpacity(for: index),
+                            activeColor: activeColor(for: index, columnCount: columnCount),
+                            activeOpacity: activeOpacity(for: index),
                             dotSize: Self.squareSize
                         )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 .onAppear {
-                    displayedIndex = targetIndex(columnCount: columnCount)
+                    displayedPosition = Double(targetIndex(columnCount: columnCount))
                 }
                 .onChange(of: targetIndex(columnCount: columnCount)) { _, _ in
                     if reduceMotion {
-                        displayedIndex = targetIndex(columnCount: columnCount)
+                        displayedPosition = Double(targetIndex(columnCount: columnCount))
                     }
                 }
                 .task(id: animationTaskID(columnCount: columnCount)) {
-                    await animateDisplayedIndex(columnCount: columnCount)
+                    await animateDisplayedPosition(columnCount: columnCount)
                 }
             }
             .frame(height: Self.barHeight)
@@ -179,6 +180,7 @@ struct LoudnessMatchNoiseGateMeter: View {
     private static let rowCount = 4
     private static let greenLimitRatio = 0.66
     private static let barHeight: CGFloat = 44
+    private static let animationFrameDuration: UInt64 = 33_000_000
 
     private var clampedLevelRatio: Double {
         min(1.5, max(0, levelRatio))
@@ -243,13 +245,17 @@ struct LoudnessMatchNoiseGateMeter: View {
         }
     }
 
-    private func meterColumn(color: Color, opacity: Double, dotSize: CGFloat) -> some View {
+    private func meterColumn(activeColor: Color, activeOpacity: Double, dotSize: CGFloat) -> some View {
         VStack(spacing: Self.squareDistance) {
             ForEach(0..<Self.rowCount, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: Self.squareDistance, style: .continuous)
-                    .fill(color)
+                    .fill(LoudnessMatchModalColors.meterInactive)
                     .frame(width: dotSize, height: dotSize)
-                    .opacity(opacity)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Self.squareDistance, style: .continuous)
+                            .fill(activeColor)
+                            .opacity(activeOpacity)
+                    }
             }
         }
     }
@@ -273,69 +279,78 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     private func targetIndex(columnCount: Int) -> Int {
         switch status {
-        case .passed:
-            return greenIndexLimit(columnCount: columnCount)
         case .tooLoud:
             let minimumLoudIndex = greenIndexLimit(columnCount: columnCount) + 2
             let currentLevelIndex = Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1
             return min(columnCount - 1, max(minimumLoudIndex, currentLevelIndex))
-        case .measuring:
+        case .measuring, .passed:
             return min(columnCount - 1, max(0, Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1))
         }
     }
 
     private func animationTaskID(columnCount: Int) -> String {
-        "\(columnCount)-\(targetIndex(columnCount: columnCount))-\(status)-\(reduceMotion)"
+        "\(columnCount)-\(targetIndex(columnCount: columnCount))-\(reduceMotion)"
     }
 
     @MainActor
-    private func animateDisplayedIndex(columnCount: Int) async {
-        let target = targetIndex(columnCount: columnCount)
-        guard !reduceMotion, status != .passed else {
-            displayedIndex = target
+    private func animateDisplayedPosition(columnCount: Int) async {
+        let target = Double(targetIndex(columnCount: columnCount))
+        guard !reduceMotion else {
+            displayedPosition = target
+            pulsePhase = 0
             return
         }
 
-        if displayedIndex == 0 {
-            displayedIndex = target
+        if displayedPosition == 0 {
+            displayedPosition = target
         }
 
         while !Task.isCancelled {
-            if displayedIndex > target {
-                displayedIndex -= 1
-            } else if displayedIndex < target {
-                displayedIndex += 1
+            let distanceToTarget = target - displayedPosition
+            let nextPosition: Double
+
+            if abs(distanceToTarget) < 0.03 {
+                nextPosition = target
             } else {
-                displayedIndex = min(columnCount - 1, max(0, target + Int.random(in: -1...1)))
+                nextPosition = displayedPosition + (distanceToTarget * 0.28)
             }
 
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            withAnimation(.easeInOut(duration: 0.12)) {
+                displayedPosition = min(Double(columnCount - 1), max(0, nextPosition))
+                pulsePhase = (pulsePhase + 0.16).truncatingRemainder(dividingBy: .pi * 2)
+            }
+
+            try? await Task.sleep(nanoseconds: Self.animationFrameDuration)
         }
     }
 
-    private func columnColor(for index: Int, columnCount: Int) -> Color {
+    private func activeColor(for index: Int, columnCount: Int) -> Color {
         if index <= greenIndexLimit(columnCount: columnCount) {
-            return shouldHighlight(index: index) ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.meterInactive
+            return LoudnessMatchModalColors.success
         }
 
-        return shouldHighlight(index: index) ? LoudnessMatchModalColors.warning : LoudnessMatchModalColors.meterInactive
+        return LoudnessMatchModalColors.warning
     }
 
-    private func columnOpacity(for index: Int) -> Double {
-        if index < displayedIndex {
-            return 1
+    private func activeOpacity(for index: Int) -> Double {
+        let position = Double(index)
+        let distance = position - displayedPosition
+        let phase = phaseMultiplier(for: index)
+
+        if position < displayedPosition - 0.6 {
+            return 0.78 + (0.22 * phase)
         }
 
-        let distance = index - displayedIndex
-        if distance < 3 {
-            return max(0.22, 0.5 - (0.1 * Double(distance)))
+        if distance >= -0.6 && distance < 3 {
+            let leadingOpacity = max(0, 0.62 - (0.14 * max(0, distance)))
+            return leadingOpacity * phase
         }
 
-        return 1
+        return 0
     }
 
-    private func shouldHighlight(index: Int) -> Bool {
-        index < displayedIndex || index - displayedIndex < 3
+    private func phaseMultiplier(for index: Int) -> Double {
+        0.78 + (0.22 * ((sin(pulsePhase + (Double(index) * 0.36)) + 1) / 2))
     }
 }
 
