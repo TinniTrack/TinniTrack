@@ -142,7 +142,7 @@ struct CalibratedAudioGuardrailPolicyTests {
     }
 
     @Test
-    func allSixteenPhaseOneVolumeBucketsAreRecordedThroughGuardrailMetadata() throws {
+    func allSixteenVolumeBucketsAreRecordedThroughGuardrailMetadata() throws {
         let expectedOffsets: [Double] = [
             -65.5,
             -58.5,

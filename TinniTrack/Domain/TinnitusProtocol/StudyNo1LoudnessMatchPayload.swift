@@ -1,35 +1,35 @@
 import Foundation
 
-enum Phase6PayloadValidationError: Error, Equatable {
+enum StudyNo1PayloadValidationError: Error, Equatable {
     case missingRequiredFields([String])
     case incompleteStudyNo1(reason: String)
 }
 
-enum Phase6GateResult: String, Codable, Equatable {
+enum StudyNo1GateResult: String, Codable, Equatable {
     case passed
     case failed
     case recordedOnly
 }
 
-enum Phase6FitSealStatus: String, Codable, Equatable {
+enum StudyNo1FitSealStatus: String, Codable, Equatable {
     case confirmedPassed
     case confirmedNotPassed
     case unavailable
 }
 
-enum Phase6ThresholdSource: String, Codable, Equatable {
+enum StudyNo1ThresholdSource: String, Codable, Equatable {
     case measured
     case manualScaffold
 }
 
-struct Phase6IdentifierContext: Codable, Equatable {
+struct StudyNo1IdentifierContext: Codable, Equatable {
     let participantId: String?
     let studySessionId: String?
     let enrollmentId: String?
     let scheduledTaskId: String?
 }
 
-struct Phase6RunLifecycle: Codable, Equatable {
+struct StudyNo1RunLifecycle: Codable, Equatable {
     let startedAt: Date
     let completedAt: Date?
     let submittedAt: Date?
@@ -37,19 +37,19 @@ struct Phase6RunLifecycle: Codable, Equatable {
     let interruptedAt: [Date]
 }
 
-struct Phase6DeviceContext: Codable, Equatable {
+struct StudyNo1DeviceContext: Codable, Equatable {
     let deviceModel: String
     let systemName: String
     let systemVersion: String
 }
 
-struct Phase6AirPodsContext: Codable, Equatable {
+struct StudyNo1AirPodsContext: Codable, Equatable {
     let modelIdentifier: String?
     let firmwareVersion: String?
     let unavailableReason: String?
 }
 
-struct Phase6ResearchKitCalibrationContext: Codable, Equatable {
+struct StudyNo1ResearchKitCalibrationContext: Codable, Equatable {
     let sourceRepositoryURL: String
     let vendoredResearchKitCommit: String
     let designDocumentResearchKitCommit: String
@@ -59,7 +59,7 @@ struct Phase6ResearchKitCalibrationContext: Codable, Equatable {
     let limitation: String
 }
 
-struct Phase6RouteOutputContext: Codable, Equatable {
+struct StudyNo1RouteOutputContext: Codable, Equatable {
     let portType: String
     let portName: String
     let portUID: String?
@@ -68,11 +68,11 @@ struct Phase6RouteOutputContext: Codable, Equatable {
     let verificationSource: String?
 }
 
-struct Phase6AudioRouteContext: Codable, Equatable {
-    let outputs: [Phase6RouteOutputContext]
+struct StudyNo1AudioRouteContext: Codable, Equatable {
+    let outputs: [StudyNo1RouteOutputContext]
 }
 
-struct Phase6AudioSessionContext: Codable, Equatable {
+struct StudyNo1AudioSessionContext: Codable, Equatable {
     let category: String
     let mode: String
     let options: [String]
@@ -80,36 +80,36 @@ struct Phase6AudioSessionContext: Codable, Equatable {
     let bufferSize: Double
 }
 
-struct Phase6VolumeContext: Codable, Equatable {
+struct StudyNo1VolumeContext: Codable, Equatable {
     let outputVolume: Double
     let bucketedOutputVolume: Double?
     let volumeCurveOffsetDB: Double?
     let policy: String
 }
 
-struct Phase6EnvironmentSPLContext: Codable, Equatable {
+struct StudyNo1EnvironmentSPLContext: Codable, Equatable {
     let thresholdDBA: Double
     let requiredContiguousSamples: Int
     let samplingInterval: TimeInterval
     let sensitivityOffsetDB: Double?
     let samplesDBA: [Double]
-    let gateResult: Phase6GateResult
+    let gateResult: StudyNo1GateResult
 }
 
-struct Phase6FitSealContext: Codable, Equatable {
-    let status: Phase6FitSealStatus
+struct StudyNo1FitSealContext: Codable, Equatable {
+    let status: StudyNo1FitSealStatus
     let confirmedAt: Date?
     let limitations: String
 }
 
-struct Phase6SafetyContext: Codable, Equatable {
+struct StudyNo1SafetyContext: Codable, Equatable {
     let acknowledgedAt: Date?
     let stopControlVisibleBeforePlayback: Bool
     let maximumLevelDBHL: Double
     let limitation: String
 }
 
-struct Phase6StimulusContext: Codable, Equatable {
+struct StudyNo1StimulusContext: Codable, Equatable {
     let kind: String
     let frequencyHz: Double
     let channel: String
@@ -118,15 +118,15 @@ struct Phase6StimulusContext: Codable, Equatable {
     let rampDuration: TimeInterval
 }
 
-struct Phase6ThresholdContext: Codable, Equatable {
+struct StudyNo1ThresholdContext: Codable, Equatable {
     let frequencyHz: Double
     let levelDBHL: Double
-    let source: Phase6ThresholdSource
+    let source: StudyNo1ThresholdSource
     let recordedAt: Date?
     let limitation: String?
 }
 
-struct Phase6LoudnessTrialContext: Codable, Equatable {
+struct StudyNo1LoudnessTrialContext: Codable, Equatable {
     let trialIndex: Int
     let acceptedLevelDBHL: Double
     let estimatedDBSPL: Double
@@ -135,7 +135,7 @@ struct Phase6LoudnessTrialContext: Codable, Equatable {
     let acceptedAt: Date
 }
 
-struct Phase6LoudnessSummaryContext: Codable, Equatable {
+struct StudyNo1LoudnessSummaryContext: Codable, Equatable {
     let medianMatchedDBHL: Double
     let medianEstimatedDBSPL: Double
     let medianDBSL: Double
@@ -144,7 +144,7 @@ struct Phase6LoudnessSummaryContext: Codable, Equatable {
     let completedAt: Date
 }
 
-struct Phase6ProtocolEventContext: Codable, Equatable {
+struct StudyNo1ProtocolEventContext: Codable, Equatable {
     let timestamp: Date
     let kind: String
     let frequencyHz: Double?
@@ -159,10 +159,10 @@ struct Phase6ProtocolEventContext: Codable, Equatable {
     let qualityFlags: [String]
     let guardrailState: String?
     let guardrailOutputVolume: Double?
-    let guardrailRouteOutputs: [Phase6RouteOutputContext]
+    let guardrailRouteOutputs: [StudyNo1RouteOutputContext]
 }
 
-struct Phase6PlaybackEventContext: Codable, Equatable {
+struct StudyNo1PlaybackEventContext: Codable, Equatable {
     let timestamp: Date
     let frequencyHz: Double
     let channel: String
@@ -178,37 +178,37 @@ struct Phase6PlaybackEventContext: Codable, Equatable {
     let stoppedAt: Date?
 }
 
-struct Phase6RefusalContext: Codable, Equatable {
+struct StudyNo1RefusalContext: Codable, Equatable {
     let timestamp: Date
     let reason: String
     let presentedLevelDBHL: Double?
     let guardrailState: String?
 }
 
-struct Phase6LoudnessMatchRunPayload: Codable, Equatable {
-    static let payloadVersion = "phase-6-study-no-1-v1"
+struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
+    static let payloadVersion = "study-no-1-loudness-match-v1"
     static let modelCalibratedOutputLimitation = "Estimated model-calibrated output from ResearchKit AirPods Pro 2 tables, route, and system output volume. This is not exact patient-specific in-ear SPL."
 
     let payloadVersion: String
     let protocolKind: String
-    let identifiers: Phase6IdentifierContext
-    let lifecycle: Phase6RunLifecycle
-    let device: Phase6DeviceContext
-    let airPods: Phase6AirPodsContext
-    let calibration: Phase6ResearchKitCalibrationContext
-    let audioRoute: Phase6AudioRouteContext
-    let audioSession: Phase6AudioSessionContext
-    let volume: Phase6VolumeContext
-    let environment: Phase6EnvironmentSPLContext
-    let fitSeal: Phase6FitSealContext
-    let safety: Phase6SafetyContext
-    let stimulus: Phase6StimulusContext
-    let threshold: Phase6ThresholdContext
-    let trials: [Phase6LoudnessTrialContext]
-    let summary: Phase6LoudnessSummaryContext
-    let protocolEvents: [Phase6ProtocolEventContext]
-    let playbackEvents: [Phase6PlaybackEventContext]
-    let refusals: [Phase6RefusalContext]
+    let identifiers: StudyNo1IdentifierContext
+    let lifecycle: StudyNo1RunLifecycle
+    let device: StudyNo1DeviceContext
+    let airPods: StudyNo1AirPodsContext
+    let calibration: StudyNo1ResearchKitCalibrationContext
+    let audioRoute: StudyNo1AudioRouteContext
+    let audioSession: StudyNo1AudioSessionContext
+    let volume: StudyNo1VolumeContext
+    let environment: StudyNo1EnvironmentSPLContext
+    let fitSeal: StudyNo1FitSealContext
+    let safety: StudyNo1SafetyContext
+    let stimulus: StudyNo1StimulusContext
+    let threshold: StudyNo1ThresholdContext
+    let trials: [StudyNo1LoudnessTrialContext]
+    let summary: StudyNo1LoudnessSummaryContext
+    let protocolEvents: [StudyNo1ProtocolEventContext]
+    let playbackEvents: [StudyNo1PlaybackEventContext]
+    let refusals: [StudyNo1RefusalContext]
     let limitations: [String]
 
     func validateCompletedStudyNo1() throws {
@@ -252,48 +252,48 @@ struct Phase6LoudnessMatchRunPayload: Codable, Equatable {
         }
 
         guard missing.isEmpty else {
-            throw Phase6PayloadValidationError.missingRequiredFields(missing)
+            throw StudyNo1PayloadValidationError.missingRequiredFields(missing)
         }
 
         guard protocolKind == "studyNo1FixedOneKilohertz" else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Payload is not Study No. 1.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Payload is not Study No. 1.")
         }
         guard stimulus.kind == "pureTone", stimulus.frequencyHz == 1_000 else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 must use a fixed 1000 Hz pure tone.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 must use a fixed 1000 Hz pure tone.")
         }
         guard threshold.source == .measured else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a measured 1000 Hz threshold source.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a measured 1000 Hz threshold source.")
         }
         guard threshold.frequencyHz == 1_000 else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 threshold must be recorded at 1000 Hz.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 threshold must be recorded at 1000 Hz.")
         }
         guard trials.count == 3 else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires three loudness-match trials.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires three loudness-match trials.")
         }
         guard trials.allSatisfy({ $0.estimatedDBSPL.isFinite && $0.dbSL.isFinite }) else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires estimated dB SPL and dB SL for each trial.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires estimated dB SPL and dB SL for each trial.")
         }
         guard environment.gateResult == .passed else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a passed environment SPL gate.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a passed environment SPL gate.")
         }
     }
 }
 
-struct Phase6PreflightContext: Equatable {
-    let identifiers: Phase6IdentifierContext
+struct StudyNo1PreflightContext: Equatable {
+    let identifiers: StudyNo1IdentifierContext
     let startedAt: Date
     let submittedAt: Date?
     let guardrailValidation: CalibratedAudioGuardrailValidation
-    let device: Phase6DeviceContext
-    let airPods: Phase6AirPodsContext
-    let audioSession: Phase6AudioSessionContext
-    let environment: Phase6EnvironmentSPLContext
-    let fitSeal: Phase6FitSealContext
-    let safety: Phase6SafetyContext
-    let thresholdSource: Phase6ThresholdSource
+    let device: StudyNo1DeviceContext
+    let airPods: StudyNo1AirPodsContext
+    let audioSession: StudyNo1AudioSessionContext
+    let environment: StudyNo1EnvironmentSPLContext
+    let fitSeal: StudyNo1FitSealContext
+    let safety: StudyNo1SafetyContext
+    let thresholdSource: StudyNo1ThresholdSource
 }
 
-struct Phase6LoudnessMatchPayloadBuilder {
+struct StudyNo1LoudnessMatchPayloadBuilder {
     private let calibrationMetadata: CalibratedAudioCalibrationMetadata
 
     init(calibrationMetadata: CalibratedAudioCalibrationMetadata = CalibratedHeadphoneProfile.airPodsPro2.metadata) {
@@ -303,37 +303,37 @@ struct Phase6LoudnessMatchPayloadBuilder {
     func buildStudyNo1Payload(
         summary: TinnitusLoudnessMatchSummary,
         events: [TinnitusProtocolEvent],
-        preflight: Phase6PreflightContext
-    ) throws -> Phase6LoudnessMatchRunPayload {
+        preflight: StudyNo1PreflightContext
+    ) throws -> StudyNo1LoudnessMatchRunPayload {
         guard summary.frequencyHz == 1_000 else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 summary must be fixed at 1000 Hz.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 summary must be fixed at 1000 Hz.")
         }
         guard case .measured(let thresholdDBHL) = summary.thresholdStatus else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 cannot complete Phase 6 without a recorded threshold.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 cannot complete without a recorded threshold.")
         }
         guard let medianEstimatedDBSPL = summary.medianEstimatedDBSPL,
               let medianDBSL = summary.medianDBSL
         else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires estimated dB SPL and dB SL medians.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 requires estimated dB SPL and dB SL medians.")
         }
 
         let guardrailMetadata = latestGuardrailMetadata(from: events) ?? preflight.guardrailValidation.metadata
-        let route = Phase6AudioRouteContext(
-            outputs: guardrailMetadata.routeDetails?.outputs.map(Phase6RouteOutputContext.init) ?? []
+        let route = StudyNo1AudioRouteContext(
+            outputs: guardrailMetadata.routeDetails?.outputs.map(StudyNo1RouteOutputContext.init) ?? []
         )
         let thresholdRecordedAt = events.last { $0.kind == .thresholdRecorded }?.timestamp
-        let threshold = Phase6ThresholdContext(
+        let threshold = StudyNo1ThresholdContext(
             frequencyHz: summary.frequencyHz,
             levelDBHL: thresholdDBHL,
             source: preflight.thresholdSource,
             recordedAt: thresholdRecordedAt,
             limitation: nil
         )
-        let payload = Phase6LoudnessMatchRunPayload(
-            payloadVersion: Phase6LoudnessMatchRunPayload.payloadVersion,
+        let payload = StudyNo1LoudnessMatchRunPayload(
+            payloadVersion: StudyNo1LoudnessMatchRunPayload.payloadVersion,
             protocolKind: "studyNo1FixedOneKilohertz",
             identifiers: preflight.identifiers,
-            lifecycle: Phase6RunLifecycle(
+            lifecycle: StudyNo1RunLifecycle(
                 startedAt: preflight.startedAt,
                 completedAt: summary.completedAt,
                 submittedAt: preflight.submittedAt,
@@ -344,14 +344,14 @@ struct Phase6LoudnessMatchPayloadBuilder {
             ),
             device: preflight.device,
             airPods: preflight.airPods,
-            calibration: Phase6ResearchKitCalibrationContext(metadata: calibrationMetadata),
+            calibration: StudyNo1ResearchKitCalibrationContext(metadata: calibrationMetadata),
             audioRoute: route,
             audioSession: preflight.audioSession,
-            volume: Phase6VolumeContext(metadata: guardrailMetadata),
+            volume: StudyNo1VolumeContext(metadata: guardrailMetadata),
             environment: preflight.environment,
             fitSeal: preflight.fitSeal,
             safety: preflight.safety,
-            stimulus: Phase6StimulusContext(
+            stimulus: StudyNo1StimulusContext(
                 kind: "pureTone",
                 frequencyHz: summary.frequencyHz,
                 channel: summary.channel.rawValue,
@@ -360,8 +360,8 @@ struct Phase6LoudnessMatchPayloadBuilder {
                 rampDuration: events.compactMap { $0.playbackMetadata?.rampDuration }.first ?? CalibratedTonePlaybackDefaults.rampDuration
             ),
             threshold: threshold,
-            trials: summary.trials.map(Phase6LoudnessTrialContext.init),
-            summary: Phase6LoudnessSummaryContext(
+            trials: summary.trials.map(StudyNo1LoudnessTrialContext.init),
+            summary: StudyNo1LoudnessSummaryContext(
                 medianMatchedDBHL: summary.medianMatchedDBHL,
                 medianEstimatedDBSPL: medianEstimatedDBSPL,
                 medianDBSL: medianDBSL,
@@ -369,11 +369,11 @@ struct Phase6LoudnessMatchPayloadBuilder {
                 qualityFlags: summary.qualityFlags.map(\.rawValue),
                 completedAt: summary.completedAt
             ),
-            protocolEvents: events.map(Phase6ProtocolEventContext.init),
-            playbackEvents: events.compactMap(Phase6PlaybackEventContext.init),
-            refusals: events.compactMap(Phase6RefusalContext.init),
+            protocolEvents: events.map(StudyNo1ProtocolEventContext.init),
+            playbackEvents: events.compactMap(StudyNo1PlaybackEventContext.init),
+            refusals: events.compactMap(StudyNo1RefusalContext.init),
             limitations: [
-                Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
+                StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
                 "AirPods Pro 2 verification uses the recorded research-protocol route confirmation when public iOS APIs cannot expose Apple's private AirPods hearing-test verification.",
                 "No clinical or diagnostic claim is made by this payload."
             ]
@@ -388,7 +388,7 @@ struct Phase6LoudnessMatchPayloadBuilder {
     }
 }
 
-private extension Phase6RouteOutputContext {
+private extension StudyNo1RouteOutputContext {
     init(_ output: CalibratedAudioRouteOutput) {
         portType = output.portType.description
         portName = output.portName
@@ -399,7 +399,7 @@ private extension Phase6RouteOutputContext {
     }
 }
 
-private extension Phase6VolumeContext {
+private extension StudyNo1VolumeContext {
     init(metadata: CalibratedAudioGuardrailMetadata?) {
         outputVolume = metadata?.rawOutputVolume ?? -1.0
         bucketedOutputVolume = metadata?.bucketedVolume?.outputVolume
@@ -408,7 +408,7 @@ private extension Phase6VolumeContext {
     }
 }
 
-private extension Phase6ResearchKitCalibrationContext {
+private extension StudyNo1ResearchKitCalibrationContext {
     init(metadata: CalibratedAudioCalibrationMetadata) {
         sourceRepositoryURL = metadata.sourceRepositoryURL
         vendoredResearchKitCommit = metadata.vendoredResearchKitCommit
@@ -416,11 +416,11 @@ private extension Phase6ResearchKitCalibrationContext {
         assetSourceVersion = metadata.sourceFileNames.joined(separator: ",")
         sourceFileNames = metadata.sourceFileNames
         validationStatus = metadata.validationStatus.rawValue
-        limitation = Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation
+        limitation = StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation
     }
 }
 
-private extension Phase6LoudnessTrialContext {
+private extension StudyNo1LoudnessTrialContext {
     init(_ trial: TinnitusLoudnessMatchTrial) {
         trialIndex = trial.trialIndex
         acceptedLevelDBHL = trial.acceptedLevelDBHL
@@ -431,7 +431,7 @@ private extension Phase6LoudnessTrialContext {
     }
 }
 
-private extension Phase6ProtocolEventContext {
+private extension StudyNo1ProtocolEventContext {
     init(_ event: TinnitusProtocolEvent) {
         timestamp = event.timestamp
         kind = event.kind.rawValue
@@ -447,11 +447,11 @@ private extension Phase6ProtocolEventContext {
         qualityFlags = event.qualityFlags.map(\.rawValue)
         guardrailState = event.guardrailMetadata.map { "\($0.validationState)" }
         guardrailOutputVolume = event.guardrailMetadata?.rawOutputVolume
-        guardrailRouteOutputs = event.guardrailMetadata?.routeDetails?.outputs.map(Phase6RouteOutputContext.init) ?? []
+        guardrailRouteOutputs = event.guardrailMetadata?.routeDetails?.outputs.map(StudyNo1RouteOutputContext.init) ?? []
     }
 }
 
-private extension Phase6PlaybackEventContext {
+private extension StudyNo1PlaybackEventContext {
     init?(_ event: TinnitusProtocolEvent) {
         guard let metadata = event.playbackMetadata else {
             return nil
@@ -473,7 +473,7 @@ private extension Phase6PlaybackEventContext {
     }
 }
 
-private extension Phase6RefusalContext {
+private extension StudyNo1RefusalContext {
     init?(_ event: TinnitusProtocolEvent) {
         guard event.kind == .playbackRefused || event.kind == .stopRequested || event.kind == .abortRecorded else {
             return nil

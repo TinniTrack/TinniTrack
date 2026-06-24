@@ -94,7 +94,7 @@ enum StudyProtocolCatalog {
                 ),
                 outputDeviceRequirement: OutputDeviceRequirement(
                     allowedDevices: [CalibrationProfileCatalog.airPodsPro2ResearchKitReference],
-                    enforcement: "Phase 2 calibrated route and maximum-volume guardrails required before calibrated playback"
+                    enforcement: "Calibrated route and maximum-volume guardrails required before calibrated playback"
                 ),
                 ambientRequirement: AmbientNoiseRequirement(
                     threshold: StudyNo1Configuration.ambientThresholdDB,
@@ -104,12 +104,12 @@ enum StudyProtocolCatalog {
                 measurementUnit: .dBHL,
                 researchKitModule: nil,
                 requiresCalibratedOutput: true,
-                notes: "Phase 4 protocol scaffold supports fixed 1 kHz loudness matching decisions, repeated trials, and raw event logging; participant calibrated playback remains safety-gated until preflight proof is available."
+                notes: "The Study No. 1 protocol supports fixed 1 kHz loudness matching decisions, repeated trials, and raw event logging; participant calibrated playback remains safety-gated until preflight proof is available."
             )
         ],
         calibrationProfile: CalibrationProfileCatalog.airPodsPro2ResearchKitCalibration,
         resultPayload: MeasurementPayloadMetadata(
-            schemaVersion: "study-no-1-lm-phase-4-protocol-gated",
+            schemaVersion: "study-no-1-loudness-match-v1",
             protocolVersion: "lm_v1",
             rawPayloadKeys: [
                 "task_key",
@@ -128,8 +128,8 @@ enum StudyProtocolCatalog {
                 "measurement_metadata"
             ],
             resultUnits: [.dBHL, .dBSPL, .dBSL],
-            validityNotice: "Phase 4 protocol logic is implemented, but participant calibrated result collection remains disabled until route, volume, quiet-room, and restart safety preflight are production-ready."
+            validityNotice: "Study No. 1 protocol logic is implemented, but participant calibrated result collection remains disabled until route, volume, quiet-room, and restart safety preflight are production-ready."
         ),
-        notes: "Defines the calibrated Study No. 1 protocol scaffold over Phase 1 conversion, Phase 2 guardrails, and Phase 3 playback planning. Persistence and production collection remain deferred."
+        notes: "Defines the calibrated Study No. 1 protocol over conversion, guardrails, and playback planning. Persistence and production collection remain deferred."
     )
 }

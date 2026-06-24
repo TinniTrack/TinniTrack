@@ -479,9 +479,9 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func completedStudyNo1BuildsPhase6PayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
+    func completedStudyNo1BuildsPayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
         let viewModel = await completedViewModel()
-        let payload = try viewModel.makePhase6Payload(
+        let payload = try viewModel.makeStudyNo1Payload(
             scheduledTask: scheduledTask(),
             enrollment: enrollment(),
             submittedAt: timestamp.addingTimeInterval(100)
@@ -518,7 +518,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(service.submissions.first?.scheduledTaskID == task.id)
         #expect(service.submissions.first?.enrollmentID == currentEnrollment.id)
         #expect(service.submissions.first?.submission.matchedLevel == 16)
-        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("phase-6-study-no-1-v1"))
+        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v1"))
     }
 
     @Test
@@ -540,8 +540,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(viewModel.completedSummary?.qualityFlags.contains(.thresholdUnavailable) == true)
         #expect(viewModel.completedSummary?.qualityFlags.contains(.dbSLInvalid) == true)
         #expect(viewModel.completedSummary?.qualityFlags.contains(.ambiguousLaterality) == true)
-        #expect(throws: Phase6PayloadValidationError.self) {
-            _ = try viewModel.makePhase6Payload(
+        #expect(throws: StudyNo1PayloadValidationError.self) {
+            _ = try viewModel.makeStudyNo1Payload(
                 scheduledTask: scheduledTask(),
                 enrollment: enrollment(),
                 submittedAt: timestamp
@@ -617,8 +617,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
-            runtimeContextProvider: MockPhase6RuntimeContextProvider(),
-            submissionExporter: Phase6LoudnessMatchSubmissionExporter(appVersion: "1.2.3"),
+            runtimeContextProvider: MockStudyNo1RuntimeContextProvider(),
+            submissionExporter: StudyNo1LoudnessMatchSubmissionExporter(appVersion: "1.2.3"),
             dateProvider: { timestamp }
         )
         await completePreflight(viewModel)
@@ -833,17 +833,17 @@ private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
     }
 }
 
-private struct MockPhase6RuntimeContextProvider: Phase6RuntimeContextProviding {
-    func deviceContext() -> Phase6DeviceContext {
-        Phase6DeviceContext(
+private struct MockStudyNo1RuntimeContextProvider: StudyNo1RuntimeContextProviding {
+    func deviceContext() -> StudyNo1DeviceContext {
+        StudyNo1DeviceContext(
             deviceModel: "iPhone17,2",
             systemName: "iOS",
             systemVersion: "26.0"
         )
     }
 
-    func audioSessionContext() -> Phase6AudioSessionContext {
-        Phase6AudioSessionContext(
+    func audioSessionContext() -> StudyNo1AudioSessionContext {
+        StudyNo1AudioSessionContext(
             category: "playback",
             mode: "default",
             options: [],
@@ -852,8 +852,8 @@ private struct MockPhase6RuntimeContextProvider: Phase6RuntimeContextProviding {
         )
     }
 
-    func airPodsContext(guardrailValidation: CalibratedAudioGuardrailValidation) -> Phase6AirPodsContext {
-        Phase6AirPodsContext(
+    func airPodsContext(guardrailValidation: CalibratedAudioGuardrailValidation) -> StudyNo1AirPodsContext {
+        StudyNo1AirPodsContext(
             modelIdentifier: guardrailValidation.metadata.supportedHeadphoneIdentifier,
             firmwareVersion: nil,
             unavailableReason: "Firmware unavailable in test fixture."

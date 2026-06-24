@@ -19,14 +19,14 @@ struct TinnitusEnvironmentSPLGateConfiguration: Equatable {
 struct TinnitusEnvironmentSPLGateResult: Equatable {
     let configuration: TinnitusEnvironmentSPLGateConfiguration
     let samplesDBA: [Double]
-    let gateResult: Phase6GateResult
+    let gateResult: StudyNo1GateResult
 
     var passed: Bool {
         gateResult == .passed
     }
 
-    var phase6Context: Phase6EnvironmentSPLContext {
-        Phase6EnvironmentSPLContext(
+    var studyNo1Context: StudyNo1EnvironmentSPLContext {
+        StudyNo1EnvironmentSPLContext(
             thresholdDBA: configuration.thresholdDBA,
             requiredContiguousSamples: configuration.requiredContiguousSamples,
             samplingInterval: configuration.samplingInterval,

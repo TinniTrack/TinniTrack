@@ -103,7 +103,7 @@ Important current implementation areas:
   - AirPods Pro 2 calibration tables, dB HL/dB SPL/amplitude conversion, guardrails, playback planning, and tone rendering.
 - `TinniTrack/Services/Audio/`
   - AVAudioSession route/volume providers, AirPods route heuristic resolver, quiet-room SPL meter, guardrail monitor, and AVAudioEngine playback service.
-- `TinniTrack/Domain/StudyTasks/Phase6LoudnessMatchPayload.swift`
+- `TinniTrack/Domain/TinnitusProtocol/StudyNo1LoudnessMatchPayload.swift`
   - Current loudness-match payload builder and validation rules.
 - `TinniTrack/Services/Studies/SupabaseStudyService.swift`
   - Study/enrollment/task fetches, orientation completion RPC, and loudness-match submission RPC.
@@ -366,7 +366,7 @@ The threshold staircase lives in `TinnitusThresholdStaircase`:
 - step up after not-heard response: 5 dB
 - completion criterion: two ascending hits at the same level after a miss below that candidate level
 
-The engine can represent an unavailable threshold, but the current Phase 6 payload builder rejects submissions without a measured threshold. In practice, current Study No. 1 submissions require a measured 1000 Hz threshold.
+The engine can represent an unavailable threshold, but the current Study No. 1 loudness-match payload builder rejects submissions without a measured threshold. In practice, current Study No. 1 submissions require a measured 1000 Hz threshold.
 
 ### Loudness Matching
 
@@ -775,12 +775,12 @@ The current fetch-latest path returns high-level audiogram record metadata. It d
 
 ## Payload And Submission
 
-The current payload builder is `Phase6LoudnessMatchPayloadBuilder`. The name is historical; it is the current Study No. 1 loudness-match payload path.
+The current payload builder is `StudyNo1LoudnessMatchPayloadBuilder`.
 
 Payload version:
 
 ```text
-phase-6-study-no-1-v1
+study-no-1-loudness-match-v1
 ```
 
 Protocol kind:
@@ -839,7 +839,7 @@ Additional limitations document:
 - model-calibrated rather than exact in-ear output,
 - lack of diagnostic claim.
 
-`Phase6LoudnessMatchSubmissionExporter` maps the payload into the RPC submission:
+`StudyNo1LoudnessMatchSubmissionExporter` maps the payload into the RPC submission:
 
 - `startedAt`
 - `completedAt`
@@ -1033,8 +1033,8 @@ The current test suite includes coverage for:
 - tinnitus threshold staircase,
 - tinnitus protocol engine,
 - loudness-match flow view model,
-- Phase 6 payload builder,
-- Phase 6 submission exporter,
+- Study No. 1 loudness-match payload builder,
+- Study No. 1 loudness-match submission exporter,
 - HealthKit audiogram import coordinator,
 - Study No. 1 configuration,
 - Study Task dashboard view model,

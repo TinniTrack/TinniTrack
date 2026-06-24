@@ -220,12 +220,12 @@ struct AcousticValidationTests {
         #expect(package.evaluation.runIdentifier == evaluation.runIdentifier)
         #expect(package.evaluation.status == evaluation.status)
         #expect(package.exportedAt == timestamp.addingTimeInterval(10))
-        #expect(json.contains("\"runVersion\" : \"phase-5-v1\""))
+        #expect(json.contains("\"runVersion\" : \"airpods-pro-2-acoustic-validation-v1\""))
         #expect(json.contains("\"canMarkCalibrationValidated\"") == false)
     }
 
     @Test
-    func phaseFiveDoesNotLoosenExistingUnguardedPlaybackRefusal() {
+    func acousticValidationDoesNotLoosenExistingUnguardedPlaybackRefusal() {
         let planner = CalibratedTonePlaybackPlanner(dateProvider: { timestamp })
 
         let error = playbackError {
@@ -253,7 +253,7 @@ struct AcousticValidationTests {
     ) throws -> AcousticValidationRunRecord {
         AcousticValidationRunRecord(
             runIdentifier: "run-001",
-            runVersion: "phase-5-v1",
+            runVersion: "airpods-pro-2-acoustic-validation-v1",
             validationProtocol: protocolDefinition,
             deviceContext: deviceContext ?? self.deviceContext(),
             environmentContext: environmentContext ?? self.environmentContext(),

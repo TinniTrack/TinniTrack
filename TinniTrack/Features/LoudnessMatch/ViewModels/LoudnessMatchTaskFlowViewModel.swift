@@ -53,8 +53,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let environmentMeter: EnvironmentSPLMeasuring
     private let environmentGateMonitor: EnvironmentSPLGateMonitoring
     private let allowsCalibratedPlayback: Bool
-    private let runtimeContextProvider: Phase6RuntimeContextProviding
-    private let submissionExporter: Phase6LoudnessMatchSubmissionExporter
+    private let runtimeContextProvider: StudyNo1RuntimeContextProviding
+    private let submissionExporter: StudyNo1LoudnessMatchSubmissionExporter
     private let dateProvider: () -> Date
     private let routeDiagnosticsLogger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "TinniTrack",
@@ -73,8 +73,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         environmentMeter: EnvironmentSPLMeasuring? = nil,
         environmentGateMonitor: EnvironmentSPLGateMonitoring? = nil,
         allowsCalibratedPlayback: Bool = true,
-        runtimeContextProvider: Phase6RuntimeContextProviding? = nil,
-        submissionExporter: Phase6LoudnessMatchSubmissionExporter? = nil,
+        runtimeContextProvider: StudyNo1RuntimeContextProviding? = nil,
+        submissionExporter: StudyNo1LoudnessMatchSubmissionExporter? = nil,
         dateProvider: @escaping () -> Date = Date.init
     ) {
         let resolvedEngine = engine ?? TinnitusProtocolEngine()
@@ -114,8 +114,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             ?? (resolvedEnvironmentMeter as? EnvironmentSPLGateMonitoring)
             ?? OneShotEnvironmentSPLGateMonitor(meter: resolvedEnvironmentMeter)
         self.allowsCalibratedPlayback = allowsCalibratedPlayback
-        self.runtimeContextProvider = runtimeContextProvider ?? SystemPhase6RuntimeContextProvider()
-        self.submissionExporter = submissionExporter ?? Phase6LoudnessMatchSubmissionExporter()
+        self.runtimeContextProvider = runtimeContextProvider ?? SystemStudyNo1RuntimeContextProvider()
+        self.submissionExporter = submissionExporter ?? StudyNo1LoudnessMatchSubmissionExporter()
         self.dateProvider = dateProvider
         protocolState = resolvedEngine.state
         thresholdStaircase = TinnitusThresholdStaircase()
@@ -349,7 +349,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func markThresholdUnavailable() {
-        engine.markThresholdUnavailable(reason: "Threshold estimator is not enabled in this Phase 4 scaffold.")
+        engine.markThresholdUnavailable(reason: "Threshold estimator is not enabled for the current Study No. 1 flow.")
         syncFromEngine()
     }
 
@@ -640,27 +640,27 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         syncFromEngine()
     }
 
-    func makePhase6Payload(
+    func makeStudyNo1Payload(
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment,
         submittedAt: Date? = nil
-    ) throws -> Phase6LoudnessMatchRunPayload {
+    ) throws -> StudyNo1LoudnessMatchRunPayload {
         guard let summary = completedSummary else {
-            throw Phase6PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 is not complete.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 is not complete.")
         }
-        guard let environment = environmentGateResult?.phase6Context else {
-            throw Phase6PayloadValidationError.missingRequiredFields(["environment.samplesDBA"])
+        guard let environment = environmentGateResult?.studyNo1Context else {
+            throw StudyNo1PayloadValidationError.missingRequiredFields(["environment.samplesDBA"])
         }
         guard fitSealConfirmed else {
-            throw Phase6PayloadValidationError.missingRequiredFields(["fitSeal.status"])
+            throw StudyNo1PayloadValidationError.missingRequiredFields(["fitSeal.status"])
         }
         guard safetyAcknowledged else {
-            throw Phase6PayloadValidationError.missingRequiredFields(["safety.acknowledgedAt"])
+            throw StudyNo1PayloadValidationError.missingRequiredFields(["safety.acknowledgedAt"])
         }
 
         currentGuardrailValidation = guardrailProvider()
-        let preflight = Phase6PreflightContext(
-            identifiers: Phase6IdentifierContext(
+        let preflight = StudyNo1PreflightContext(
+            identifiers: StudyNo1IdentifierContext(
                 participantId: enrollment.userID.uuidString,
                 studySessionId: enrollment.id.uuidString,
                 enrollmentId: enrollment.id.uuidString,
@@ -673,12 +673,12 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             airPods: runtimeContextProvider.airPodsContext(guardrailValidation: currentGuardrailValidation),
             audioSession: runtimeContextProvider.audioSessionContext(),
             environment: environment,
-            fitSeal: Phase6FitSealContext(
+            fitSeal: StudyNo1FitSealContext(
                 status: .confirmedPassed,
                 confirmedAt: dateProvider(),
                 limitations: "Participant confirmation; public iOS APIs do not expose Apple's Ear Tip Fit Test result."
             ),
-            safety: Phase6SafetyContext(
+            safety: StudyNo1SafetyContext(
                 acknowledgedAt: dateProvider(),
                 stopControlVisibleBeforePlayback: true,
                 maximumLevelDBHL: 100.0,
@@ -687,7 +687,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             thresholdSource: .measured
         )
 
-        return try Phase6LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
+        return try StudyNo1LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
             summary: summary,
             events: events,
             preflight: preflight
@@ -708,7 +708,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
         do {
             let submittedAt = dateProvider()
-            let payload = try makePhase6Payload(
+            let payload = try makeStudyNo1Payload(
                 scheduledTask: scheduledTask,
                 enrollment: enrollment,
                 submittedAt: submittedAt
@@ -721,7 +721,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             )
             hasSubmitted = true
             message = nil
-        } catch let error as Phase6PayloadValidationError {
+        } catch let error as StudyNo1PayloadValidationError {
             message = .incompletePayload(String(describing: error))
         } catch {
             message = .submissionFailed(error.localizedDescription)

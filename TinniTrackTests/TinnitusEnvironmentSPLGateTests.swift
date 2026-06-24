@@ -11,8 +11,8 @@ struct TinnitusEnvironmentSPLGateTests {
         )
 
         #expect(result.gateResult == .passed)
-        #expect(result.phase6Context.gateResult == .passed)
-        #expect(result.phase6Context.samplesDBA == [50, 44, 43, 42, 41, 40])
+        #expect(result.studyNo1Context.gateResult == .passed)
+        #expect(result.studyNo1Context.samplesDBA == [50, 44, 43, 42, 41, 40])
     }
 
     @Test
