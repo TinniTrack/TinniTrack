@@ -4,12 +4,12 @@ import UIKit
 @MainActor
 struct ResearchKitTaskPresenterView: UIViewControllerRepresentable {
     let request: ResearchKitTaskRequest
-    let adapter: ResearchStudyTaskAdapting
+    private let adapter: ResearchStudyTaskAdapting?
     let completion: (ResearchKitTaskResultSummary) -> Void
 
     init(
         request: ResearchKitTaskRequest,
-        adapter: ResearchStudyTaskAdapting,
+        adapter: ResearchStudyTaskAdapting? = nil,
         completion: @escaping (ResearchKitTaskResultSummary) -> Void
     ) {
         self.request = request
@@ -17,9 +17,33 @@ struct ResearchKitTaskPresenterView: UIViewControllerRepresentable {
         self.completion = completion
     }
 
-    func makeUIViewController(context: Context) -> UIViewController {
-        adapter.makeTaskViewController(for: request, completion: completion)
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            adapter: adapter ?? ResearchKitStudyTaskAdapter(),
+            completion: completion
+        )
     }
 
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+    func makeUIViewController(context: Context) -> UIViewController {
+        context.coordinator.adapter.makeTaskViewController(for: request) { [weak coordinator = context.coordinator] summary in
+            coordinator?.completion(summary)
+        }
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        context.coordinator.completion = completion
+    }
+
+    final class Coordinator {
+        let adapter: ResearchStudyTaskAdapting
+        var completion: (ResearchKitTaskResultSummary) -> Void
+
+        init(
+            adapter: ResearchStudyTaskAdapting,
+            completion: @escaping (ResearchKitTaskResultSummary) -> Void
+        ) {
+            self.adapter = adapter
+            self.completion = completion
+        }
+    }
 }

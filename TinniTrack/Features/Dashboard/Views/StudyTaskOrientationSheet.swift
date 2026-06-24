@@ -21,8 +21,7 @@ struct StudyTaskOrientationSheet: View {
 
             if step == .activeTest, let onboardingTask = viewModel.onboardingThresholdTask {
                 ResearchKitTaskPresenterView(
-                    request: .studyNo1OrientationThreshold(identifier: "study-no-1-orientation-threshold"),
-                    adapter: ResearchKitStudyTaskAdapter()
+                    request: .studyNo1OrientationThreshold(identifier: "study-no-1-orientation-threshold")
                 ) { summary in
                     Task { @MainActor in
                         await handleOrientationThresholdCompletion(summary, onboardingTask: onboardingTask)
