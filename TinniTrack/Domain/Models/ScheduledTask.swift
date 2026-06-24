@@ -16,6 +16,10 @@ struct ScheduledTask: Identifiable, Equatable, Hashable {
     func isStartable(at date: Date = Date()) -> Bool {
         status == .scheduled && date >= windowStart && date <= windowEnd
     }
+
+    var isHiddenOnboardingTask: Bool {
+        dayIndex < 0 || taskKey == "threshold_1khz_orientation_v1"
+    }
 }
 
 enum ScheduledTaskStatus: Equatable, Hashable {

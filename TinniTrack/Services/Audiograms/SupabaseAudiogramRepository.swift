@@ -20,7 +20,7 @@ final class SupabaseAudiogramRepository: AudiogramRepositoryProtocol {
 
         let rows: [AudiogramRow] = try await client
             .from("audiograms")
-            .select("id,measured_at,source,headphone_name,healthkit_sample_uuid")
+            .select("id,measured_at,source,headphone_name,healthkit_sample_uuid,frequency_data")
             .eq("user_id", value: userID.uuidString)
             .order("measured_at", ascending: false)
             .limit(1)
@@ -124,6 +124,7 @@ private struct AudiogramRow: Decodable {
     let source: String
     let headphoneName: String?
     let healthKitSampleUUID: UUID?
+    let frequencyData: FrequencyDataRow?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -131,6 +132,7 @@ private struct AudiogramRow: Decodable {
         case source
         case headphoneName = "headphone_name"
         case healthKitSampleUUID = "healthkit_sample_uuid"
+        case frequencyData = "frequency_data"
     }
 
     func toDomain() -> AudiogramRecord {
@@ -140,7 +142,7 @@ private struct AudiogramRow: Decodable {
             source: source,
             headphoneName: headphoneName,
             healthKitSampleUUID: healthKitSampleUUID,
-            points: []
+            points: frequencyData?.points ?? []
         )
     }
 
@@ -152,6 +154,16 @@ private struct AudiogramRow: Decodable {
         let fallback = ISO8601DateFormatter()
         fallback.formatOptions = [.withInternetDateTime]
         return fallback.date(from: value)
+    }
+}
+
+private struct FrequencyDataRow: Decodable {
+    let schemaVersion: Int?
+    let points: [AudiogramPoint]
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case points
     }
 }
 

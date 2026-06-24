@@ -91,14 +91,14 @@ final class SupabaseStudyService: StudyServiceProtocol {
         }
     }
 
-    func beginStudyNo1OnboardingLoudnessTask(enrollmentID: UUID) async throws -> ScheduledTask {
+    func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
         let params: [String: String] = [
             "p_enrollment_id": enrollmentID.uuidString
         ]
 
         let rows: [ScheduledTaskRow] = try await client
             .rpc(
-                "begin_study_no_1_onboarding_loudness_task",
+                "begin_study_no_1_orientation_threshold_task",
                 params: params
             )
             .execute()
@@ -108,7 +108,7 @@ final class SupabaseStudyService: StudyServiceProtocol {
             throw NSError(
                 domain: "StudyService",
                 code: 500,
-                userInfo: [NSLocalizedDescriptionKey: "Unable to prepare the onboarding loudness-match task."]
+                userInfo: [NSLocalizedDescriptionKey: "Unable to prepare the orientation threshold task."]
             )
         }
 
@@ -124,6 +124,33 @@ final class SupabaseStudyService: StudyServiceProtocol {
         try await client
             .rpc(
                 "complete_study_no_1_onboarding",
+                params: params
+            )
+            .execute()
+    }
+
+    func submitStudyNo1OrientationThreshold(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: StudyNo1OrientationThresholdSubmission
+    ) async throws {
+        let params: [String: JSONValue] = [
+            "p_scheduled_task_id": .string(scheduledTaskID.uuidString),
+            "p_enrollment_id": .string(enrollmentID.uuidString),
+            "p_started_at": .string(Self.iso8601Formatter.string(from: submission.startedAt)),
+            "p_completed_at": .string(Self.iso8601Formatter.string(from: submission.completedAt)),
+            "p_matched_level": .number(submission.matchedLevel),
+            "p_gating": .object(submission.gating),
+            "p_raw_payload": .object(submission.rawPayload),
+            "p_device_info": .object(submission.deviceInfo),
+            "p_headphone_info": .object(submission.headphoneInfo),
+            "p_app_version": submission.appVersion.map(JSONValue.string) ?? .null,
+            "p_calibration_version": submission.calibrationVersion.map(JSONValue.string) ?? .null
+        ]
+
+        try await client
+            .rpc(
+                "submit_study_no_1_orientation_threshold",
                 params: params
             )
             .execute()

@@ -20,6 +20,7 @@ enum StudyNo1FitSealStatus: String, Codable, Equatable {
 enum StudyNo1ThresholdSource: String, Codable, Equatable {
     case measured
     case manualScaffold
+    case healthKitAudiogram
 }
 
 struct StudyNo1IdentifierContext: Codable, Equatable {
@@ -186,7 +187,7 @@ struct StudyNo1RefusalContext: Codable, Equatable {
 }
 
 struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
-    static let payloadVersion = "study-no-1-loudness-match-v1"
+    static let payloadVersion = "study-no-1-loudness-match-v2"
     static let modelCalibratedOutputLimitation = "Estimated model-calibrated output from ResearchKit AirPods Pro 2 tables, route, and system output volume. This is not exact patient-specific in-ear SPL."
 
     let payloadVersion: String
@@ -261,8 +262,8 @@ struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
         guard stimulus.kind == "pureTone", stimulus.frequencyHz == 1_000 else {
             throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 must use a fixed 1000 Hz pure tone.")
         }
-        guard threshold.source == .measured else {
-            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a measured 1000 Hz threshold source.")
+        guard threshold.source == .healthKitAudiogram else {
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Completed Study No. 1 requires a HealthKit audiogram 1000 Hz threshold source.")
         }
         guard threshold.frequencyHz == 1_000 else {
             throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Study No. 1 threshold must be recorded at 1000 Hz.")
@@ -388,38 +389,6 @@ struct StudyNo1LoudnessMatchPayloadBuilder {
     }
 }
 
-private extension StudyNo1RouteOutputContext {
-    init(_ output: CalibratedAudioRouteOutput) {
-        portType = output.portType.description
-        portName = output.portName
-        portUID = output.portUID
-        channelNames = output.channelNames
-        verifiedCalibratedHeadphoneIdentifier = output.verifiedCalibratedHeadphoneIdentifier
-        verificationSource = output.verificationSource?.rawValue
-    }
-}
-
-private extension StudyNo1VolumeContext {
-    init(metadata: CalibratedAudioGuardrailMetadata?) {
-        outputVolume = metadata?.rawOutputVolume ?? -1.0
-        bucketedOutputVolume = metadata?.bucketedVolume?.outputVolume
-        volumeCurveOffsetDB = metadata?.bucketedVolume?.splOffsetDB
-        policy = metadata?.volumePolicyDescription ?? ""
-    }
-}
-
-private extension StudyNo1ResearchKitCalibrationContext {
-    init(metadata: CalibratedAudioCalibrationMetadata) {
-        sourceRepositoryURL = metadata.sourceRepositoryURL
-        vendoredResearchKitCommit = metadata.vendoredResearchKitCommit
-        designDocumentResearchKitCommit = metadata.designDocumentResearchKitCommit
-        assetSourceVersion = metadata.sourceFileNames.joined(separator: ",")
-        sourceFileNames = metadata.sourceFileNames
-        validationStatus = metadata.validationStatus.rawValue
-        limitation = StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation
-    }
-}
-
 private extension StudyNo1LoudnessTrialContext {
     init(_ trial: TinnitusLoudnessMatchTrial) {
         trialIndex = trial.trialIndex
@@ -483,34 +452,5 @@ private extension StudyNo1RefusalContext {
         reason = event.reason ?? event.kind.rawValue
         presentedLevelDBHL = event.presentedLevelDBHL
         guardrailState = event.guardrailMetadata.map { "\($0.validationState)" }
-    }
-}
-
-private extension CalibratedAudioRoutePortKind {
-    var description: String {
-        switch self {
-        case .builtInSpeaker:
-            return "builtInSpeaker"
-        case .builtInReceiver:
-            return "builtInReceiver"
-        case .wiredHeadphones:
-            return "wiredHeadphones"
-        case .bluetoothA2DP:
-            return "bluetoothA2DP"
-        case .bluetoothHFP:
-            return "bluetoothHFP"
-        case .bluetoothLE:
-            return "bluetoothLE"
-        case .airPlay:
-            return "airPlay"
-        case .carAudio:
-            return "carAudio"
-        case .hdmi:
-            return "hdmi"
-        case .usbAudio:
-            return "usbAudio"
-        case .unknown(let value):
-            return value
-        }
     }
 }

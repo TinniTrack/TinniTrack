@@ -37,8 +37,8 @@ final class StudyTaskDashboardViewModel: ObservableObject {
     @Published private(set) var isLoadingTasks = false
     @Published private(set) var taskLoadErrorMessage: String?
     @Published private(set) var isCompletingStudyOnboarding = false
-    @Published private(set) var onboardingLoudnessTask: ScheduledTask?
-    @Published private(set) var isPreparingOnboardingLoudnessTask = false
+    @Published private(set) var onboardingThresholdTask: ScheduledTask?
+    @Published private(set) var isPreparingOnboardingThresholdTask = false
 
     private let study: Study
     private var enrollment: StudyEnrollment?
@@ -82,13 +82,13 @@ final class StudyTaskDashboardViewModel: ObservableObject {
 
     var futureTasks: [ScheduledTask] {
         scheduledTasks
-            .filter { $0.status == .scheduled }
+            .filter { $0.status == .scheduled && !$0.isHiddenOnboardingTask }
             .sorted { $0.scheduledFor < $1.scheduledFor }
     }
 
     var completedTasks: [ScheduledTask] {
         scheduledTasks
-            .filter { $0.status == .completed }
+            .filter { $0.status == .completed && !$0.isHiddenOnboardingTask }
             .sorted {
                 let lhs = $0.completedAt ?? $0.scheduledFor
                 let rhs = $1.completedAt ?? $1.scheduledFor
@@ -123,9 +123,9 @@ final class StudyTaskDashboardViewModel: ObservableObject {
         await evaluatePrerequisite(showLoadingState: false)
     }
 
-    func prepareStudyOnboardingLoudnessTask() async -> ScheduledTask? {
+    func prepareStudyOnboardingThresholdTask() async -> ScheduledTask? {
         guard requiresStudyOnboardingCompletion else {
-            return onboardingLoudnessTask
+            return onboardingThresholdTask
         }
 
         guard isAudiogramPrerequisiteMet else {
@@ -138,23 +138,23 @@ final class StudyTaskDashboardViewModel: ObservableObject {
             return nil
         }
 
-        if let onboardingLoudnessTask, onboardingLoudnessTask.status == .scheduled {
-            return onboardingLoudnessTask
+        if let onboardingThresholdTask, onboardingThresholdTask.status == .scheduled {
+            return onboardingThresholdTask
         }
 
-        isPreparingOnboardingLoudnessTask = true
-        defer { isPreparingOnboardingLoudnessTask = false }
+        isPreparingOnboardingThresholdTask = true
+        defer { isPreparingOnboardingThresholdTask = false }
 
         do {
-            let task = try await studyService.beginStudyNo1OnboardingLoudnessTask(enrollmentID: enrollment.id)
+            let task = try await studyService.beginStudyNo1OrientationThresholdTask(enrollmentID: enrollment.id)
             if task.status == .completed {
-                onboardingLoudnessTask = nil
+                onboardingThresholdTask = nil
                 taskLoadErrorMessage = nil
                 await completeStudyOnboarding()
                 return nil
             }
 
-            onboardingLoudnessTask = task
+            onboardingThresholdTask = task
             taskLoadErrorMessage = nil
             return task
         } catch {
@@ -198,7 +198,7 @@ final class StudyTaskDashboardViewModel: ObservableObject {
             )
 
             taskLoadErrorMessage = nil
-            onboardingLoudnessTask = nil
+            onboardingThresholdTask = nil
             await reloadScheduledTasksIfReady(force: true)
         } catch {
             taskLoadErrorMessage = error.localizedDescription

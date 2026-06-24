@@ -9,7 +9,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
     func studyNo1PayloadCapturesRequiredContextAndEncodes() throws {
         let payload = try makeCompletedPayload()
 
-        #expect(payload.payloadVersion == "study-no-1-loudness-match-v1")
+        #expect(payload.payloadVersion == "study-no-1-loudness-match-v2")
         #expect(payload.protocolKind == "studyNo1FixedOneKilohertz")
         #expect(payload.identifiers.enrollmentId == enrollmentID.uuidString)
         #expect(payload.identifiers.scheduledTaskId == scheduledTaskID.uuidString)
@@ -28,7 +28,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
         #expect(payload.stimulus.frequencyHz == 1_000)
         #expect(payload.stimulus.kind == "pureTone")
         #expect(payload.threshold.levelDBHL == 10)
-        #expect(payload.threshold.source == .measured)
+        #expect(payload.threshold.source == .healthKitAudiogram)
         #expect(payload.trials.map(\.acceptedLevelDBHL) == [16, 14, 20])
         #expect(payload.summary.medianMatchedDBHL == 16)
         #expect(payload.summary.medianDBSL == 6)
@@ -146,7 +146,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
             threshold: StudyNo1ThresholdContext(
                 frequencyHz: valid.threshold.frequencyHz,
                 levelDBHL: valid.threshold.levelDBHL,
-                source: .manualScaffold,
+                source: .measured,
                 recordedAt: valid.threshold.recordedAt,
                 limitation: "Legacy fixture."
             ),
@@ -162,7 +162,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
             try invalid.validateCompletedStudyNo1()
             Issue.record("Expected completed Study No. 1 validation to reject manual thresholds")
         } catch StudyNo1PayloadValidationError.incompleteStudyNo1(let reason) {
-            #expect(reason.contains("measured"))
+            #expect(reason.contains("HealthKit audiogram"))
         }
     }
 
@@ -313,7 +313,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
                 maximumLevelDBHL: 100,
                 limitation: "Immediate stop is available; no diagnostic claim."
             ),
-            thresholdSource: .measured
+            thresholdSource: .healthKitAudiogram
         )
     }
 

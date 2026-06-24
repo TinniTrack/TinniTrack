@@ -33,57 +33,29 @@ struct LoudnessMatchActiveTestView: View {
                 VStack(spacing: 12) {
                     ForEach(TinnitusLaterality.allCases, id: \.self) { laterality in
                         modalChoiceButton(lateralityTitle(laterality)) {
-                            viewModel.selectLaterality(laterality)
+                            Task {
+                                await viewModel.selectLaterality(laterality)
+                            }
                         }
+                        .disabled(viewModel.isResolvingAudiogramThreshold)
+                    }
+                }
+
+                if viewModel.isResolvingAudiogramThreshold {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Loading hearing-test threshold...")
+                            .font(.callout)
+                            .foregroundStyle(LoudnessMatchModalColors.secondaryText)
                     }
                 }
             }
 
         case .awaitingThreshold:
-            VStack(alignment: .leading, spacing: 20) {
-                LoudnessMatchModalTitleBlock(
-                    title: "Find the softest tone you can hear.",
-                    bodyText: "Tap Play Tone, then tell us whether you heard the sound. The level will adjust automatically."
-                )
-
-                levelReadout(
-                    title: "Current level",
-                    value: String(format: "%.0f dB HL", viewModel.thresholdStaircase.currentLevelDBHL)
-                )
-
-                HStack(spacing: 12) {
-                    modalActionButton(
-                        viewModel.isPlaying ? "Playing" : "Play Tone",
-                        systemName: "play.fill",
-                        isPrimary: true,
-                        isEnabled: viewModel.canPlayThresholdTone && !viewModel.isPlaying
-                    ) {
-                        viewModel.playThresholdTone()
-                    }
-
-                    modalActionButton(
-                        "Stop",
-                        systemName: "stop.fill",
-                        isPrimary: false,
-                        isEnabled: viewModel.isPlaying
-                    ) {
-                        viewModel.stopTone()
-                    }
-                }
-
-                HStack(spacing: 12) {
-                    modalActionButton("Heard", systemName: "ear.fill", isPrimary: false, isEnabled: viewModel.canRecordThresholdResponse) {
-                        viewModel.recordThresholdResponse(.heard)
-                    }
-                    modalActionButton("Not Heard", systemName: "ear.badge.xmark", isPrimary: false, isEnabled: viewModel.canRecordThresholdResponse) {
-                        viewModel.recordThresholdResponse(.notHeard)
-                    }
-                }
-
-                Text("Responses: \(viewModel.thresholdStaircase.presentations.count)")
-                    .font(.callout)
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-            }
+            LoudnessMatchModalTitleBlock(
+                title: "Loading hearing-test threshold",
+                bodyText: "Study No. 1 uses the imported Apple hearing-test threshold for dB SL."
+            )
 
         case .readyForTrial:
             VStack(alignment: .leading, spacing: 20) {

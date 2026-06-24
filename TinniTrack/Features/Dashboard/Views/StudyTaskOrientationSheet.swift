@@ -12,23 +12,20 @@ struct StudyTaskOrientationSheet: View {
     @StateObject private var loudnessViewModel = LoudnessMatchTaskFlowViewModel()
     @State private var isCloseConfirmationPresented = false
     @State private var isNoiseSuggestionsPresented = false
+    @State private var orientationThresholdErrorMessage: String?
 
     var body: some View {
         ZStack(alignment: .top) {
             LoudnessMatchModalColors.background
                 .ignoresSafeArea()
 
-            if step == .activeTest, let onboardingTask = viewModel.onboardingLoudnessTask {
-                LoudnessMatchActiveTestView(
-                    viewModel: loudnessViewModel,
-                    scheduledTask: onboardingTask,
-                    enrollment: enrollment,
-                    studyService: studyService,
-                    completedBodyText: "Submit this loudness-match result to finish Study No. 1 onboarding."
-                ) {
-                    await viewModel.completeStudyOnboarding()
-                    if !viewModel.requiresStudyOnboardingCompletion {
-                        close()
+            if step == .activeTest, let onboardingTask = viewModel.onboardingThresholdTask {
+                ResearchKitTaskPresenterView(
+                    request: .studyNo1OrientationThreshold(identifier: "study-no-1-orientation-threshold"),
+                    adapter: ResearchKitStudyTaskAdapter()
+                ) { summary in
+                    Task { @MainActor in
+                        await handleOrientationThresholdCompletion(summary, onboardingTask: onboardingTask)
                     }
                 }
             } else {
@@ -82,11 +79,16 @@ struct StudyTaskOrientationSheet: View {
         .alert(
             "Unable to Continue",
             isPresented: Binding(
-                get: { loudnessViewModel.message != nil || viewModel.taskLoadErrorMessage != nil },
+                get: {
+                    loudnessViewModel.message != nil
+                        || viewModel.taskLoadErrorMessage != nil
+                        || orientationThresholdErrorMessage != nil
+                },
                 set: { shouldShow in
                     if !shouldShow {
                         loudnessViewModel.clearMessage()
                         viewModel.dismissTaskError()
+                        orientationThresholdErrorMessage = nil
                     }
                 }
             )
@@ -94,6 +96,7 @@ struct StudyTaskOrientationSheet: View {
             Button("OK", role: .cancel) {
                 loudnessViewModel.clearMessage()
                 viewModel.dismissTaskError()
+                orientationThresholdErrorMessage = nil
             }
         } message: {
             Text(messageText)
@@ -381,7 +384,7 @@ struct StudyTaskOrientationSheet: View {
         case .correctEar, .quietRoom, .fit:
             return "Next"
         case .maxVolume:
-            return viewModel.isPreparingOnboardingLoudnessTask ? "Starting" : "Start Test"
+            return viewModel.isPreparingOnboardingThresholdTask ? "Starting" : "Start Test"
         case .activeTest:
             return ""
         }
@@ -399,7 +402,7 @@ struct StudyTaskOrientationSheet: View {
             return loudnessViewModel.environmentGateResult?.passed == true
         case .maxVolume:
             return loudnessViewModel.currentGuardrailValidation.state == .passed
-                && !viewModel.isPreparingOnboardingLoudnessTask
+                && !viewModel.isPreparingOnboardingThresholdTask
         case .activeTest:
             return false
         }
@@ -415,7 +418,7 @@ struct StudyTaskOrientationSheet: View {
     }
 
     private var isPrimaryButtonLoading: Bool {
-        step == .maxVolume && viewModel.isPreparingOnboardingLoudnessTask
+        step == .maxVolume && viewModel.isPreparingOnboardingThresholdTask
     }
 
     private var hasStartedTest: Bool {
@@ -534,7 +537,7 @@ struct StudyTaskOrientationSheet: View {
                 return
             }
             Task {
-                if await viewModel.prepareStudyOnboardingLoudnessTask() != nil {
+                if await viewModel.prepareStudyOnboardingThresholdTask() != nil {
                     loudnessViewModel.stopVolumeGateMonitoring()
                     step = .activeTest
                 } else if !viewModel.requiresStudyOnboardingCompletion {
@@ -636,6 +639,10 @@ struct StudyTaskOrientationSheet: View {
     }
 
     private var messageText: String {
+        if let orientationThresholdErrorMessage {
+            return orientationThresholdErrorMessage
+        }
+
         if let dashboardMessage = viewModel.taskLoadErrorMessage {
             return dashboardMessage
         }
@@ -649,6 +656,8 @@ struct StudyTaskOrientationSheet: View {
             return "Please place your AirPods in your ear."
         case .unsupportedHeadphones:
             return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .missingAudiogramThreshold(let message):
+            return message
         case .missingPreflight(let message):
             return message
         case .incompletePayload(let message):
@@ -663,6 +672,41 @@ struct StudyTaskOrientationSheet: View {
             return message
         case nil:
             return ""
+        }
+    }
+
+    private func handleOrientationThresholdCompletion(
+        _ summary: ResearchKitTaskResultSummary,
+        onboardingTask: ScheduledTask
+    ) async {
+        guard summary.finishState == .completed else {
+            orientationThresholdErrorMessage = "The orientation threshold task was not completed."
+            step = .maxVolume
+            return
+        }
+
+        guard let thresholdResult = summary.studyNo1OrientationThreshold,
+              thresholdResult.isComplete
+        else {
+            orientationThresholdErrorMessage = "The orientation threshold task did not return both 1 kHz ear thresholds."
+            step = .maxVolume
+            return
+        }
+
+        let submitted = await loudnessViewModel.submitOrientationThreshold(
+            result: thresholdResult,
+            scheduledTask: onboardingTask,
+            enrollment: enrollment,
+            studyService: studyService
+        )
+        guard submitted else {
+            step = .maxVolume
+            return
+        }
+
+        await viewModel.completeStudyOnboarding()
+        if !viewModel.requiresStudyOnboardingCompletion {
+            close()
         }
     }
 

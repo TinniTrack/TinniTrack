@@ -23,7 +23,7 @@ struct StudyNo1LoudnessMatchSubmissionExporterTests {
         #expect(submission.gating["environment"] != nil)
         #expect(submission.gating["fit_seal"] != nil)
         #expect(submission.gating["safety"] != nil)
-        #expect(submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v1"))
+        #expect(submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v2"))
         #expect(submission.rawPayload["protocolKind"] == .string("studyNo1FixedOneKilohertz"))
 
         guard case .object(let summary)? = submission.rawPayload["summary"] else {
@@ -168,7 +168,7 @@ struct StudyNo1LoudnessMatchSubmissionExporterTests {
             threshold: StudyNo1ThresholdContext(
                 frequencyHz: 1_000,
                 levelDBHL: 10,
-                source: .measured,
+                source: .healthKitAudiogram,
                 recordedAt: timestamp,
                 limitation: nil
             ),

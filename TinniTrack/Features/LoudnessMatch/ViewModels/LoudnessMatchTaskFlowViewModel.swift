@@ -13,6 +13,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         case environmentGateUnavailable(String)
         case airPodsNotInEar
         case unsupportedHeadphones
+        case missingAudiogramThreshold(String)
         case playbackFailed(String)
         case submissionFailed(String)
     }
@@ -35,11 +36,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var isAirPodsContinuityMonitoring = false
     @Published private(set) var isAirPodsRouteInterrupted = false
     @Published private(set) var isVolumeGateMonitoring = false
-    @Published private(set) var thresholdStaircase: TinnitusThresholdStaircase
+    @Published private(set) var isResolvingAudiogramThreshold = false
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
     @Published private(set) var message: FlowMessage?
     @Published private(set) var isPlaying = false
-    @Published private(set) var canRecordThresholdResponse = false
     @Published private(set) var isSubmitting = false
     @Published private(set) var hasSubmitted = false
     @Published private(set) var completedSummary: TinnitusLoudnessMatchSummary?
@@ -52,9 +52,12 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private let headphoneRouteAssessor: HeadphoneRouteAssessor
     private let environmentMeter: EnvironmentSPLMeasuring
     private let environmentGateMonitor: EnvironmentSPLGateMonitoring
+    private let audiogramRepository: AudiogramRepositoryProtocol
+    private let audiogramThresholdResolver: AudiogramThresholdResolver
     private let allowsCalibratedPlayback: Bool
     private let runtimeContextProvider: StudyNo1RuntimeContextProviding
     private let submissionExporter: StudyNo1LoudnessMatchSubmissionExporter
+    private let orientationThresholdExporter: StudyNo1OrientationThresholdSubmissionExporter
     private let dateProvider: () -> Date
     private let routeDiagnosticsLogger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "TinniTrack",
@@ -72,9 +75,12 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         headphoneRouteAssessor: HeadphoneRouteAssessor = HeadphoneRouteAssessor(),
         environmentMeter: EnvironmentSPLMeasuring? = nil,
         environmentGateMonitor: EnvironmentSPLGateMonitoring? = nil,
+        audiogramRepository: AudiogramRepositoryProtocol? = nil,
+        audiogramThresholdResolver: AudiogramThresholdResolver = AudiogramThresholdResolver(),
         allowsCalibratedPlayback: Bool = true,
         runtimeContextProvider: StudyNo1RuntimeContextProviding? = nil,
         submissionExporter: StudyNo1LoudnessMatchSubmissionExporter? = nil,
+        orientationThresholdExporter: StudyNo1OrientationThresholdSubmissionExporter? = nil,
         dateProvider: @escaping () -> Date = Date.init
     ) {
         let resolvedEngine = engine ?? TinnitusProtocolEngine()
@@ -113,12 +119,14 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         self.environmentGateMonitor = environmentGateMonitor
             ?? (resolvedEnvironmentMeter as? EnvironmentSPLGateMonitoring)
             ?? OneShotEnvironmentSPLGateMonitor(meter: resolvedEnvironmentMeter)
+        self.audiogramRepository = audiogramRepository ?? SupabaseAudiogramRepository()
+        self.audiogramThresholdResolver = audiogramThresholdResolver
         self.allowsCalibratedPlayback = allowsCalibratedPlayback
         self.runtimeContextProvider = runtimeContextProvider ?? SystemStudyNo1RuntimeContextProvider()
         self.submissionExporter = submissionExporter ?? StudyNo1LoudnessMatchSubmissionExporter()
+        self.orientationThresholdExporter = orientationThresholdExporter ?? StudyNo1OrientationThresholdSubmissionExporter()
         self.dateProvider = dateProvider
         protocolState = resolvedEngine.state
-        thresholdStaircase = TinnitusThresholdStaircase()
         currentGuardrailValidation = self.guardrailProvider()
         syncHeadphoneRouteAssessmentFromPassedGuardrails()
     }
@@ -133,14 +141,6 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             && preflightReady
             && !isAirPodsRouteInterrupted
             && currentCandidateLevelDBHL != nil
-    }
-
-    var canPlayThresholdTone: Bool {
-        allowsCalibratedPlayback
-            && currentGuardrailValidation.state == .passed
-            && preflightReady
-            && !isAirPodsRouteInterrupted
-            && !thresholdStaircase.isComplete
     }
 
     var preflightReady: Bool {
@@ -341,16 +341,33 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         )
     }
 
-    func selectLaterality(_ laterality: TinnitusLaterality) {
-        selectedLaterality = laterality
-        thresholdStaircase = TinnitusThresholdStaircase()
-        engine.selectLaterality(laterality)
-        syncFromEngine()
-    }
+    func selectLaterality(_ laterality: TinnitusLaterality) async {
+        guard !isResolvingAudiogramThreshold else {
+            return
+        }
 
-    func markThresholdUnavailable() {
-        engine.markThresholdUnavailable(reason: "Threshold estimator is not enabled for the current Study No. 1 flow.")
-        syncFromEngine()
+        isResolvingAudiogramThreshold = true
+        defer { isResolvingAudiogramThreshold = false }
+
+        do {
+            let selectedChannel = TinnitusProtocolEngine.channel(for: laterality)
+            let audiogram = try await audiogramRepository.fetchLatestAudiogram()
+            let threshold = try audiogramThresholdResolver.resolveThresholdDBHL(
+                for: selectedChannel,
+                in: audiogram
+            )
+            selectedLaterality = laterality
+            engine.selectLaterality(
+                laterality,
+                healthKitAudiogramThresholdDBHL: threshold
+            )
+            message = nil
+            syncFromEngine()
+        } catch let error as AudiogramThresholdResolutionError {
+            message = .missingAudiogramThreshold(error.localizedDescription)
+        } catch {
+            message = .missingAudiogramThreshold(error.localizedDescription)
+        }
     }
 
     func runEnvironmentGate() async {
@@ -495,73 +512,6 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         return true
     }
 
-    func playThresholdTone() {
-        guard allowsCalibratedPlayback else {
-            message = .playbackDisabled
-            return
-        }
-
-        guard preflightReady else {
-            message = .missingPreflight("Complete audio guardrails, AirPods Pro 2 research verification, quiet-room gate, fit/seal confirmation, and safety acknowledgement before threshold playback.")
-            return
-        }
-
-        currentGuardrailValidation = guardrailProvider()
-        guard currentGuardrailValidation.state == .passed else {
-            let attempt = engine.playThresholdTone(
-                levelDBHL: thresholdStaircase.currentLevelDBHL,
-                guardrailValidation: currentGuardrailValidation
-            )
-            message = attempt.refusalReason == nil ? .guardrailsUnavailable : .guardrailsUnavailable
-            syncFromEngine()
-            return
-        }
-
-        let attempt = engine.playThresholdTone(
-            levelDBHL: thresholdStaircase.currentLevelDBHL,
-            guardrailValidation: currentGuardrailValidation
-        )
-        guard let request = attempt.request, attempt.refusalReason == nil else {
-            message = .guardrailsUnavailable
-            syncFromEngine()
-            return
-        }
-
-        do {
-            _ = try player?.play(request)
-            isPlaying = true
-            canRecordThresholdResponse = true
-            startPlaybackGuardrailMonitoring()
-            message = nil
-        } catch {
-            message = .playbackFailed(error.localizedDescription)
-        }
-
-        syncFromEngine()
-    }
-
-    func recordThresholdResponse(_ response: TinnitusThresholdResponse) {
-        guard canRecordThresholdResponse else {
-            message = .missingPreflight("Play the threshold tone before recording a heard or not-heard response.")
-            return
-        }
-
-        let presentedLevel = thresholdStaircase.currentLevelDBHL
-        if isPlaying {
-            stopTone()
-        }
-        canRecordThresholdResponse = false
-
-        engine.recordThresholdResponse(levelDBHL: presentedLevel, response: response)
-        thresholdStaircase.recordResponse(response)
-
-        if let measuredThreshold = thresholdStaircase.measuredThresholdDBHL {
-            engine.recordThreshold(levelDBHL: measuredThreshold)
-        }
-
-        syncFromEngine()
-    }
-
     func adjustLevel(_ adjustment: TinnitusLoudnessAdjustment) {
         engine.adjustLevel(adjustment)
         syncFromEngine()
@@ -609,7 +559,6 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         guardrailMonitor?.stopMonitoring()
         let metadata = player?.stop()
         isPlaying = false
-        canRecordThresholdResponse = false
         engine.recordStop(playbackMetadata: metadata)
         syncFromEngine()
     }
@@ -684,7 +633,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 maximumLevelDBHL: 100.0,
                 limitation: "Immediate stop is visible during playback; no clinical or diagnostic claim."
             ),
-            thresholdSource: .measured
+            thresholdSource: .healthKitAudiogram
         )
 
         return try StudyNo1LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
@@ -725,6 +674,82 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             message = .incompletePayload(String(describing: error))
         } catch {
             message = .submissionFailed(error.localizedDescription)
+        }
+    }
+
+    func makeOrientationThresholdPayload(
+        result: StudyNo1OrientationThresholdResearchKitResult,
+        scheduledTask: ScheduledTask,
+        enrollment: StudyEnrollment,
+        submittedAt: Date? = nil
+    ) throws -> StudyNo1OrientationThresholdRunPayload {
+        guard let rightEar = result.rightEar?.studyNo1Context else {
+            throw StudyNo1OrientationThresholdPayloadValidationError.missingRequiredFields(["rightEar.thresholdDBHL"])
+        }
+        guard let leftEar = result.leftEar?.studyNo1Context else {
+            throw StudyNo1OrientationThresholdPayloadValidationError.missingRequiredFields(["leftEar.thresholdDBHL"])
+        }
+        guard let environment = environmentGateResult?.studyNo1Context else {
+            throw StudyNo1OrientationThresholdPayloadValidationError.missingRequiredFields(["environment.samplesDBA"])
+        }
+
+        currentGuardrailValidation = guardrailProvider()
+        return try StudyNo1OrientationThresholdPayloadBuilder().build(
+            identifiers: StudyNo1IdentifierContext(
+                participantId: enrollment.userID.uuidString,
+                studySessionId: enrollment.id.uuidString,
+                enrollmentId: enrollment.id.uuidString,
+                scheduledTaskId: scheduledTask.id.uuidString
+            ),
+            startedAt: events.first?.timestamp ?? dateProvider(),
+            completedAt: submittedAt ?? dateProvider(),
+            submittedAt: submittedAt,
+            guardrailValidation: currentGuardrailValidation,
+            device: runtimeContextProvider.deviceContext(),
+            airPods: runtimeContextProvider.airPodsContext(guardrailValidation: currentGuardrailValidation),
+            audioSession: runtimeContextProvider.audioSessionContext(),
+            environment: environment,
+            rightEar: rightEar,
+            leftEar: leftEar
+        )
+    }
+
+    func submitOrientationThreshold(
+        result: StudyNo1OrientationThresholdResearchKitResult,
+        scheduledTask: ScheduledTask,
+        enrollment: StudyEnrollment,
+        studyService: StudyServiceProtocol
+    ) async -> Bool {
+        guard !isSubmitting else {
+            return false
+        }
+
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        do {
+            let submittedAt = dateProvider()
+            let payload = try makeOrientationThresholdPayload(
+                result: result,
+                scheduledTask: scheduledTask,
+                enrollment: enrollment,
+                submittedAt: submittedAt
+            )
+            let submission = try orientationThresholdExporter.makeSubmission(from: payload)
+            try await studyService.submitStudyNo1OrientationThreshold(
+                scheduledTaskID: scheduledTask.id,
+                enrollmentID: enrollment.id,
+                submission: submission
+            )
+            hasSubmitted = true
+            message = nil
+            return true
+        } catch let error as StudyNo1OrientationThresholdPayloadValidationError {
+            message = .incompletePayload(String(describing: error))
+            return false
+        } catch {
+            message = .submissionFailed(error.localizedDescription)
+            return false
         }
     }
 
@@ -781,6 +806,48 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 || event.kind == .playRequested
                 || event.kind == .playbackPlanned
         }
+    }
+}
+
+private extension StudyNo1OrientationThresholdEarResult {
+    var studyNo1Context: StudyNo1OrientationThresholdEarContext? {
+        guard let thresholdDBHL else {
+            return nil
+        }
+
+        return StudyNo1OrientationThresholdEarContext(
+            channel: channel,
+            frequencyHz: 1_000,
+            thresholdDBHL: thresholdDBHL,
+            outputVolume: outputVolume,
+            headphoneType: headphoneType,
+            tonePlaybackDuration: tonePlaybackDuration,
+            postStimulusDelay: postStimulusDelay,
+            samples: samples.map(\.studyNo1Context)
+        )
+    }
+}
+
+private extension StudyNo1OrientationThresholdFrequencySample {
+    var studyNo1Context: StudyNo1OrientationThresholdFrequencySampleContext {
+        StudyNo1OrientationThresholdFrequencySampleContext(
+            frequencyHz: frequencyHz,
+            calculatedThresholdDBHL: calculatedThresholdDBHL,
+            channel: channel,
+            units: units.map(\.studyNo1Context)
+        )
+    }
+}
+
+private extension StudyNo1OrientationThresholdUnit {
+    var studyNo1Context: StudyNo1OrientationThresholdUnitContext {
+        StudyNo1OrientationThresholdUnitContext(
+            levelDBHL: levelDBHL,
+            startOfUnitTimeStamp: startOfUnitTimeStamp,
+            preStimulusDelay: preStimulusDelay,
+            userTapTimeStamp: userTapTimeStamp,
+            timeoutTimeStamp: timeoutTimeStamp
+        )
     }
 }
 

@@ -83,8 +83,8 @@ enum StudyProtocolCatalog {
         title: "Study No. 1",
         tasks: [
             AudioTaskDefinition(
-                key: "lm_1khz_v1",
-                version: 1,
+                key: "lm_1khz_v2",
+                version: 2,
                 kind: .loudnessMatch,
                 displayName: "1 kHz loudness match",
                 stimulus: AudioStimulusDefinition(
@@ -104,12 +104,12 @@ enum StudyProtocolCatalog {
                 measurementUnit: .dBHL,
                 researchKitModule: nil,
                 requiresCalibratedOutput: true,
-                notes: "The Study No. 1 protocol supports fixed 1 kHz loudness matching decisions, repeated trials, and raw event logging; participant calibrated playback remains safety-gated until preflight proof is available."
+                notes: "The Study No. 1 protocol supports fixed 1 kHz loudness matching decisions, repeated trials, and raw event logging. dB SL uses the imported HealthKit audiogram threshold."
             )
         ],
         calibrationProfile: CalibrationProfileCatalog.airPodsPro2ResearchKitCalibration,
         resultPayload: MeasurementPayloadMetadata(
-            schemaVersion: "study-no-1-loudness-match-v1",
+            schemaVersion: "study-no-1-loudness-match-v2",
             protocolVersion: "lm_v1",
             rawPayloadKeys: [
                 "task_key",

@@ -387,6 +387,8 @@ struct LoudnessMatchTaskModalFlowView: View {
             return "Please place your AirPods in your ear."
         case .unsupportedHeadphones:
             return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .missingAudiogramThreshold(let message):
+            return message
         case .missingPreflight(let message):
             return message
         case .incompletePayload(let message):
@@ -410,8 +412,8 @@ struct LoudnessMatchTaskModalFlowView: View {
         scheduledTask: ScheduledTask(
             id: UUID(),
             enrollmentID: UUID(),
-            taskKey: "lm_1khz_v1",
-            taskVersion: 1,
+            taskKey: "lm_1khz_v2",
+            taskVersion: 2,
             scheduledFor: Date(),
             windowStart: Date(),
             windowEnd: Date().addingTimeInterval(3_600),

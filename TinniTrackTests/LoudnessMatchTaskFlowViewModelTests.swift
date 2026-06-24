@@ -14,11 +14,14 @@ struct LoudnessMatchTaskFlowViewModelTests {
             engine: makeEngine(),
             player: player,
             guardrailProvider: { passedGuardrails() },
-            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 10)
+            )
         )
 
         await completePreflight(viewModel)
-        completeMeasuredThreshold(viewModel, laterality: .right)
+        await completeAudiogramThreshold(viewModel, laterality: .right)
         viewModel.adjustLevel(.louder)
         viewModel.playTone()
 
@@ -38,45 +41,34 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func thresholdWorkflowLogsPresentationsAndRecordsMeasuredThreshold() async throws {
+    func lateralitySelectionResolvesHealthKitAudiogramThresholdAndStartsFirstTrial() async throws {
         let player = MockCalibratedTonePlayer()
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             player: player,
             guardrailProvider: { passedGuardrails() },
-            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 12, rightThreshold: 22)
+            )
         )
 
         await completePreflight(viewModel)
-        viewModel.selectLaterality(.left)
-        viewModel.playThresholdTone()
-        viewModel.recordThresholdResponse(.heard)
-
-        let thresholdRequest = try #require(player.playedRequests.first)
-        #expect(thresholdRequest.levelDBHL == 30)
-        #expect(viewModel.events.contains { $0.kind == .thresholdPlaybackPlanned })
-        #expect(viewModel.events.contains { $0.kind == .thresholdResponseRecorded && $0.response == "heard" })
-
-        for response in [
-            TinnitusThresholdResponse.heard,
-            .heard,
-            .notHeard,
-            .notHeard,
-            .heard,
-            .notHeard,
-            .notHeard,
-            .heard
-        ] {
-            recordThresholdCycle(viewModel, response: response)
-        }
+        await viewModel.selectLaterality(.left)
 
         guard case .readyForTrial(_, let candidateLevel) = viewModel.protocolState else {
-            Issue.record("Expected loudness trial after measured threshold")
+            Issue.record("Expected loudness trial after HealthKit audiogram threshold")
             return
         }
-        #expect(candidateLevel == 15)
+        #expect(candidateLevel == 17)
         #expect(viewModel.completedSummary == nil)
-        #expect(viewModel.events.contains { $0.kind == .thresholdRecorded && $0.presentedLevelDBHL == 10 })
+        #expect(player.playedRequests.isEmpty)
+        #expect(viewModel.events.contains {
+            $0.kind == .thresholdRecorded
+                && $0.presentedLevelDBHL == 12
+                && $0.response == "healthkit_audiogram"
+        })
+        #expect(viewModel.events.contains { $0.kind == .thresholdPlaybackPlanned } == false)
     }
 
     @Test
@@ -84,10 +76,13 @@ struct LoudnessMatchTaskFlowViewModelTests {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
-            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            )
         )
         await completePreflight(viewModel)
-        completeMeasuredThreshold(viewModel, laterality: .left)
+        await completeAudiogramThreshold(viewModel, laterality: .left)
 
         acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
         acceptCurrentTrial(viewModel, adjustment: .softer, confidence: .medium)
@@ -110,12 +105,15 @@ struct LoudnessMatchTaskFlowViewModelTests {
             engine: makeEngine(),
             player: MockCalibratedTonePlayer(),
             guardrailProvider: { failed },
-            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            )
         )
         await completePreflight(viewModel)
-        viewModel.selectLaterality(.left)
+        await viewModel.selectLaterality(.left)
 
-        viewModel.playThresholdTone()
+        viewModel.playTone()
 
         guard case .missingPreflight = viewModel.message else {
             Issue.record("Expected missing preflight because guardrails failed")
@@ -124,15 +122,18 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func guardedPlaybackRequiresFullPreflight() {
+    func guardedPlaybackRequiresFullPreflight() async {
         let player = MockCalibratedTonePlayer()
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             player: player,
             guardrailProvider: { passedGuardrails() },
-            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            )
         )
-        viewModel.selectLaterality(.left)
+        await viewModel.selectLaterality(.left)
 
         viewModel.playTone()
 
@@ -457,13 +458,16 @@ struct LoudnessMatchTaskFlowViewModelTests {
             engine: makeEngine(),
             player: player,
             headphoneRouteProvider: routeProvider,
-            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            )
         )
 
         viewModel.startAirPodsContinuityMonitoring()
         await completePreflight(viewModel)
-        viewModel.selectLaterality(.left)
-        viewModel.playThresholdTone()
+        await completeAudiogramThreshold(viewModel, laterality: .left)
+        viewModel.playTone()
         #expect(viewModel.isPlaying)
 
         routeProvider.outputs = []
@@ -479,7 +483,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func completedStudyNo1BuildsPayloadWithMeasuredThresholdAndPreflightMetadata() async throws {
+    func completedStudyNo1BuildsPayloadWithHealthKitAudiogramThresholdAndPreflightMetadata() async throws {
         let viewModel = await completedViewModel()
         let payload = try viewModel.makeStudyNo1Payload(
             scheduledTask: scheduledTask(),
@@ -495,7 +499,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(payload.environment.gateResult == .passed)
         #expect(payload.fitSeal.status == .confirmedPassed)
         #expect(payload.safety.acknowledgedAt != nil)
-        #expect(payload.threshold.source == .measured)
+        #expect(payload.threshold.source == .healthKitAudiogram)
         #expect(payload.threshold.levelDBHL == 10)
         #expect(payload.summary.medianMatchedDBHL == 16)
     }
@@ -518,35 +522,28 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(service.submissions.first?.scheduledTaskID == task.id)
         #expect(service.submissions.first?.enrollmentID == currentEnrollment.id)
         #expect(service.submissions.first?.submission.matchedLevel == 16)
-        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v1"))
+        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v2"))
     }
 
     @Test
-    func thresholdUnavailablePathPreservesQualityFlagsButCannotSubmitStudyNo1() async {
+    func missingAudiogramThresholdPreventsScheduledLoudnessTaskStart() async {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
-            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: nil, rightThreshold: 20)
+            )
         )
         await completePreflight(viewModel)
-        viewModel.selectLaterality(.unclear)
-        viewModel.markThresholdUnavailable()
+        await viewModel.selectLaterality(.left)
 
-        acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
-        acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
-        acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
-
-        #expect(viewModel.completedSummary?.medianDBSL == nil)
-        #expect(viewModel.completedSummary?.qualityFlags.contains(.thresholdUnavailable) == true)
-        #expect(viewModel.completedSummary?.qualityFlags.contains(.dbSLInvalid) == true)
-        #expect(viewModel.completedSummary?.qualityFlags.contains(.ambiguousLaterality) == true)
-        #expect(throws: StudyNo1PayloadValidationError.self) {
-            _ = try viewModel.makeStudyNo1Payload(
-                scheduledTask: scheduledTask(),
-                enrollment: enrollment(),
-                submittedAt: timestamp
-            )
+        if case .missingAudiogramThreshold(let message) = viewModel.message {
+            #expect(message.contains("left ear threshold"))
+        } else {
+            Issue.record("Expected missing audiogram threshold message")
         }
+        #expect(viewModel.completedSummary == nil)
     }
 
     private func acceptCurrentTrial(
@@ -580,36 +577,11 @@ struct LoudnessMatchTaskFlowViewModelTests {
         return true
     }
 
-    private func completeMeasuredThreshold(
+    private func completeAudiogramThreshold(
         _ viewModel: LoudnessMatchTaskFlowViewModel,
         laterality: TinnitusLaterality
-    ) {
-        viewModel.selectLaterality(laterality)
-        finishThresholdAt10DBHL(viewModel)
-    }
-
-    private func finishThresholdAt10DBHL(_ viewModel: LoudnessMatchTaskFlowViewModel) {
-        for response in [
-            TinnitusThresholdResponse.heard,
-            .heard,
-            .heard,
-            .notHeard,
-            .notHeard,
-            .heard,
-            .notHeard,
-            .notHeard,
-            .heard
-        ] {
-            recordThresholdCycle(viewModel, response: response)
-        }
-    }
-
-    private func recordThresholdCycle(
-        _ viewModel: LoudnessMatchTaskFlowViewModel,
-        response: TinnitusThresholdResponse
-    ) {
-        viewModel.playThresholdTone()
-        viewModel.recordThresholdResponse(response)
+    ) async {
+        await viewModel.selectLaterality(laterality)
     }
 
     private func completedViewModel() async -> LoudnessMatchTaskFlowViewModel {
@@ -617,12 +589,15 @@ struct LoudnessMatchTaskFlowViewModelTests {
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            ),
             runtimeContextProvider: MockStudyNo1RuntimeContextProvider(),
             submissionExporter: StudyNo1LoudnessMatchSubmissionExporter(appVersion: "1.2.3"),
             dateProvider: { timestamp }
         )
         await completePreflight(viewModel)
-        completeMeasuredThreshold(viewModel, laterality: .left)
+        await completeAudiogramThreshold(viewModel, laterality: .left)
         acceptCurrentTrial(viewModel, adjustment: .louder, confidence: .high)
         acceptCurrentTrial(viewModel, adjustment: .softer, confidence: .medium)
         acceptCurrentTrial(viewModel, adjustment: .muchLouder, confidence: .low)
@@ -674,8 +649,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
         ScheduledTask(
             id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
             enrollmentID: enrollment().id,
-            taskKey: "lm_1khz_v1",
-            taskVersion: 1,
+            taskKey: "lm_1khz_v2",
+            taskVersion: 2,
             scheduledFor: timestamp,
             windowStart: timestamp.addingTimeInterval(-60),
             windowEnd: timestamp.addingTimeInterval(3_600),
@@ -695,6 +670,36 @@ struct LoudnessMatchTaskFlowViewModelTests {
             enrolledAt: timestamp,
             createdAt: timestamp
         )
+    }
+
+    private func sampleAudiogram(leftThreshold: Double?, rightThreshold: Double?) -> AudiogramRecord {
+        AudiogramRecord(
+            id: UUID(uuidString: "55555555-5555-5555-5555-555555555555")!,
+            measuredAt: timestamp.addingTimeInterval(-3_600),
+            source: "healthkit",
+            headphoneName: "AirPods Pro 2",
+            healthKitSampleUUID: UUID(uuidString: "66666666-6666-6666-6666-666666666666")!,
+            points: [
+                AudiogramPoint(
+                    frequencyHz: 1_000,
+                    leftEarDBHL: leftThreshold,
+                    rightEarDBHL: rightThreshold,
+                    tests: []
+                )
+            ]
+        )
+    }
+}
+
+private struct MockAudiogramRepository: AudiogramRepositoryProtocol {
+    let audiogram: AudiogramRecord?
+
+    func fetchLatestAudiogram() async throws -> AudiogramRecord? {
+        audiogram
+    }
+
+    func saveHealthKitAudiograms(_ samples: [HealthKitAudiogramSample]) async throws -> Int {
+        samples.count
     }
 }
 
@@ -874,14 +879,15 @@ private final class MockStudyService: StudyServiceProtocol {
     func fetchMyEnrollments() async throws -> [StudyEnrollment] { [] }
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] { [] }
     func enroll(studyID: UUID) async throws {}
-    func beginStudyNo1OnboardingLoudnessTask(enrollmentID: UUID) async throws -> ScheduledTask {
+    func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
+
+    func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
         throw NSError(
             domain: "MockStudyService",
             code: 404,
-            userInfo: [NSLocalizedDescriptionKey: "No onboarding task configured."]
+            userInfo: [NSLocalizedDescriptionKey: "No orientation threshold task configured."]
         )
     }
-    func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
 
     func submitLoudnessMatch(
         scheduledTaskID: UUID,
@@ -894,4 +900,10 @@ private final class MockStudyService: StudyServiceProtocol {
             submission: submission
         ))
     }
+
+    func submitStudyNo1OrientationThreshold(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: StudyNo1OrientationThresholdSubmission
+    ) async throws {}
 }

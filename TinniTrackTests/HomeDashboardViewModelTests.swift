@@ -136,11 +136,11 @@ private actor MockStudyService: StudyServiceProtocol {
         []
     }
 
-    func beginStudyNo1OnboardingLoudnessTask(enrollmentID: UUID) async throws -> ScheduledTask {
+    func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
         throw NSError(
             domain: "MockStudyService",
             code: 404,
-            userInfo: [NSLocalizedDescriptionKey: "No onboarding task configured."]
+            userInfo: [NSLocalizedDescriptionKey: "No orientation threshold task configured."]
         )
     }
 
@@ -150,6 +150,12 @@ private actor MockStudyService: StudyServiceProtocol {
         scheduledTaskID: UUID,
         enrollmentID: UUID,
         submission: LoudnessMatchSubmission
+    ) async throws {}
+
+    func submitStudyNo1OrientationThreshold(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: StudyNo1OrientationThresholdSubmission
     ) async throws {}
 
     func setStudiesError(_ error: Error?) {
