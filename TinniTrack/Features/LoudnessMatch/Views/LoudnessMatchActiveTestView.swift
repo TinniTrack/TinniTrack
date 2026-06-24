@@ -199,15 +199,15 @@ struct LoudnessMatchActiveTestView: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 48)
+                .foregroundStyle(LoudnessMatchModalColors.text)
+                .background(LoudnessMatchModalColors.controlBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+                }
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(LoudnessMatchModalColors.text)
-        .background(LoudnessMatchModalColors.controlBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
-        }
+        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
     }
 
     private func modalActionButton(
@@ -224,16 +224,16 @@ struct LoudnessMatchActiveTestView: View {
                 .minimumScaleFactor(0.74)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 48)
+                .foregroundStyle(isEnabled ? actionTextColor(isPrimary: isPrimary) : LoudnessMatchModalColors.disabledText)
+                .background(isPrimary && isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.controlBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+                }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
         .disabled(!isEnabled)
-        .foregroundStyle(isEnabled ? actionTextColor(isPrimary: isPrimary) : LoudnessMatchModalColors.disabledText)
-        .background(isPrimary && isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.controlBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
-        }
     }
 
     private func actionTextColor(isPrimary: Bool) -> Color {

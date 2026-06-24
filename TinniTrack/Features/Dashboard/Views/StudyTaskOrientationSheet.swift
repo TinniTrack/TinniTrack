@@ -336,16 +336,16 @@ struct StudyTaskOrientationSheet: View {
             }
             .frame(maxWidth: .infinity)
             .frame(minHeight: 48)
+            .foregroundStyle(isLoading ? LoudnessMatchModalColors.disabledText : LoudnessMatchModalColors.text)
+            .background(LoudnessMatchModalColors.controlBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+            }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
         .disabled(isLoading)
-        .foregroundStyle(LoudnessMatchModalColors.text)
-        .background(LoudnessMatchModalColors.controlBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
-        }
     }
 
     private var topControls: some View {

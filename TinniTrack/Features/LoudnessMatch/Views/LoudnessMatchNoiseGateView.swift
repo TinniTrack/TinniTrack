@@ -42,8 +42,10 @@ struct LoudnessMatchNoiseGateView: View {
                         .foregroundStyle(LoudnessMatchModalColors.primary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
                 .padding(.top, 14)
             }
         }
@@ -96,7 +98,7 @@ struct LoudnessMatchNoiseGateView: View {
     }
 }
 
-private struct NoiseGateMeter: View {
+struct LoudnessMatchNoiseGateMeter: View {
     let status: TinnitusEnvironmentSPLGateStatus
     let progress: Double
 
@@ -134,6 +136,8 @@ private struct NoiseGateMeter: View {
         }
     }
 }
+
+private typealias NoiseGateMeter = LoudnessMatchNoiseGateMeter
 
 struct LoudnessMatchNoiseSuggestionsView: View {
     let dismiss: () -> Void

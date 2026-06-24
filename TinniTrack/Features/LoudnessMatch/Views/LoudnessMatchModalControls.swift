@@ -83,16 +83,16 @@ struct LoudnessMatchModalPrimaryButton: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: 58)
             .padding(.horizontal, 18)
+            .background(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledFill)
+            .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.disabledText)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
+            }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AppCapsuleButtonStyle())
         .disabled(!canInteract || isLoading)
-        .background(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledFill)
-        .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.disabledText)
-        .clipShape(Capsule())
-        .overlay {
-            Capsule()
-                .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
-        }
         .accessibilityIdentifier("loudness_modal_primary_button")
     }
 }
@@ -108,15 +108,15 @@ struct LoudnessMatchModalIconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: 26, weight: .semibold))
                 .frame(width: 54, height: 54)
+                .foregroundStyle(LoudnessMatchModalColors.text)
+                .background(LoudnessMatchModalColors.controlBackground)
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+                }
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(LoudnessMatchModalColors.text)
-        .background(LoudnessMatchModalColors.controlBackground)
-        .clipShape(Circle())
-        .overlay {
-            Circle()
-                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
-        }
+        .buttonStyle(AppCircleButtonStyle())
         .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier(accessibilityIdentifier)
     }

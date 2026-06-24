@@ -61,7 +61,7 @@ struct EmailVerificationPendingView: View {
                 Button("Use different email", role: .destructive) {
                     sessionStore.useDifferentEmailForVerification()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
                 .padding(.top, 8)
                 .accessibilityIdentifier("email_verification_use_different_email_button")
             }

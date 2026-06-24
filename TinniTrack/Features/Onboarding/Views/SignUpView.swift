@@ -153,6 +153,7 @@ struct SignUpView: View {
                         .background(actionColor)
                         .clipShape(Capsule())
                         .padding(.top, 8)
+                        .buttonStyle(AppCapsuleButtonStyle())
                         .disabled(!isStepOneValid || sessionStore.state.isBusy)
                         .accessibilityIdentifier("signup_continue_button")
                     } else {
@@ -246,6 +247,7 @@ struct SignUpView: View {
                                 .frame(height: 52)
                                 .background(Color.white)
                                 .clipShape(Capsule())
+                                .buttonStyle(AppCapsuleButtonStyle())
                                 
                                 Button("Create Account") {
                                     Task {
@@ -272,6 +274,7 @@ struct SignUpView: View {
                                     : Color.gray.opacity(0.4)
                                 )
                                 .clipShape(Capsule())
+                                .buttonStyle(AppCapsuleButtonStyle())
                                 .disabled(!isStepTwoValid || sessionStore.state.isBusy)
                                 .accessibilityIdentifier("signup_create_account_button")
                             }
@@ -454,7 +457,7 @@ private struct FloatingInputField: View {
                             .font(.system(size: 18))
                             .foregroundStyle(Color.gray.opacity(0.65))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AppCircleButtonStyle())
                     .padding(.trailing, 12)
                 }
             }

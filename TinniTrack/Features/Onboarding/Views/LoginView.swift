@@ -122,6 +122,7 @@ struct LoginView: View {
                     .background(actionColor)
                     .clipShape(Capsule())
                     .padding(.horizontal, 12)
+                    .buttonStyle(AppCapsuleButtonStyle())
                     .disabled(sessionStore.state.isBusy || !canSubmit)
                     .accessibilityIdentifier("login_button")
                 }
@@ -233,7 +234,7 @@ private struct FloatingInputField: View {
                             .font(.system(size: 18))
                             .foregroundStyle(Color.gray.opacity(0.65))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AppCircleButtonStyle())
                     .padding(.trailing, 12)
                 }
             }
