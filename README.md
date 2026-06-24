@@ -8,7 +8,7 @@ This README is the source of truth for project behavior and technical decisions.
 
 ## Current State
 
-The app is a SwiftUI iOS research prototype targeting iOS 18.1+. It uses:
+The app is a SwiftUI iOS research app targeting iOS 18.1+. It uses:
 
 - SwiftUI for the product UI and task flows.
 - HealthKit for importing participant audiograms from Apple Hearing Test or other HealthKit audiogram sources.
