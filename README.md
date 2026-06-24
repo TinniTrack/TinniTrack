@@ -458,7 +458,12 @@ The calibration metadata records:
   - `retspl_dBFS_AIRPODSPROV2.plist`
 - validation status: ResearchKit reference available.
 
-The app records `retspl_dBFS_AIRPODSPROV2.plist` as reference data, but does not blindly use it as the conversion policy. The implemented conversion follows the inspected generator behavior with a +30 dB dBFS calibration offset.
+There are two AirPods Pro 2 RETSPL-related files with different meanings:
+
+- `retspl_AIRPODSPROV2.plist` is the active audiology RETSPL table. It maps each supported frequency to the acoustic dB SPL value that corresponds to 0 dB HL, and the app uses it to convert requested dB HL into target dB SPL.
+- `retspl_dBFS_AIRPODSPROV2.plist` contains negative dBFS reference values. It appears relevant to a possible direct digital-level calibration path, but the inspected ResearchKit generator does not load or consume this file.
+
+The app therefore records `retspl_dBFS_AIRPODSPROV2.plist` as provenance/reference data, but does not blindly use it as the playback conversion policy. The implemented conversion follows the inspected generator behavior: compute target dB SPL from the active acoustic RETSPL table, estimate full-scale output from the frequency sensitivity table and system volume curve, then apply the generator's hardcoded +30 dB dBFS calibration offset before calculating digital attenuation.
 
 ### Calibration Tables
 
