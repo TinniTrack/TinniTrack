@@ -330,12 +330,13 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.dev_make_next_loudness_match_available_now()
-RETURNS void
+RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
+  v_user_id uuid := public.assert_current_user_is_developer();
   v_task_id uuid;
 BEGIN
   SELECT st.id
@@ -343,14 +344,15 @@ BEGIN
   FROM public.scheduled_tasks st
   JOIN public.study_enrollments se ON se.id = st.enrollment_id
   JOIN public.studies s ON s.id = se.study_id
-  WHERE se.user_id = auth.uid()
+  WHERE se.user_id = v_user_id
     AND se.status = 'enrolled'
     AND s.slug = 'study-no-1'
     AND st.status = 'scheduled'
     AND st.day_index >= 0
     AND st.task_key = 'lm_1khz_v2'
   ORDER BY st.scheduled_for ASC
-  LIMIT 1;
+  LIMIT 1
+  FOR UPDATE OF st;
 
   IF v_task_id IS NULL THEN
     RAISE EXCEPTION 'No scheduled loudness-match task found for current user.';
@@ -361,16 +363,19 @@ BEGIN
       window_start = NOW() - INTERVAL '5 minutes',
       window_end = NOW() + INTERVAL '60 minutes'
   WHERE id = v_task_id;
+
+  RETURN v_task_id;
 END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.dev_reopen_last_completed_loudness_match()
-RETURNS void
+RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
+  v_user_id uuid := public.assert_current_user_is_developer();
   v_task_id uuid;
 BEGIN
   SELECT st.id
@@ -378,21 +383,23 @@ BEGIN
   FROM public.scheduled_tasks st
   JOIN public.study_enrollments se ON se.id = st.enrollment_id
   JOIN public.studies s ON s.id = se.study_id
-  WHERE se.user_id = auth.uid()
+  WHERE se.user_id = v_user_id
     AND se.status = 'enrolled'
     AND s.slug = 'study-no-1'
     AND st.status = 'completed'
     AND st.day_index >= 0
     AND st.task_key = 'lm_1khz_v2'
   ORDER BY st.completed_at DESC NULLS LAST, st.scheduled_for DESC
-  LIMIT 1;
+  LIMIT 1
+  FOR UPDATE OF st;
 
   IF v_task_id IS NULL THEN
     RAISE EXCEPTION 'No completed loudness-match task found for current user.';
   END IF;
 
   DELETE FROM public.task_runs
-  WHERE scheduled_task_id = v_task_id;
+  WHERE scheduled_task_id = v_task_id
+    AND user_id = v_user_id;
 
   UPDATE public.scheduled_tasks
   SET status = 'scheduled',
@@ -401,6 +408,8 @@ BEGIN
       window_end = NOW() + INTERVAL '60 minutes',
       completed_at = NULL
   WHERE id = v_task_id;
+
+  RETURN v_task_id;
 END;
 $$;
 
