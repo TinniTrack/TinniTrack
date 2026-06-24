@@ -179,6 +179,8 @@ struct LoudnessMatchNoiseGateMeter: View {
     private static let rowSpacing: CGFloat = 12
     private static let rowCount = 4
     private static let greenLimitRatio = 0.66
+    private static let quietRangeFloorRatio = 0.45
+    private static let quietRangeFloorFill = 0.18
     private static let barHeight: CGFloat = 44
     private static let animationFrameDuration: UInt64 = 33_000_000
 
@@ -270,7 +272,16 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     private func normalizedLevelRatio() -> Double {
         if clampedLevelRatio <= 1 {
-            return Self.greenLimitRatio * clampedLevelRatio
+            if clampedLevelRatio <= Self.quietRangeFloorRatio {
+                let lowRangeProgress = clampedLevelRatio / Self.quietRangeFloorRatio
+                return Self.greenLimitRatio * Self.quietRangeFloorFill * lowRangeProgress
+            }
+
+            let quietRangeProgress = (clampedLevelRatio - Self.quietRangeFloorRatio) / (1 - Self.quietRangeFloorRatio)
+            let expandedQuietProgress = min(1, quietRangeProgress)
+            let visualQuietProgress = Self.quietRangeFloorFill
+                + ((1 - Self.quietRangeFloorFill) * expandedQuietProgress)
+            return Self.greenLimitRatio * visualQuietProgress
         }
 
         let loudRangeProgress = min(1, (clampedLevelRatio - 1) / 0.5)
