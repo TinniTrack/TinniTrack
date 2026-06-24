@@ -156,6 +156,7 @@ struct LoudnessMatchActiveTestView: View {
             LoudnessMatchModalPrimaryButton(title: "Same Loudness", isEnabled: viewModel.preflightReady) {
                 viewModel.acceptCurrentLevel()
             }
+            .padding(.bottom, 32)
             .accessibilityLabel("Same loudness")
             .accessibilityHint("Accepts the current tone level and continues to the next step.")
         }
@@ -202,8 +203,10 @@ struct LoudnessMatchActiveTestView: View {
 
             LoudnessMatchCycleRingPlayButton(
                 isPlaying: viewModel.isPlaying,
+                isTonePulseActive: viewModel.isTonePulseActive,
                 isEnabled: viewModel.isPlaying || viewModel.canPlayTone,
-                cycleDuration: viewModel.playbackPulseCycleDuration
+                pulseSequence: viewModel.playbackPulseSequence,
+                toneDuration: viewModel.playbackPulseToneDuration
             ) {
                 if viewModel.isPlaying {
                     viewModel.stopTone()
@@ -501,12 +504,14 @@ private struct LoudnessMatchAdjustmentButton: View {
 
 private struct LoudnessMatchCycleRingPlayButton: View {
     let isPlaying: Bool
+    let isTonePulseActive: Bool
     let isEnabled: Bool
-    let cycleDuration: TimeInterval
+    let pulseSequence: Int
+    let toneDuration: TimeInterval
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var cycleProgress = 0.0
+    @State private var toneProgress = 0.0
 
     private let buttonDiameter: CGFloat = 92
     private let ringDiameter: CGFloat = 114
@@ -529,10 +534,10 @@ private struct LoudnessMatchCycleRingPlayButton: View {
                     }
                     .shadow(color: LoudnessMatchModalColors.primary.opacity(isPlaying ? 0.10 : 0.04), radius: 16, x: 0, y: 8)
 
-                Image(systemName: "play.fill")
-                    .font(.system(size: 38, weight: .bold))
+                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                    .font(.system(size: isPlaying ? 32 : 38, weight: .bold))
                     .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledText)
-                    .offset(x: 3)
+                    .offset(x: isPlaying ? 0 : 3)
                     .accessibilityHidden(true)
             }
             .frame(width: ringDiameter, height: ringDiameter)
@@ -544,16 +549,19 @@ private struct LoudnessMatchCycleRingPlayButton: View {
         .accessibilityHint(isPlaying ? "Stops the repeated tone playback." : "Starts repeated tone playback.")
         .accessibilityIdentifier("loudness_cycle_ring_play_button")
         .onAppear {
-            updateCycleAnimation()
+            updateToneProgress()
         }
         .onChange(of: isPlaying) {
-            updateCycleAnimation()
+            updateToneProgress()
+        }
+        .onChange(of: isTonePulseActive) {
+            updateToneProgress()
         }
         .onChange(of: reduceMotion) {
-            updateCycleAnimation()
+            updateToneProgress()
         }
-        .onChange(of: cycleDuration) {
-            updateCycleAnimation()
+        .onChange(of: pulseSequence) {
+            updateToneProgress()
         }
     }
 
@@ -562,20 +570,20 @@ private struct LoudnessMatchCycleRingPlayButton: View {
         Circle()
             .stroke(LoudnessMatchModalColors.primary.opacity(0.16), lineWidth: 5)
             .overlay {
-                if reduceMotion {
+                if reduceMotion && isTonePulseActive {
                     Circle()
-                        .trim(from: 0.0, to: 0.22)
+                        .trim(from: 0.0, to: 1.0)
                         .stroke(
-                            LoudnessMatchModalColors.primary.opacity(0.70),
+                            LoudnessMatchModalColors.primary.opacity(0.62),
                             style: StrokeStyle(lineWidth: 5, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
-                } else {
+                } else if toneProgress > 0.0 {
                     Circle()
-                        .trim(from: max(0.0, cycleProgress - 0.22), to: cycleProgress)
+                        .trim(from: 0.0, to: min(1.0, toneProgress))
                         .stroke(
                             LoudnessMatchModalColors.primary.opacity(0.86),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                            style: StrokeStyle(lineWidth: 5, lineCap: .butt)
                         )
                         .rotationEffect(.degrees(-90))
                 }
@@ -588,17 +596,31 @@ private struct LoudnessMatchCycleRingPlayButton: View {
             : Color(uiColor: .systemBackground)
     }
 
-    private func updateCycleAnimation() {
-        guard isPlaying, !reduceMotion else {
+    private func updateToneProgress() {
+        guard isPlaying else {
             withAnimation(.none) {
-                cycleProgress = 0.22
+                toneProgress = 0.0
             }
             return
         }
 
-        cycleProgress = 0.0
-        withAnimation(.linear(duration: max(0.2, cycleDuration)).repeatForever(autoreverses: false)) {
-            cycleProgress = 1.0
+        guard isTonePulseActive else {
+            withAnimation(.easeOut(duration: 0.12)) {
+                toneProgress = 0.0
+            }
+            return
+        }
+
+        guard !reduceMotion else {
+            withAnimation(.easeOut(duration: 0.12)) {
+                toneProgress = 1.0
+            }
+            return
+        }
+
+        toneProgress = 0.0
+        withAnimation(.linear(duration: max(0.2, toneDuration))) {
+            toneProgress = 1.0
         }
     }
 }

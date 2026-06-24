@@ -29,7 +29,10 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(request.frequencyHz == 1_000)
         #expect(request.levelDBHL == 16)
         #expect(request.channel == .right)
+        #expect(request.duration == 2.0)
         #expect(viewModel.isPlaying)
+        #expect(viewModel.isTonePulseActive)
+        #expect(viewModel.playbackPulseCycleDuration == 4.0)
         #expect(viewModel.events.contains { $0.kind == .playbackPlanned })
 
         let stopCountBeforeLoudnessStop = player.stopCallCount
@@ -61,6 +64,41 @@ struct LoudnessMatchTaskFlowViewModelTests {
 
         let request = try #require(player.playedRequests.last)
         #expect(viewModel.playbackPulseCycleDuration == request.duration + pulseGapDuration)
+        #expect(viewModel.playbackPulseToneDuration == request.duration)
+        #expect(viewModel.isTonePulseActive)
+
+        viewModel.stopTone()
+    }
+
+    @Test
+    func playbackPulsePhaseTracksToneOnAndSilentGap() async throws {
+        let player = MockCalibratedTonePlayer()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(toneDuration: 1.0),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: MockAudiogramRepository(
+                audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
+            ),
+            playbackPulseGapDuration: 0.05
+        )
+
+        await completePreflight(viewModel)
+        await completeAudiogramThreshold(viewModel, laterality: .left)
+        viewModel.playTone()
+
+        #expect(viewModel.isTonePulseActive)
+        #expect(viewModel.playbackPulseSequence == 1)
+        #expect(try await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            viewModel.isTonePulseActive == false
+        })
+        #expect(player.playedRequests.count == 1)
+        #expect(try await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            player.playedRequests.count >= 2
+        })
+        #expect(viewModel.isTonePulseActive)
+        #expect(viewModel.playbackPulseSequence == 2)
 
         viewModel.stopTone()
     }
@@ -85,7 +123,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(player.playedRequests.map(\.levelDBHL) == [15])
 
         viewModel.adjustLevel(.louder)
-        #expect(try await waitUntil(timeoutNanoseconds: 2_200_000_000) {
+        #expect(try await waitUntil(timeoutNanoseconds: 3_200_000_000) {
             player.playedRequests.count >= 2
         })
 
@@ -782,8 +820,29 @@ struct LoudnessMatchTaskFlowViewModelTests {
         return viewModel
     }
 
-    private func makeEngine() -> TinnitusProtocolEngine {
-        TinnitusProtocolEngine(
+    private func makeEngine(toneDuration: TimeInterval? = nil) -> TinnitusProtocolEngine {
+        let configuration: TinnitusProtocolConfiguration
+        if let toneDuration {
+            configuration = TinnitusProtocolConfiguration(
+                kind: .studyNo1FixedOneKilohertz,
+                stimulusKind: .pureTone,
+                frequencyHz: 1_000,
+                requiredTrialCount: 3,
+                toneDuration: toneDuration,
+                rampDuration: CalibratedTonePlaybackDefaults.rampDuration,
+                thresholdStartOffsetDBSL: 5.0,
+                conservativeFallbackStartDBHL: 10.0,
+                minimumLevelDBHL: -10.0,
+                maximumLevelDBHL: 100.0,
+                highSpreadThresholdDB: 10.0,
+                supportedPitchFrequenciesHz: CalibratedHeadphoneProfile.airPodsPro2.supportedFrequenciesHz
+            )
+        } else {
+            configuration = .studyNo1FixedOneKilohertz
+        }
+
+        return TinnitusProtocolEngine(
+            configuration: configuration,
             playbackPlanner: CalibratedTonePlaybackPlanner(dateProvider: { timestamp }),
             dateProvider: { timestamp }
         )

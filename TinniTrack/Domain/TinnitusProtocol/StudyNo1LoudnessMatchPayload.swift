@@ -357,7 +357,7 @@ struct StudyNo1LoudnessMatchPayloadBuilder {
                 frequencyHz: summary.frequencyHz,
                 channel: summary.channel.rawValue,
                 tinnitusLaterality: events.first { $0.kind == .lateralitySelected }?.laterality?.rawValue ?? "unknown",
-                toneDuration: events.compactMap { $0.playbackMetadata?.duration }.first ?? 1.0,
+                toneDuration: events.compactMap { $0.playbackMetadata?.duration }.first ?? 2.0,
                 rampDuration: events.compactMap { $0.playbackMetadata?.rampDuration }.first ?? CalibratedTonePlaybackDefaults.rampDuration
             ),
             threshold: threshold,

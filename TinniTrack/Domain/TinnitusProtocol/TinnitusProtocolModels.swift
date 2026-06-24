@@ -106,7 +106,7 @@ struct TinnitusProtocolConfiguration: Equatable {
         stimulusKind: .pureTone,
         frequencyHz: 1_000,
         requiredTrialCount: 3,
-        toneDuration: 1.0,
+        toneDuration: 2.0,
         rampDuration: CalibratedTonePlaybackDefaults.rampDuration,
         thresholdStartOffsetDBSL: 5.0,
         conservativeFallbackStartDBHL: 10.0,

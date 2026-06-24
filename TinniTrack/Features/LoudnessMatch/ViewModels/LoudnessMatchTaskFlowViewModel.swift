@@ -40,7 +40,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
     @Published private(set) var message: FlowMessage?
     @Published private(set) var isPlaying = false
-    @Published private(set) var playbackPulseCycleDuration: TimeInterval = 2.0
+    @Published private(set) var isTonePulseActive = false
+    @Published private(set) var playbackPulseSequence = 0
+    @Published private(set) var playbackPulseToneDuration: TimeInterval = 2.0
+    @Published private(set) var playbackPulseCycleDuration: TimeInterval = 4.0
     @Published private(set) var isSubmitting = false
     @Published private(set) var hasSubmitted = false
     @Published private(set) var completedSummary: TinnitusLoudnessMatchSummary?
@@ -84,7 +87,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         runtimeContextProvider: StudyNo1RuntimeContextProviding? = nil,
         submissionExporter: StudyNo1LoudnessMatchSubmissionExporter? = nil,
         orientationThresholdExporter: StudyNo1OrientationThresholdSubmissionExporter? = nil,
-        playbackPulseGapDuration: TimeInterval = 0.35,
+        playbackPulseGapDuration: TimeInterval = 2.0,
         dateProvider: @escaping () -> Date = Date.init
     ) {
         let resolvedEngine = engine ?? TinnitusProtocolEngine()
@@ -541,7 +544,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             return
         }
 
-        playbackPulseCycleDuration = pulseCycleDuration(after: pulseDuration)
+        recordTonePulseStarted(duration: pulseDuration)
         isPlaying = true
         startPlaybackGuardrailMonitoring()
         scheduleNextTonePulse(after: pulseDuration)
@@ -586,7 +589,18 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             var nextPulseDuration = pulseDuration
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(nanoseconds: self.pulseDelayNanoseconds(after: nextPulseDuration))
+                    try await Task.sleep(nanoseconds: self.durationNanoseconds(nextPulseDuration))
+                } catch {
+                    break
+                }
+
+                guard !Task.isCancelled, self.isPlaying else {
+                    break
+                }
+                self.recordTonePulseEnded()
+
+                do {
+                    try await Task.sleep(nanoseconds: self.durationNanoseconds(self.playbackPulseGapDuration))
                 } catch {
                     break
                 }
@@ -599,7 +613,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                     self.finishPulsedPlaybackAfterFailure()
                     break
                 }
-                self.playbackPulseCycleDuration = self.pulseCycleDuration(after: playedPulseDuration)
+                self.recordTonePulseStarted(duration: playedPulseDuration)
                 nextPulseDuration = playedPulseDuration
             }
 
@@ -609,19 +623,30 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
     }
 
-    private func pulseDelayNanoseconds(after pulseDuration: TimeInterval) -> UInt64 {
-        let delay = pulseCycleDuration(after: pulseDuration)
-        return UInt64((delay * 1_000_000_000).rounded())
+    private func durationNanoseconds(_ duration: TimeInterval) -> UInt64 {
+        UInt64((max(0.0, duration) * 1_000_000_000).rounded())
     }
 
     private func pulseCycleDuration(after pulseDuration: TimeInterval) -> TimeInterval {
         max(0.0, pulseDuration + playbackPulseGapDuration)
     }
 
+    private func recordTonePulseStarted(duration: TimeInterval) {
+        playbackPulseToneDuration = max(0.0, duration)
+        playbackPulseCycleDuration = pulseCycleDuration(after: duration)
+        playbackPulseSequence += 1
+        isTonePulseActive = true
+    }
+
+    private func recordTonePulseEnded() {
+        isTonePulseActive = false
+    }
+
     private func finishPulsedPlaybackAfterFailure() {
         playbackPulseTask?.cancel()
         playbackPulseTask = nil
         guardrailMonitor?.stopMonitoring()
+        isTonePulseActive = false
         isPlaying = false
     }
 
@@ -640,6 +665,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         playbackPulseTask = nil
         guardrailMonitor?.stopMonitoring()
         let metadata = player?.stop()
+        isTonePulseActive = false
         isPlaying = false
         engine.recordStop(playbackMetadata: metadata)
         syncFromEngine()
@@ -667,6 +693,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         if isPlaying {
             guardrailMonitor?.stopMonitoring()
             _ = player?.stop()
+            isTonePulseActive = false
             isPlaying = false
         }
         engine.abort(.participantStopped)
