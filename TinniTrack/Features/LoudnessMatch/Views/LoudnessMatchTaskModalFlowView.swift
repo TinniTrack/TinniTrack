@@ -292,6 +292,7 @@ struct LoudnessMatchTaskModalFlowView: View {
             }
             viewModel.stopHeadphoneRouteMonitoring()
             viewModel.startAirPodsContinuityMonitoring()
+            viewModel.prepareEnvironmentGateForQuietRoomStep()
             step = .quietRoom
         case .quietRoom:
             guard viewModel.environmentGateResult?.passed == true else {

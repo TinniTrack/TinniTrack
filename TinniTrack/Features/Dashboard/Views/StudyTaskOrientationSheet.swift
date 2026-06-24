@@ -542,6 +542,7 @@ struct StudyTaskOrientationSheet: View {
             }
             loudnessViewModel.stopHeadphoneRouteMonitoring()
             loudnessViewModel.startAirPodsContinuityMonitoring()
+            loudnessViewModel.prepareEnvironmentGateForQuietRoomStep()
             step = .quietRoom
         case .quietRoom:
             guard loudnessViewModel.environmentGateResult?.passed == true else {

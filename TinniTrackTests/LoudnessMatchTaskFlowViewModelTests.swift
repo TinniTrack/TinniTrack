@@ -318,6 +318,32 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func preparingQuietRoomStepClearsPreviousGatePassImmediately() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
+                samplesByUpdate: [[40, 41, 42, 43, 44]],
+                finishAfterUpdates: false
+            )
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil {
+            viewModel.environmentGateResult?.passed == true
+        })
+
+        viewModel.prepareEnvironmentGateForQuietRoomStep()
+
+        #expect(viewModel.environmentGateResult == nil)
+        #expect(viewModel.environmentGateUpdate?.status == .measuring)
+        #expect(viewModel.environmentGateUpdate?.contiguousPassingSamples == 0)
+        #expect(viewModel.hasPassedEnvironmentGate == false)
+        #expect(viewModel.isRunningEnvironmentGate == false)
+    }
+
+    @Test
     func continuousEnvironmentGateClearsCurrentPassWhenRoomGetsLoudAgain() async throws {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),

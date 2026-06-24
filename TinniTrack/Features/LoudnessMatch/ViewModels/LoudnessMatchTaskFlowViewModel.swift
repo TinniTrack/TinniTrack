@@ -413,14 +413,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             return
         }
 
-        environmentGateResult = nil
-        environmentGateUpdate = TinnitusEnvironmentSPLGateUpdate(
-            samplesDBA: [],
-            latestSampleDBA: nil,
-            contiguousPassingSamples: 0,
-            status: .measuring,
-            result: nil
-        )
+        resetEnvironmentGateForMeasurement(clearPassedHistory: false)
         isRunningEnvironmentGate = true
         message = nil
 
@@ -451,6 +444,14 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
     }
 
+    func prepareEnvironmentGateForQuietRoomStep() {
+        environmentGateTask?.cancel()
+        environmentGateTask = nil
+        isRunningEnvironmentGate = false
+        resetEnvironmentGateForMeasurement(clearPassedHistory: true)
+        message = nil
+    }
+
     private func applyContinuousEnvironmentGateUpdate(_ update: TinnitusEnvironmentSPLGateUpdate) {
         environmentGateUpdate = update
 
@@ -477,6 +478,21 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         isRunningEnvironmentGate = false
         if environmentGateResult?.passed != true {
             environmentGateResult = nil
+        }
+    }
+
+    private func resetEnvironmentGateForMeasurement(clearPassedHistory: Bool) {
+        environmentGateResult = nil
+        environmentGateUpdate = TinnitusEnvironmentSPLGateUpdate(
+            samplesDBA: [],
+            latestSampleDBA: nil,
+            contiguousPassingSamples: 0,
+            status: .measuring,
+            result: nil
+        )
+
+        if clearPassedHistory {
+            hasPassedEnvironmentGate = false
         }
     }
 
