@@ -150,7 +150,12 @@ extension SupabaseConsentService {
             consentPDFBucket: StudyConsentCatalog.consentStorageBucket,
             consentPDFPath: storagePath,
             consentPDFSHA256: artifact.pdfSHA256Hex,
-            researchKitTaskIdentifier: consent.taskIdentifier,
+            consentContentSHA256: consent.consentContentSHA256Hex,
+            signatureImageSHA256: consent.signatureImageSHA256Hex,
+            collectionMethod: consent.collectionMethod,
+            attestationText: consent.attestationText,
+            attestationVersion: consent.attestationVersion,
+            researchKitTaskIdentifier: consent.researchKitFinishState == nil ? nil : consent.taskIdentifier,
             researchKitFinishState: consent.researchKitFinishState,
             appVersion: appVersion,
             deviceInfo: deviceInfo.isEmpty ? nil : deviceInfo
@@ -193,8 +198,13 @@ struct ConsentInsertPayload: Encodable, Equatable {
     let consentPDFBucket: String
     let consentPDFPath: String
     let consentPDFSHA256: String
-    let researchKitTaskIdentifier: String
-    let researchKitFinishState: String
+    let consentContentSHA256: String
+    let signatureImageSHA256: String?
+    let collectionMethod: String
+    let attestationText: String
+    let attestationVersion: String
+    let researchKitTaskIdentifier: String?
+    let researchKitFinishState: String?
     let appVersion: String?
     let deviceInfo: [String: JSONValue]?
 
@@ -209,6 +219,11 @@ struct ConsentInsertPayload: Encodable, Equatable {
         case consentPDFBucket = "consent_pdf_bucket"
         case consentPDFPath = "consent_pdf_path"
         case consentPDFSHA256 = "consent_pdf_sha256"
+        case consentContentSHA256 = "consent_content_sha256"
+        case signatureImageSHA256 = "signature_image_sha256"
+        case collectionMethod = "collection_method"
+        case attestationText = "attestation_text"
+        case attestationVersion = "attestation_version"
         case researchKitTaskIdentifier = "researchkit_task_identifier"
         case researchKitFinishState = "researchkit_finish_state"
         case appVersion = "app_version"

@@ -12,11 +12,11 @@ struct SupabaseConsentServiceTests {
         let path = SupabaseConsentService.storagePath(
             userID: userID,
             studyID: studyID,
-            consentVersion: "study-no-1-consent-v1",
+            consentVersion: "study-no-1-consent-v2",
             consentID: consentID
         )
 
-        #expect(path == "11111111-2222-3333-4444-555555555555/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/study-no-1-consent-v1/99999999-8888-7777-6666-555555555555.pdf")
+        #expect(path == "11111111-2222-3333-4444-555555555555/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/study-no-1-consent-v2/99999999-8888-7777-6666-555555555555.pdf")
     }
 
     @Test
@@ -33,9 +33,9 @@ struct SupabaseConsentServiceTests {
         let consentID = UUID(uuidString: "99999999-8888-7777-6666-555555555555")!
         let signedAt = Date(timeIntervalSince1970: 1_750_000_000)
         let completion = StudyConsentCompletion(
-            taskIdentifier: "study-no-1-consent-v1",
+            taskIdentifier: "study-no-1-consent-v2",
             studySlug: "study-no-1",
-            consentVersion: "study-no-1-consent-v1",
+            consentVersion: "study-no-1-consent-v2",
             consented: true,
             signerGivenName: " Taylor ",
             signerFamilyName: " Rivers ",
@@ -46,7 +46,12 @@ struct SupabaseConsentServiceTests {
                 storageBucket: "study-consents",
                 storagePath: ""
             ),
-            researchKitFinishState: "completed"
+            researchKitFinishState: nil,
+            consentContentSHA256Hex: String(repeating: "b", count: 64),
+            signatureImageSHA256Hex: String(repeating: "c", count: 64),
+            collectionMethod: StudyConsentCatalog.nativeCollectionMethod,
+            attestationText: StudyConsentCatalog.studyNo1.attestation.text,
+            attestationVersion: StudyConsentCatalog.studyNo1.attestation.version
         )
         let storagePath = SupabaseConsentService.storagePath(
             userID: userID,
@@ -69,14 +74,19 @@ struct SupabaseConsentServiceTests {
         #expect(payload.id == consentID)
         #expect(payload.userID == userID)
         #expect(payload.studyID == study.id)
-        #expect(payload.consentVersion == "study-no-1-consent-v1")
+        #expect(payload.consentVersion == "study-no-1-consent-v2")
         #expect(payload.signerGivenName == "Taylor")
         #expect(payload.signerFamilyName == "Rivers")
         #expect(payload.consentPDFBucket == "study-consents")
         #expect(payload.consentPDFPath == storagePath)
         #expect(payload.consentPDFSHA256 == String(repeating: "a", count: 64))
-        #expect(payload.researchKitTaskIdentifier == "study-no-1-consent-v1")
-        #expect(payload.researchKitFinishState == "completed")
+        #expect(payload.consentContentSHA256 == String(repeating: "b", count: 64))
+        #expect(payload.signatureImageSHA256 == String(repeating: "c", count: 64))
+        #expect(payload.collectionMethod == StudyConsentCatalog.nativeCollectionMethod)
+        #expect(payload.attestationText == StudyConsentCatalog.studyNo1.attestation.text)
+        #expect(payload.attestationVersion == StudyConsentCatalog.studyNo1.attestation.version)
+        #expect(payload.researchKitTaskIdentifier == nil)
+        #expect(payload.researchKitFinishState == nil)
         #expect(payload.appVersion == "1.0 (7)")
         #expect(payload.deviceInfo == ["system_name": .string("iOS")])
     }
@@ -92,9 +102,9 @@ struct SupabaseConsentServiceTests {
             createdAt: nil
         )
         let completion = StudyConsentCompletion(
-            taskIdentifier: "study-no-1-consent-v1",
+            taskIdentifier: "study-no-1-consent-v2",
             studySlug: "study-no-1",
-            consentVersion: "study-no-1-consent-v1",
+            consentVersion: "study-no-1-consent-v2",
             consented: false,
             signerGivenName: "Taylor",
             signerFamilyName: "Rivers",
@@ -105,7 +115,12 @@ struct SupabaseConsentServiceTests {
                 storageBucket: "study-consents",
                 storagePath: ""
             ),
-            researchKitFinishState: "completed"
+            researchKitFinishState: nil,
+            consentContentSHA256Hex: String(repeating: "b", count: 64),
+            signatureImageSHA256Hex: String(repeating: "c", count: 64),
+            collectionMethod: StudyConsentCatalog.nativeCollectionMethod,
+            attestationText: StudyConsentCatalog.studyNo1.attestation.text,
+            attestationVersion: StudyConsentCatalog.studyNo1.attestation.version
         )
 
         #expect(throws: ConsentServiceError.invalidConsentCompletion) {
