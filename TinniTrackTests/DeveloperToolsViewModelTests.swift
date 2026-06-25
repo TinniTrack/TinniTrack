@@ -37,6 +37,21 @@ struct DeveloperToolsViewModelTests {
     }
 
     @Test
+    func unenrollFromStudyNo1DeletesDataAndRefreshes() async {
+        let service = MockDeveloperToolingService()
+        let refresh = RefreshRecorder()
+        let viewModel = DeveloperToolsViewModel(service: service)
+
+        await viewModel.perform(.unenrollFromStudyNo1AndDeleteData) {
+            refresh.record()
+        }
+
+        #expect(service.calls == [.unenrollFromStudyNo1AndDeleteData])
+        #expect(refresh.callCount == 1)
+        #expect(viewModel.statusMessage == "Study No. 1 enrollment and study data deleted.")
+    }
+
+    @Test
     func makeNextLoudnessMatchAvailableCallsServiceAndRefreshes() async {
         let service = MockDeveloperToolingService()
         let refresh = RefreshRecorder()
@@ -89,6 +104,7 @@ private final class MockDeveloperToolingService: DeveloperToolingServiceProtocol
     enum Call: Equatable {
         case resetProfileOnboarding
         case resetStudyNo1Orientation
+        case unenrollFromStudyNo1AndDeleteData
         case makeNextLoudnessMatchAvailableNow
         case reopenLastCompletedLoudnessMatch
     }
@@ -103,6 +119,11 @@ private final class MockDeveloperToolingService: DeveloperToolingServiceProtocol
 
     func resetStudyNo1Orientation() async throws {
         calls.append(.resetStudyNo1Orientation)
+        try throwIfNeeded()
+    }
+
+    func unenrollFromStudyNo1AndDeleteData() async throws {
+        calls.append(.unenrollFromStudyNo1AndDeleteData)
         try throwIfNeeded()
     }
 

@@ -9,7 +9,17 @@ import SwiftUI
 struct ProfileDeveloperToolsSection: View {
     @ObservedObject var viewModel: DeveloperToolsViewModel
     let environment: SupabaseEnvironmentDescriptor
-    let refreshSession: () async -> Void
+    private let refreshSession: DeveloperToolRefreshAction
+
+    init(
+        viewModel: DeveloperToolsViewModel,
+        environment: SupabaseEnvironmentDescriptor,
+        refreshSession: @escaping @MainActor () async -> Void
+    ) {
+        self.viewModel = viewModel
+        self.environment = environment
+        self.refreshSession = DeveloperToolRefreshAction(refreshSession)
+    }
 
     var body: some View {
         Section {
@@ -28,6 +38,14 @@ struct ProfileDeveloperToolsSection: View {
                 action: .resetStudyNo1Orientation,
                 viewModel: viewModel,
                 systemImage: "list.bullet.rectangle",
+                role: .destructive,
+                refresh: refreshSession
+            )
+
+            DeveloperActionButton(
+                action: .unenrollFromStudyNo1AndDeleteData,
+                viewModel: viewModel,
+                systemImage: "trash",
                 role: .destructive,
                 refresh: refreshSession
             )
@@ -62,7 +80,15 @@ struct ProfileDeveloperToolsSection: View {
 
 struct StudyTaskDeveloperToolsSection: View {
     @ObservedObject var viewModel: DeveloperToolsViewModel
-    let refreshTasks: () async -> Void
+    private let refreshTasks: DeveloperToolRefreshAction
+
+    init(
+        viewModel: DeveloperToolsViewModel,
+        refreshTasks: @escaping @MainActor () async -> Void
+    ) {
+        self.viewModel = viewModel
+        self.refreshTasks = DeveloperToolRefreshAction(refreshTasks)
+    }
 
     var body: some View {
         Section {
@@ -113,12 +139,14 @@ private struct DeveloperActionButton: View {
     @ObservedObject var viewModel: DeveloperToolsViewModel
     let systemImage: String
     var role: ButtonRole?
-    let refresh: () async -> Void
+    let refresh: DeveloperToolRefreshAction
 
     var body: some View {
         Button(role: role) {
-            Task {
-                await viewModel.perform(action, refresh: refresh)
+            Task { @MainActor in
+                await viewModel.perform(action) {
+                    await refresh()
+                }
             }
         } label: {
             HStack {
@@ -141,11 +169,26 @@ private struct DeveloperActionButton: View {
             return "developer_reset_profile_onboarding_button"
         case .resetStudyNo1Orientation:
             return "developer_reset_study_no_1_orientation_button"
+        case .unenrollFromStudyNo1AndDeleteData:
+            return "developer_unenroll_study_no_1_button"
         case .makeNextLoudnessMatchAvailableNow:
             return "developer_make_next_loudness_match_available_button"
         case .reopenLastCompletedLoudnessMatch:
             return "developer_reopen_last_loudness_match_button"
         }
+    }
+}
+
+private struct DeveloperToolRefreshAction: @unchecked Sendable {
+    private let operation: @MainActor () async -> Void
+
+    init(_ operation: @escaping @MainActor () async -> Void) {
+        self.operation = operation
+    }
+
+    @MainActor
+    func callAsFunction() async {
+        await operation()
     }
 }
 #endif
