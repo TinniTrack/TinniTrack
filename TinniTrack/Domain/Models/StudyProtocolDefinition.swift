@@ -7,6 +7,7 @@ enum ResearchKitModule: String, CaseIterable, Equatable {
     case dBHLToneAudiometry = "ORKdBHLToneAudiometryStep"
     case environmentSPLMeter = "ORKEnvironmentSPLMeterStep"
     case speechInNoise = "ORKSpeechInNoiseStep"
+    case consentReviewStep = "ORKConsentReviewStep"
 }
 
 enum StudyTaskKind: String, Equatable {
