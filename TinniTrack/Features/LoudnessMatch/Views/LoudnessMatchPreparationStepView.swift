@@ -112,7 +112,7 @@ private struct AirPodsCorrectEarStepView: View {
         }
 
         if assessment.passesAirPodsPro2Heuristic, assessment.isBluetoothHeadsetProfile {
-            return "AirPods Pro 2 detected. Call audio is using the headset profile; calibrated playback is checked before the test starts."
+            return "AirPods Pro 2 detected, but another app is using them for call audio. Close Phone, Zoom, or other audio apps, then try again."
         }
 
         switch assessment.primaryIssue {
@@ -260,7 +260,7 @@ private struct MaxVolumeGateStepView: View {
             if let output = validation.metadata.routeDetails?.outputs.first,
                output.portType == .bluetoothHFP,
                HeadphoneRouteAssessor.looksLikeAirPodsPro2(output.portName) {
-                return "Your AirPods are connected in call audio mode. End the call or switch Zoom audio off your AirPods before starting the calibrated test."
+                return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
             }
             return "Connect your AirPods Pro 2 and keep them selected as the only audio output."
         case .unverifiedHeadphoneProfile:

@@ -66,6 +66,8 @@ struct HeadphoneRouteAssessmentTests {
         #expect(assessment.issues.isEmpty)
         #expect(assessment.passesAirPodsPro2Heuristic)
         #expect(assessment.passesAirPodsPro2PlaybackHeuristic == false)
+        #expect(assessment.diagnosticReport.contains("Result: failed"))
+        #expect(assessment.diagnosticReport.contains("AirPods identity: likely AirPods Pro 2"))
     }
 
     @Test

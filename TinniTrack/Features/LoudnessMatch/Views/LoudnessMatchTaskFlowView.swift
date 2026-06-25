@@ -318,6 +318,8 @@ struct LoudnessMatchTaskFlowView: View {
             return "Please place your AirPods in your ear."
         case .unsupportedHeadphones:
             return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .calibratedPlaybackRouteUnavailable:
+            return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
         case .missingAudiogramThreshold(let message):
             return message
         case .missingPreflight(let message):

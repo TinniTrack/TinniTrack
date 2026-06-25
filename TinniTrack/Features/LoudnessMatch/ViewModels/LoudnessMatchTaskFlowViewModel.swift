@@ -13,6 +13,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         case environmentGateUnavailable(String)
         case airPodsNotInEar
         case unsupportedHeadphones
+        case calibratedPlaybackRouteUnavailable
         case missingAudiogramThreshold(String)
         case playbackFailed(String)
         case submissionFailed(String)
@@ -153,7 +154,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
     var preflightReady: Bool {
         currentGuardrailValidation.state == .passed
-            && headphoneRouteAssessment.passesAirPodsPro2Heuristic
+            && headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic
             && !isAirPodsRouteInterrupted
             && environmentGateResult?.passed == true
             && fitSealConfirmed
@@ -171,6 +172,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         hasPassedEnvironmentGate
             && environmentGateResult?.passed != true
             && isRunningEnvironmentGate
+    }
+
+    var isAirPodsPlaybackRouteBlockedByAnotherApp: Bool {
+        headphoneRouteAssessment.passesAirPodsPro2Heuristic
+            && !headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic
     }
 
     var currentCandidateLevelDBHL: Double? {
@@ -280,7 +286,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         )
         setHeadphoneRouteAssessment(assessment, source: "continuityRefresh")
 
-        if assessment.passesAirPodsPro2Heuristic {
+        if assessment.passesAirPodsPro2PlaybackHeuristic {
             isAirPodsRouteInterrupted = false
             if refreshRouteAndVolume {
                 refreshGuardrails()
@@ -298,7 +304,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @discardableResult
     func validateAirPodsForCorrectEarStep() -> Bool {
         refreshHeadphoneRouteAssessment()
-        guard headphoneRouteAssessment.passesAirPodsPro2Heuristic else {
+        guard headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic else {
             message = airPodsGateMessage(for: headphoneRouteAssessment)
             return false
         }
@@ -308,6 +314,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     private func airPodsGateMessage(for assessment: HeadphoneRouteAssessment) -> FlowMessage {
+        if assessment.passesAirPodsPro2Heuristic, !assessment.passesAirPodsPro2PlaybackHeuristic {
+            return .calibratedPlaybackRouteUnavailable
+        }
+
         switch assessment.primaryIssue {
         case .noOutput, .builtInOutput, .bluetoothHeadsetProfile, .bluetoothLowEnergyRoute, .unknownRoute, nil:
             return .airPodsNotInEar

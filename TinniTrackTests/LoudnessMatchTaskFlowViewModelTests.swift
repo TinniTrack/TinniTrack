@@ -499,7 +499,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func correctEarGatePassesForAirPodsPro2HeadsetProfileDuringCall() {
+    func correctEarGateBlocksAirPodsPro2HeadsetProfileDuringCall() {
         let routeProvider = MockAudioSessionRouteVolumeProvider(
             outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothHFP)],
             outputVolume: 1.0
@@ -511,8 +511,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
 
-        #expect(viewModel.validateAirPodsForCorrectEarStep())
-        #expect(viewModel.message == nil)
+        #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
+        #expect(viewModel.message == .calibratedPlaybackRouteUnavailable)
         #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
         #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic == false)
     }
@@ -623,6 +623,38 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(viewModel.isAirPodsRouteInterrupted == false)
         #expect(routeProvider.refreshCallCount == refreshCountBeforeRouteChange)
         viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func airPodsHeadsetProfileDuringTaskPausesUntilPlaybackRouteReturns() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.startAirPodsContinuityMonitoring()
+        #expect(viewModel.isAirPodsRouteInterrupted == false)
+
+        routeProvider.outputs = [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothHFP)]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isAirPodsRouteInterrupted)
+        #expect(viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp)
+        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
+        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic == false)
+
+        routeProvider.outputs = [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isAirPodsRouteInterrupted == false)
+        #expect(viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp == false)
     }
 
     @Test

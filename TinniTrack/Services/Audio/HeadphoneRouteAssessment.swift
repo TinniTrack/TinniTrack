@@ -70,7 +70,8 @@ struct HeadphoneRouteAssessment: Equatable {
 
     var diagnosticItems: [HeadphoneRouteDiagnosticItem] {
         [
-            HeadphoneRouteDiagnosticItem(title: "Result", value: passesAirPodsPro2Heuristic ? "passed" : "failed"),
+            HeadphoneRouteDiagnosticItem(title: "Result", value: passesAirPodsPro2PlaybackHeuristic ? "passed" : "failed"),
+            HeadphoneRouteDiagnosticItem(title: "AirPods identity", value: passesAirPodsPro2Heuristic ? "likely AirPods Pro 2" : "unverified"),
             HeadphoneRouteDiagnosticItem(title: "Level", value: level.rawValue),
             HeadphoneRouteDiagnosticItem(title: "Issue", value: issues.map(\.rawValue).joined(separator: ", ").nilIfEmpty ?? "none"),
             HeadphoneRouteDiagnosticItem(title: "Output count", value: "\(outputCount)"),

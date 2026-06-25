@@ -396,7 +396,7 @@ struct StudyTaskOrientationSheet: View {
         case .hearingTest:
             return viewModel.isAudiogramPrerequisiteMet
         case .correctEar:
-            return loudnessViewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic
+            return loudnessViewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic
         case .quietRoom:
             return loudnessViewModel.environmentGateResult?.passed == true
         case .maxVolume:
@@ -444,10 +444,24 @@ struct StudyTaskOrientationSheet: View {
     private var airPodsInterruptionPopup: some View {
         interruptionPopup(
             systemName: "airpodspro",
-            title: "Reconnect Your AirPods",
-            bodyText: "Please put both AirPods in your ears and reconnect to continue onboarding.",
+            title: airPodsInterruptionTitle,
+            bodyText: airPodsInterruptionBodyText,
             accessibilityIdentifier: "study_onboarding_airpods_interruption_popup"
         )
+    }
+
+    private var airPodsInterruptionTitle: String {
+        loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp
+            ? "Calibrated Audio Blocked"
+            : "Reconnect Your AirPods"
+    }
+
+    private var airPodsInterruptionBodyText: String {
+        if loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp {
+            return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones. Onboarding will resume once AirPods return to calibrated playback."
+        }
+
+        return "Please put both AirPods in your ears and reconnect to continue onboarding."
     }
 
     private var quietRoomInterruptionPopup: some View {
@@ -677,6 +691,8 @@ struct StudyTaskOrientationSheet: View {
             return "Please place your AirPods in your ear."
         case .unsupportedHeadphones:
             return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .calibratedPlaybackRouteUnavailable:
+            return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
         case .missingAudiogramThreshold(let message):
             return message
         case .missingPreflight(let message):
