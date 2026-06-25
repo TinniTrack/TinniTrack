@@ -240,11 +240,11 @@ private struct StudyDetailView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
+                    .background(canEnroll ? DashboardColors.brandBlue : Color(uiColor: .systemGray3))
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .buttonStyle(.plain)
-                .background(canEnroll ? DashboardColors.brandBlue : Color(uiColor: .systemGray3))
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .buttonStyle(AppRoundedButtonStyle(cornerRadius: 12))
                 .disabled(!canEnroll || isEnrolling)
             }
             .padding(20)

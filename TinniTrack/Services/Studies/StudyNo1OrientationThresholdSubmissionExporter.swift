@@ -1,11 +1,23 @@
 import Foundation
 
-enum Phase6LoudnessMatchSubmissionExportError: Error, Equatable {
+enum StudyNo1OrientationThresholdSubmissionExportError: Error, Equatable {
     case missingCompletedAt
     case unsupportedTopLevelPayload
 }
 
-struct Phase6LoudnessMatchSubmissionExporter {
+struct StudyNo1OrientationThresholdSubmission: Equatable {
+    let startedAt: Date
+    let completedAt: Date
+    let matchedLevel: Double
+    let gating: [String: JSONValue]
+    let rawPayload: [String: JSONValue]
+    let deviceInfo: [String: JSONValue]
+    let headphoneInfo: [String: JSONValue]
+    let appVersion: String?
+    let calibrationVersion: String?
+}
+
+struct StudyNo1OrientationThresholdSubmissionExporter {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let appVersion: String?
@@ -20,16 +32,16 @@ struct Phase6LoudnessMatchSubmissionExporter {
         self.decoder = decoder ?? JSONDecoder()
     }
 
-    func makeSubmission(from payload: Phase6LoudnessMatchRunPayload) throws -> LoudnessMatchSubmission {
-        try payload.validateCompletedStudyA()
+    func makeSubmission(from payload: StudyNo1OrientationThresholdRunPayload) throws -> StudyNo1OrientationThresholdSubmission {
+        try payload.validateCompletedOrientationThreshold()
         guard let completedAt = payload.lifecycle.completedAt else {
-            throw Phase6LoudnessMatchSubmissionExportError.missingCompletedAt
+            throw StudyNo1OrientationThresholdSubmissionExportError.missingCompletedAt
         }
 
-        return LoudnessMatchSubmission(
+        return StudyNo1OrientationThresholdSubmission(
             startedAt: payload.lifecycle.startedAt,
             completedAt: completedAt,
-            matchedLevel: payload.summary.medianMatchedDBHL,
+            matchedLevel: payload.matchedLevelForLegacyTaskRunColumn,
             gating: gatingJSON(from: payload),
             rawPayload: try rawPayloadJSON(from: payload),
             deviceInfo: deviceJSON(from: payload),
@@ -39,16 +51,16 @@ struct Phase6LoudnessMatchSubmissionExporter {
         )
     }
 
-    private func rawPayloadJSON(from payload: Phase6LoudnessMatchRunPayload) throws -> [String: JSONValue] {
+    private func rawPayloadJSON(from payload: StudyNo1OrientationThresholdRunPayload) throws -> [String: JSONValue] {
         let data = try encoder.encode(payload)
         let jsonValue = try decoder.decode(JSONValue.self, from: data)
         guard case .object(let object) = jsonValue else {
-            throw Phase6LoudnessMatchSubmissionExportError.unsupportedTopLevelPayload
+            throw StudyNo1OrientationThresholdSubmissionExportError.unsupportedTopLevelPayload
         }
         return object
     }
 
-    private func gatingJSON(from payload: Phase6LoudnessMatchRunPayload) -> [String: JSONValue] {
+    private func gatingJSON(from payload: StudyNo1OrientationThresholdRunPayload) -> [String: JSONValue] {
         [
             "environment": .object([
                 "threshold_dba": .number(payload.environment.thresholdDBA),
@@ -57,16 +69,6 @@ struct Phase6LoudnessMatchSubmissionExporter {
                 "sensitivity_offset_db": payload.environment.sensitivityOffsetDB.map(JSONValue.number) ?? .null,
                 "samples_dba": .array(payload.environment.samplesDBA.map(JSONValue.number)),
                 "gate_result": .string(payload.environment.gateResult.rawValue)
-            ]),
-            "fit_seal": .object([
-                "status": .string(payload.fitSeal.status.rawValue),
-                "limitations": .string(payload.fitSeal.limitations)
-            ]),
-            "safety": .object([
-                "acknowledged": .bool(payload.safety.acknowledgedAt != nil),
-                "stop_control_visible_before_playback": .bool(payload.safety.stopControlVisibleBeforePlayback),
-                "maximum_level_dbhl": .number(payload.safety.maximumLevelDBHL),
-                "limitation": .string(payload.safety.limitation)
             ]),
             "volume": .object([
                 "output_volume": .number(payload.volume.outputVolume),
@@ -77,7 +79,7 @@ struct Phase6LoudnessMatchSubmissionExporter {
         ]
     }
 
-    private func deviceJSON(from payload: Phase6LoudnessMatchRunPayload) -> [String: JSONValue] {
+    private func deviceJSON(from payload: StudyNo1OrientationThresholdRunPayload) -> [String: JSONValue] {
         [
             "model": .string(payload.device.deviceModel),
             "system_name": .string(payload.device.systemName),
@@ -92,7 +94,7 @@ struct Phase6LoudnessMatchSubmissionExporter {
         ]
     }
 
-    private func headphoneJSON(from payload: Phase6LoudnessMatchRunPayload) -> [String: JSONValue] {
+    private func headphoneJSON(from payload: StudyNo1OrientationThresholdRunPayload) -> [String: JSONValue] {
         [
             "model_identifier": payload.airPods.modelIdentifier.map(JSONValue.string) ?? .null,
             "firmware_version": payload.airPods.firmwareVersion.map(JSONValue.string) ?? .null,

@@ -20,7 +20,7 @@ struct TinnitusThresholdStaircaseConfiguration: Equatable {
     let stepUpDB: Double
     let requiredAscendingHitsAtLevel: Int
 
-    static let studyAOneKilohertz = TinnitusThresholdStaircaseConfiguration(
+    static let studyNo1OneKilohertz = TinnitusThresholdStaircaseConfiguration(
         frequencyHz: 1_000,
         initialLevelDBHL: 30.0,
         minimumLevelDBHL: -10.0,
@@ -40,7 +40,7 @@ struct TinnitusThresholdStaircase: Equatable {
     private var hasMissedBelowCandidate = false
     private var ascendingHitCountsByLevel: [Double: Int] = [:]
 
-    init(configuration: TinnitusThresholdStaircaseConfiguration = .studyAOneKilohertz) {
+    init(configuration: TinnitusThresholdStaircaseConfiguration = .studyNo1OneKilohertz) {
         self.configuration = configuration
         currentLevelDBHL = Self.clamp(
             configuration.initialLevelDBHL,

@@ -20,6 +20,7 @@ enum CalibratedAudioRoutePortKind: Equatable {
 
 enum CalibratedHeadphoneVerificationSource: String, Equatable {
     case appCalibrationProfile
+    case routeNameHeuristic
     case researchProtocol
     case externalDeviceRegistry
 }

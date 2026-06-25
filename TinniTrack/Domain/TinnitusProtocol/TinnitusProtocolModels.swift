@@ -1,8 +1,8 @@
 import Foundation
 
 enum TinnitusStudyProtocolKind: Equatable {
-    case studyAFixedOneKilohertz
-    case studyBTablePitchMatched
+    case studyNo1FixedOneKilohertz
+    case studyNo2TablePitchMatched
 }
 
 enum TinnitusLaterality: String, CaseIterable, Equatable {
@@ -101,12 +101,12 @@ struct TinnitusProtocolConfiguration: Equatable {
     let highSpreadThresholdDB: Double
     let supportedPitchFrequenciesHz: [Double]
 
-    static let studyAFixedOneKilohertz = TinnitusProtocolConfiguration(
-        kind: .studyAFixedOneKilohertz,
+    static let studyNo1FixedOneKilohertz = TinnitusProtocolConfiguration(
+        kind: .studyNo1FixedOneKilohertz,
         stimulusKind: .pureTone,
         frequencyHz: 1_000,
         requiredTrialCount: 3,
-        toneDuration: 1.0,
+        toneDuration: 2.0,
         rampDuration: CalibratedTonePlaybackDefaults.rampDuration,
         thresholdStartOffsetDBSL: 5.0,
         conservativeFallbackStartDBHL: 10.0,

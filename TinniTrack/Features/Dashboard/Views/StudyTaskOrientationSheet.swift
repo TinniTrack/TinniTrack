@@ -3,170 +3,280 @@ import SwiftUI
 struct StudyTaskOrientationSheet: View {
     @Binding var step: StudyTaskOrientationStep
     @ObservedObject var viewModel: StudyTaskDashboardViewModel
+    let enrollment: StudyEnrollment
+    let studyService: StudyServiceProtocol
 
     let openHealthApp: () -> Void
     let close: () -> Void
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    switch step {
-                    case .hearingTest:
-                        hearingTestStep
-                    case .importAudiogram:
-                        importStep
-                    case .nextSteps:
-                        nextSteps
-                    }
-                }
-                .padding(20)
-            }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Study Orientation")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if step != .hearingTest {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(action: moveToPreviousStep) {
-                            Image(systemName: "chevron.left")
-                                .font(.headline)
-                        }
-                        .accessibilityLabel("Back")
-                    }
-                }
+    @StateObject private var loudnessViewModel = LoudnessMatchTaskFlowViewModel()
+    @State private var isCloseConfirmationPresented = false
+    @State private var isNoiseSuggestionsPresented = false
+    @State private var orientationThresholdErrorMessage: String?
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close", action: close)
+    var body: some View {
+        ZStack(alignment: .top) {
+            LoudnessMatchModalColors.background
+                .ignoresSafeArea()
+
+            if step == .activeTest, let onboardingTask = viewModel.onboardingThresholdTask {
+                ResearchKitTaskPresenterView(
+                    request: .studyNo1OrientationThreshold(identifier: "study-no-1-orientation-threshold")
+                ) { summary in
+                    Task { @MainActor in
+                        await handleOrientationThresholdCompletion(summary, onboardingTask: onboardingTask)
+                    }
                 }
+            } else {
+                LoudnessMatchModalContentLayout {
+                    currentStepContent
+                } footer: {
+                    LoudnessMatchModalPrimaryButton(
+                        title: primaryButtonTitle,
+                        isEnabled: isPrimaryButtonEnabled,
+                        isInteractionEnabled: isPrimaryButtonInteractionEnabled,
+                        isLoading: isPrimaryButtonLoading
+                    ) {
+                        advance()
+                    }
+                }
+            }
+
+            topControls
+
+            if shouldShowAirPodsInterruptionOverlay {
+                airPodsInterruptionPopup
+                    .transition(.opacity)
+                    .zIndex(2)
+            } else if shouldShowQuietRoomInterruptionPopup {
+                quietRoomInterruptionPopup
+                    .transition(.opacity)
+                    .zIndex(2)
             }
         }
+        .foregroundStyle(LoudnessMatchModalColors.text)
         .interactiveDismissDisabled(true)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
+        .onAppear {
+            handleStepEntered(step)
+        }
+        .onChange(of: step) { _, newStep in
+            handleStepEntered(newStep)
+        }
+        .onChange(of: loudnessViewModel.isAirPodsRouteInterrupted) { _, isInterrupted in
+            if !isInterrupted {
+                resumeCurrentStepAfterAirPodsReconnect()
+            }
+        }
+        .onDisappear {
+            cleanupForDismiss(abortActiveTest: false)
+        }
+        .fullScreenCover(isPresented: $isNoiseSuggestionsPresented) {
+            LoudnessMatchNoiseSuggestionsView {
+                isNoiseSuggestionsPresented = false
+            }
+        }
+        .alert(
+            "Unable to Continue",
+            isPresented: Binding(
+                get: {
+                    loudnessViewModel.message != nil
+                        || viewModel.taskLoadErrorMessage != nil
+                        || orientationThresholdErrorMessage != nil
+                },
+                set: { shouldShow in
+                    if !shouldShow {
+                        loudnessViewModel.clearMessage()
+                        viewModel.dismissTaskError()
+                        orientationThresholdErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                loudnessViewModel.clearMessage()
+                viewModel.dismissTaskError()
+                orientationThresholdErrorMessage = nil
+            }
+        } message: {
+            Text(messageText)
+        }
+        .alert("Stop orientation?", isPresented: $isCloseConfirmationPresented) {
+            Button("Keep Going", role: .cancel) {}
+            Button("Stop Orientation", role: .destructive) {
+                cleanupForDismiss(abortActiveTest: hasStartedTest)
+                close()
+            }
+        } message: {
+            Text("Your current Study No. 1 onboarding progress will be discarded.")
+        }
+    }
+
+    @ViewBuilder
+    private var currentStepContent: some View {
+        switch step {
+        case .welcome:
+            welcomeStep
+        case .hearingTest:
+            hearingTestStep
+        case .taskIntro:
+            LoudnessMatchPreparationStepView(
+                step: .intro,
+                viewModel: loudnessViewModel,
+                showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
+            )
+            .accessibilityIdentifier("study_onboarding_loudness_intro_step")
+        case .correctEar:
+            LoudnessMatchPreparationStepView(
+                step: .correctEar,
+                viewModel: loudnessViewModel,
+                showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
+            )
+        case .quietRoom:
+            LoudnessMatchPreparationStepView(
+                step: .quietRoom,
+                viewModel: loudnessViewModel,
+                showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
+            )
+        case .fit:
+            LoudnessMatchPreparationStepView(
+                step: .fit,
+                viewModel: loudnessViewModel,
+                showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
+            )
+        case .maxVolume:
+            LoudnessMatchPreparationStepView(
+                step: .maxVolume,
+                viewModel: loudnessViewModel,
+                showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
+            )
+        case .activeTest:
+            EmptyView()
+        }
+    }
+
+    private var welcomeStep: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            Spacer(minLength: 0)
+
+            Image(systemName: "waveform.path")
+                .font(.system(size: 92, weight: .medium))
+                .foregroundStyle(LoudnessMatchModalColors.primary)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+            LoudnessMatchModalTitleBlock(
+                title: "Welcome to Study No. 1",
+                bodyText: "We will set up your hearing-test baseline, then run the same tinnitus loudness-match flow used for every Study No. 1 task."
+            )
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .accessibilityIdentifier("study_onboarding_welcome_step")
     }
 
     private var hearingTestStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            StepLabel(text: "Step 1")
-            hearingTestInstructions
+        VStack(alignment: .leading, spacing: 22) {
+            Image(systemName: "airpodspro")
+                .font(.system(size: 86, weight: .regular))
+                .foregroundStyle(LoudnessMatchModalColors.graphic)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
 
-            StudyActionButton(title: "Continue", isPrimary: true) {
-                step = .importAudiogram
-            }
-        }
-    }
+            LoudnessMatchModalTitleBlock(
+                title: "Take an Apple Hearing Test",
+                bodyText: "Use AirPods Pro 2 with your paired iPhone. In Settings, open your AirPods and tap Take a Hearing Test. When you return, connect Apple Health so TinniTrack can import the result."
+            )
 
-    private var importStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            StepLabel(text: "Step 2")
             importStateContent
 
-            StudyActionButton(title: "Continue", isPrimary: true) {
-                step = .nextSteps
-            }
-            .disabled(!viewModel.isAudiogramPrerequisiteMet)
-            .opacity(viewModel.isAudiogramPrerequisiteMet ? 1 : 0.5)
+            Link(
+                "Need help taking an Apple Hearing Test?",
+                destination: URL(string: "https://support.apple.com/en-us/120991")!
+            )
+            .font(.callout)
+            .fontWeight(.semibold)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .task {
             await viewModel.checkOrientationImportStatus()
         }
-    }
-
-    private var nextSteps: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            StepLabel(text: "Step 3")
-
-            StudyPrerequisiteCard(
-                title: "Finish Orientation",
-                message: "Once you finish, we will generate your full Study No. 1 task schedule."
-            )
-
-            StudyActionButton(
-                title: viewModel.isCompletingStudyOnboarding ? "Finishing..." : "Finish Orientation",
-                isPrimary: true,
-                isLoading: viewModel.isCompletingStudyOnboarding
-            ) {
-                Task {
-                    await viewModel.completeStudyOnboarding()
-                    if !viewModel.requiresStudyOnboardingCompletion {
-                        close()
-                    }
-                }
-            }
-            .disabled(!viewModel.isAudiogramPrerequisiteMet || viewModel.isCompletingStudyOnboarding)
-            .opacity((viewModel.isAudiogramPrerequisiteMet && !viewModel.isCompletingStudyOnboarding) ? 1 : 0.5)
-        }
+        .accessibilityIdentifier("study_onboarding_hearing_test_step")
     }
 
     @ViewBuilder
     private var importStateContent: some View {
         switch viewModel.orientationImportState {
         case .waitingForPermission:
-            StudyPrerequisiteCard(
-                title: "Connect Apple Health",
-                message: "Allow Apple Health access so we can import your hearing test into the study."
+            inlineStatus(
+                systemName: "heart.text.square",
+                title: "Apple Health access needed",
+                message: "Allow audiogram read access to import your Apple hearing test."
             )
 
-            StudyActionButton(
-                title: viewModel.isSyncing ? "Connecting..." : "Connect Apple Health",
-                isPrimary: true,
+            secondaryActionButton(
+                title: viewModel.isSyncing ? "Connecting" : "Connect Apple Health",
                 isLoading: viewModel.isSyncing
             ) {
                 Task { await viewModel.connectAppleHealthForOrientation() }
             }
 
         case .requestingOrChecking:
-            ProgressView("Checking hearing test import...")
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("Checking hearing-test import...")
+                    .font(.callout)
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+            }
 
         case .success(let hearingTestDate):
-            StudyPrerequisiteCard(
-                title: "Hearing Test Imported",
-                message: successMessageForHearingTestDate(hearingTestDate)
+            inlineStatus(
+                systemName: "checkmark.circle.fill",
+                title: "Hearing test imported",
+                message: successMessageForHearingTestDate(hearingTestDate),
+                tint: LoudnessMatchModalColors.success
             )
 
         case .authorizedNoHearingTest:
-            StudyPrerequisiteCard(
-                title: "No Hearing Test Found Yet",
-                message: "We can access your health data, but we are not seeing a hearing test yet."
+            inlineStatus(
+                systemName: "exclamationmark.circle",
+                title: "No hearing test found yet",
+                message: "Apple Health is connected, but no audiogram is available yet. Complete the Apple Hearing Test and check again."
             )
 
-            hearingTestInstructions
-
-            StudyActionButton(
-                title: viewModel.isSyncing ? "Checking..." : "Check Again",
-                isPrimary: true,
+            secondaryActionButton(
+                title: viewModel.isSyncing ? "Checking" : "Check Again",
                 isLoading: viewModel.isSyncing
             ) {
                 Task { await viewModel.connectAppleHealthForOrientation() }
             }
 
         case .permissionDenied:
-            StudyPrerequisiteCard(
-                title: "Permission Required",
+            inlineStatus(
+                systemName: "lock.circle",
+                title: "Permission required",
                 message: "Approve hearing-test access in Apple Health, then return here and check again."
             )
 
-            StudyActionButton(title: "Open Health App", isPrimary: false, action: openHealthApp)
-
-            StudyActionButton(
-                title: viewModel.isSyncing ? "Checking..." : "Check Again",
-                isPrimary: true,
-                isLoading: viewModel.isSyncing
-            ) {
-                Task { await viewModel.checkOrientationImportStatus() }
+            HStack(spacing: 12) {
+                secondaryActionButton(title: "Open Health", isLoading: false, action: openHealthApp)
+                secondaryActionButton(
+                    title: viewModel.isSyncing ? "Checking" : "Check Again",
+                    isLoading: viewModel.isSyncing
+                ) {
+                    Task { await viewModel.checkOrientationImportStatus() }
+                }
             }
 
         case .error(let message):
-            StudyPrerequisiteCard(
-                title: "Import Unavailable",
+            inlineStatus(
+                systemName: "exclamationmark.triangle",
+                title: "Import unavailable",
                 message: message
             )
 
-            StudyActionButton(
-                title: viewModel.isSyncing ? "Retrying..." : "Try Again",
-                isPrimary: true,
+            secondaryActionButton(
+                title: viewModel.isSyncing ? "Retrying" : "Try Again",
                 isLoading: viewModel.isSyncing
             ) {
                 Task { await viewModel.connectAppleHealthForOrientation() }
@@ -174,38 +284,474 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
-    private var hearingTestInstructions: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            StudyPrerequisiteCard(
-                title: "Take an Apple Hearing Test",
-                message: "Use AirPods Pro (2nd generation) with your paired iPhone. In Settings > your AirPods, tap Take a Hearing Test. Then come back and continue orientation."
-            )
+    private func inlineStatus(
+        systemName: String,
+        title: String,
+        message: String,
+        tint: Color = LoudnessMatchModalColors.secondaryText
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemName)
+                .font(.title3)
+                .foregroundStyle(tint)
+                .frame(width: 28)
 
-            Link(
-                "Need help taking an Apple Hearing Test?",
-                destination: URL(string: "https://support.apple.com/en-us/120991")!
-            )
-            .font(.subheadline)
-            .fontWeight(.semibold)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(LoudnessMatchModalColors.text)
+
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .lineLimit(4)
+                    .minimumScaleFactor(0.82)
+            }
+        }
+        .padding(16)
+        .background(LoudnessMatchModalColors.controlBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
         }
     }
 
-    private func moveToPreviousStep() {
+    private func secondaryActionButton(
+        title: String,
+        isLoading: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if isLoading {
+                    ProgressView()
+                }
+
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 48)
+            .foregroundStyle(isLoading ? LoudnessMatchModalColors.disabledText : LoudnessMatchModalColors.text)
+            .background(LoudnessMatchModalColors.controlBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+            }
+        }
+        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
+        .disabled(isLoading)
+    }
+
+    private var topControls: some View {
+        HStack {
+            if step != .welcome {
+                LoudnessMatchModalIconButton(
+                    systemName: "chevron.left",
+                    accessibilityLabel: "Back",
+                    accessibilityIdentifier: "study_onboarding_back_button",
+                    action: goBack
+                )
+            }
+
+            Spacer()
+
+            LoudnessMatchModalIconButton(
+                systemName: "xmark",
+                accessibilityLabel: "Close",
+                accessibilityIdentifier: "study_onboarding_close_button",
+                action: requestClose
+            )
+        }
+        .padding(.horizontal, 26)
+        .padding(.top, 18)
+    }
+
+    private var primaryButtonTitle: String {
         switch step {
+        case .welcome:
+            return "Continue"
         case .hearingTest:
-            break
-        case .importAudiogram:
+            return "Continue"
+        case .taskIntro:
+            return "Get Started"
+        case .correctEar, .quietRoom, .fit:
+            return "Next"
+        case .maxVolume:
+            return viewModel.isPreparingOnboardingThresholdTask ? "Starting" : "Start Test"
+        case .activeTest:
+            return ""
+        }
+    }
+
+    private var isPrimaryButtonEnabled: Bool {
+        switch step {
+        case .welcome, .taskIntro, .fit:
+            return true
+        case .hearingTest:
+            return viewModel.isAudiogramPrerequisiteMet
+        case .correctEar:
+            return loudnessViewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic
+        case .quietRoom:
+            return loudnessViewModel.environmentGateResult?.passed == true
+        case .maxVolume:
+            return loudnessViewModel.currentGuardrailValidation.state == .passed
+                && !viewModel.isPreparingOnboardingThresholdTask
+        case .activeTest:
+            return false
+        }
+    }
+
+    private var isPrimaryButtonInteractionEnabled: Bool {
+        switch step {
+        case .correctEar:
+            return true
+        default:
+            return isPrimaryButtonEnabled
+        }
+    }
+
+    private var isPrimaryButtonLoading: Bool {
+        step == .maxVolume && viewModel.isPreparingOnboardingThresholdTask
+    }
+
+    private var hasStartedTest: Bool {
+        step == .activeTest || loudnessViewModel.events.count > 1
+    }
+
+    private var shouldShowAirPodsInterruptionOverlay: Bool {
+        loudnessViewModel.isAirPodsRouteInterrupted
+            && step != .welcome
+            && step != .hearingTest
+            && step != .taskIntro
+            && step != .correctEar
+    }
+
+    private var shouldShowQuietRoomInterruptionPopup: Bool {
+        loudnessViewModel.isEnvironmentQuietnessInterrupted
+            && step != .welcome
+            && step != .hearingTest
+            && step != .taskIntro
+            && step != .correctEar
+            && step != .quietRoom
+    }
+
+    private var airPodsInterruptionPopup: some View {
+        interruptionPopup(
+            systemName: "airpodspro",
+            title: airPodsInterruptionTitle,
+            bodyText: airPodsInterruptionBodyText,
+            accessibilityIdentifier: "study_onboarding_airpods_interruption_popup"
+        )
+    }
+
+    private var airPodsInterruptionTitle: String {
+        loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp
+            ? "Calibrated Audio Blocked"
+            : "Reconnect Your AirPods"
+    }
+
+    private var airPodsInterruptionBodyText: String {
+        if loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp {
+            return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones. Onboarding will resume once AirPods return to calibrated playback."
+        }
+
+        return "Please put both AirPods in your ears and reconnect to continue onboarding."
+    }
+
+    private var quietRoomInterruptionPopup: some View {
+        interruptionPopup(
+            systemName: "ear.badge.waveform",
+            title: "Find a Quiet Place",
+            bodyText: "The room is too loud for this task. Onboarding will resume once the room is quiet enough.",
+            accessibilityIdentifier: "study_onboarding_quiet_room_interruption_popup",
+            quietRoomLevelRatio: quietRoomInterruptionLevelRatio
+        )
+    }
+
+    private func interruptionPopup(
+        systemName: String,
+        title: String,
+        bodyText: String,
+        accessibilityIdentifier: String,
+        quietRoomLevelRatio: Double? = nil
+    ) -> some View {
+        ZStack {
+            Color.black.opacity(0.32)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 18) {
+                if let quietRoomLevelRatio {
+                    LoudnessMatchNoiseGateMeter(
+                        status: .tooLoud,
+                        levelRatio: quietRoomLevelRatio,
+                        isCompact: true
+                    )
+                    .padding(.horizontal, 6)
+                    .accessibilityHidden(true)
+                } else {
+                    Image(systemName: systemName)
+                        .font(.system(size: 58, weight: .regular))
+                        .foregroundStyle(LoudnessMatchModalColors.primary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
+                }
+
+                Text(title)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundStyle(LoudnessMatchModalColors.text)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .multilineTextAlignment(.center)
+
+                Text(bodyText)
+                    .font(.callout)
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(5)
+                    .minimumScaleFactor(0.82)
+
+                LoudnessMatchModalPrimaryButton(title: "Exit Orientation", isEnabled: true) {
+                    exitTask()
+                }
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(LoudnessMatchModalColors.background)
+                    .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 12)
+            )
+            .padding(.horizontal, 30)
+        }
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private var quietRoomInterruptionLevelRatio: Double {
+        guard let latestSampleDBA = loudnessViewModel.environmentGateUpdate?.latestSampleDBA else {
+            return 1.2
+        }
+
+        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
+    }
+
+    private func advance() {
+        switch step {
+        case .welcome:
             step = .hearingTest
-        case .nextSteps:
-            step = .importAudiogram
+        case .hearingTest:
+            guard viewModel.isAudiogramPrerequisiteMet else {
+                return
+            }
+            step = .taskIntro
+        case .taskIntro:
+            step = .correctEar
+        case .correctEar:
+            guard loudnessViewModel.validateAirPodsForCorrectEarStep() else {
+                return
+            }
+            loudnessViewModel.stopHeadphoneRouteMonitoring()
+            loudnessViewModel.startAirPodsContinuityMonitoring()
+            loudnessViewModel.prepareEnvironmentGateForQuietRoomStep()
+            step = .quietRoom
+        case .quietRoom:
+            guard loudnessViewModel.environmentGateResult?.passed == true else {
+                return
+            }
+            loudnessViewModel.cancelEnvironmentGate()
+            step = .fit
+        case .fit:
+            loudnessViewModel.completeFitConfirmation()
+            step = .maxVolume
+        case .maxVolume:
+            guard loudnessViewModel.acknowledgeSafetyAndStartTest() else {
+                return
+            }
+            Task {
+                if await viewModel.prepareStudyOnboardingThresholdTask() != nil {
+                    loudnessViewModel.stopVolumeGateMonitoring()
+                    step = .activeTest
+                } else if !viewModel.requiresStudyOnboardingCompletion {
+                    close()
+                }
+            }
+        case .activeTest:
+            break
+        }
+    }
+
+    private func goBack() {
+        if loudnessViewModel.isPlaying {
+            loudnessViewModel.stopTone()
+        }
+
+        switch step {
+        case .welcome:
+            break
+        case .hearingTest:
+            step = .welcome
+        case .taskIntro:
+            step = .hearingTest
+        case .correctEar:
+            loudnessViewModel.stopHeadphoneRouteMonitoring()
+            step = .taskIntro
+        case .quietRoom:
+            loudnessViewModel.cancelEnvironmentGate()
+            loudnessViewModel.stopAirPodsContinuityMonitoring()
+            step = .correctEar
+        case .fit:
+            step = .quietRoom
+        case .maxVolume:
+            loudnessViewModel.stopVolumeGateMonitoring()
+            step = .fit
+        case .activeTest:
+            step = .maxVolume
+        }
+    }
+
+    private func requestClose() {
+        if hasStartedTest {
+            isCloseConfirmationPresented = true
+        } else {
+            cleanupForDismiss(abortActiveTest: false)
+            close()
+        }
+    }
+
+    private func exitTask() {
+        cleanupForDismiss(abortActiveTest: hasStartedTest)
+        close()
+    }
+
+    private func handleStepEntered(_ newStep: StudyTaskOrientationStep) {
+        switch newStep {
+        case .correctEar:
+            loudnessViewModel.stopAirPodsContinuityMonitoring()
+            loudnessViewModel.stopVolumeGateMonitoring()
+            loudnessViewModel.cancelEnvironmentGate()
+            loudnessViewModel.startHeadphoneRouteMonitoring()
+        case .quietRoom:
+            loudnessViewModel.stopHeadphoneRouteMonitoring()
+            if loudnessViewModel.environmentGateResult?.passed != true {
+                loudnessViewModel.startContinuousEnvironmentGate()
+            }
+        case .maxVolume:
+            loudnessViewModel.stopHeadphoneRouteMonitoring()
+            loudnessViewModel.startVolumeGateMonitoring()
+        default:
+            break
+        }
+    }
+
+    private func resumeCurrentStepAfterAirPodsReconnect() {
+        switch step {
+        case .quietRoom:
+            if loudnessViewModel.environmentGateResult?.passed != true {
+                loudnessViewModel.startContinuousEnvironmentGate()
+            }
+        case .maxVolume:
+            loudnessViewModel.startVolumeGateMonitoring()
+        default:
+            break
+        }
+    }
+
+    private func cleanupForDismiss(abortActiveTest: Bool) {
+        loudnessViewModel.stopHeadphoneRouteMonitoring()
+        loudnessViewModel.stopAirPodsContinuityMonitoring()
+        loudnessViewModel.cancelEnvironmentGate()
+        loudnessViewModel.stopVolumeGateMonitoring()
+
+        if abortActiveTest {
+            loudnessViewModel.abort()
+        } else if loudnessViewModel.isPlaying {
+            loudnessViewModel.stopTone()
+        }
+    }
+
+    private var messageText: String {
+        if let orientationThresholdErrorMessage {
+            return orientationThresholdErrorMessage
+        }
+
+        if let dashboardMessage = viewModel.taskLoadErrorMessage {
+            return dashboardMessage
+        }
+
+        switch loudnessViewModel.message {
+        case .playbackDisabled:
+            return "Calibrated playback is still disabled for this participant workflow."
+        case .environmentGateFailed:
+            return "The quiet-room gate did not collect enough consecutive samples below the Study No. 1 threshold."
+        case .airPodsNotInEar:
+            return "Please place your AirPods in your ear."
+        case .unsupportedHeadphones:
+            return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .calibratedPlaybackRouteUnavailable:
+            return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
+        case .missingAudiogramThreshold(let message):
+            return message
+        case .missingPreflight(let message):
+            return message
+        case .incompletePayload(let message):
+            return message
+        case .guardrailsUnavailable:
+            return "Audio guardrails are missing, failed, or require restart."
+        case .environmentGateUnavailable(let message):
+            return message
+        case .playbackFailed(let message):
+            return message
+        case .submissionFailed(let message):
+            return message
+        case nil:
+            return ""
+        }
+    }
+
+    private func handleOrientationThresholdCompletion(
+        _ summary: ResearchKitTaskResultSummary,
+        onboardingTask: ScheduledTask
+    ) async {
+        guard summary.finishState == .completed else {
+            orientationThresholdErrorMessage = "The orientation threshold task was not completed."
+            step = .maxVolume
+            return
+        }
+
+        guard let thresholdResult = summary.studyNo1OrientationThreshold,
+              thresholdResult.isComplete
+        else {
+            orientationThresholdErrorMessage = "The orientation threshold task did not return both 1 kHz ear thresholds."
+            step = .maxVolume
+            return
+        }
+
+        let submitted = await loudnessViewModel.submitOrientationThreshold(
+            result: thresholdResult,
+            scheduledTask: onboardingTask,
+            enrollment: enrollment,
+            studyService: studyService
+        )
+        guard submitted else {
+            step = .maxVolume
+            return
+        }
+
+        await viewModel.completeStudyOnboarding()
+        if !viewModel.requiresStudyOnboardingCompletion {
+            close()
         }
     }
 
     private func successMessageForHearingTestDate(_ date: Date?) -> String {
         guard let date else {
-            return "Success! We got your hearing test."
+            return "Success. We imported your hearing test."
         }
-        return "Success! We got your hearing test from \(Self.hearingTestDateFormatter.string(from: date))."
+        return "Success. We imported your hearing test from \(Self.hearingTestDateFormatter.string(from: date))."
     }
 
     private static let hearingTestDateFormatter: DateFormatter = {
@@ -215,16 +761,4 @@ struct StudyTaskOrientationSheet: View {
         formatter.timeStyle = .none
         return formatter
     }()
-}
-
-private struct StepLabel: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .fontWeight(.semibold)
-            .tracking(0.8)
-            .foregroundStyle(.secondary)
-    }
 }

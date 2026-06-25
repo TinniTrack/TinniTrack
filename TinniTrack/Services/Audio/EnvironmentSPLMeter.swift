@@ -31,12 +31,12 @@ struct AVAudioEnvironmentSPLMeter: EnvironmentSPLMeasuring, EnvironmentSPLGateMo
         self.sensitivityOffsetDB = sensitivityOffsetDB
     }
 
-    func runGate(configuration: TinnitusEnvironmentSPLGateConfiguration = .studyA) async throws -> TinnitusEnvironmentSPLGateResult {
+    func runGate(configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1) async throws -> TinnitusEnvironmentSPLGateResult {
         try await sampleGate(configuration: configuration, maximumSamples: configuration.maximumSamples) { _ in }
     }
 
     func monitorGate(
-        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyA
+        configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
     ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -78,7 +78,7 @@ struct AVAudioEnvironmentSPLMeter: EnvironmentSPLMeasuring, EnvironmentSPLGateMo
         let previousCategory = audioSession.category
         let previousMode = audioSession.mode
         let previousOptions = audioSession.categoryOptions
-        try audioSession.setCategory(.record, mode: .measurement, options: [])
+        try audioSession.setCategory(.playAndRecord, mode: .measurement, options: [.allowBluetoothA2DP])
         try audioSession.setActive(true)
 
         let recorder = try makeRecorder()
@@ -108,7 +108,7 @@ struct AVAudioEnvironmentSPLMeter: EnvironmentSPLMeasuring, EnvironmentSPLGateMo
             )
             onUpdate(update)
 
-            if let result = update.result {
+            if maximumSamples != nil, let result = update.result {
                 return result
             }
         }

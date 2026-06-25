@@ -58,8 +58,13 @@ enum LoudnessMatchModalColors {
 struct LoudnessMatchModalPrimaryButton: View {
     let title: String
     var isEnabled = true
+    var isInteractionEnabled: Bool? = nil
     var isLoading = false
     let action: () -> Void
+
+    private var canInteract: Bool {
+        isInteractionEnabled ?? isEnabled
+    }
 
     var body: some View {
         Button(action: action) {
@@ -78,16 +83,16 @@ struct LoudnessMatchModalPrimaryButton: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: 58)
             .padding(.horizontal, 18)
+            .background(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledFill)
+            .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.disabledText)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled || isLoading)
-        .background(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledFill)
-        .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.disabledText)
-        .clipShape(Capsule())
-        .overlay {
-            Capsule()
-                .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
-        }
+        .buttonStyle(AppCapsuleButtonStyle())
+        .disabled(!canInteract || isLoading)
         .accessibilityIdentifier("loudness_modal_primary_button")
     }
 }
@@ -103,15 +108,15 @@ struct LoudnessMatchModalIconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: 26, weight: .semibold))
                 .frame(width: 54, height: 54)
+                .foregroundStyle(LoudnessMatchModalColors.text)
+                .background(LoudnessMatchModalColors.controlBackground)
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+                }
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(LoudnessMatchModalColors.text)
-        .background(LoudnessMatchModalColors.controlBackground)
-        .clipShape(Circle())
-        .overlay {
-            Circle()
-                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
-        }
+        .buttonStyle(AppCircleButtonStyle())
         .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier(accessibilityIdentifier)
     }

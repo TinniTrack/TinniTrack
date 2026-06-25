@@ -6,7 +6,7 @@ struct TinnitusProtocolEngineTests {
     private let timestamp = Date(timeIntervalSince1970: 1_800_010_000)
 
     @Test
-    func studyAFixedFrequencySelectsUnilateralChannelAndBuildsPlaybackPlan() throws {
+    func studyNo1FixedFrequencySelectsUnilateralChannelAndBuildsPlaybackPlan() throws {
         var engine = makeEngine()
 
         engine.selectLaterality(.left)
@@ -230,7 +230,7 @@ struct TinnitusProtocolEngineTests {
     }
 
     private func makeEngine(
-        configuration: TinnitusProtocolConfiguration = .studyAFixedOneKilohertz
+        configuration: TinnitusProtocolConfiguration = .studyNo1FixedOneKilohertz
     ) -> TinnitusProtocolEngine {
         TinnitusProtocolEngine(
             configuration: configuration,
@@ -262,7 +262,7 @@ struct TinnitusProtocolEngineTests {
 
     private func clippingConfiguration() -> TinnitusProtocolConfiguration {
         TinnitusProtocolConfiguration(
-            kind: .studyAFixedOneKilohertz,
+            kind: .studyNo1FixedOneKilohertz,
             stimulusKind: .pureTone,
             frequencyHz: 1_000,
             requiredTrialCount: 3,
@@ -279,7 +279,7 @@ struct TinnitusProtocolEngineTests {
 
     private func unsupportedFrequencyConfiguration() -> TinnitusProtocolConfiguration {
         TinnitusProtocolConfiguration(
-            kind: .studyBTablePitchMatched,
+            kind: .studyNo2TablePitchMatched,
             stimulusKind: .pureTone,
             frequencyHz: 999,
             requiredTrialCount: 3,

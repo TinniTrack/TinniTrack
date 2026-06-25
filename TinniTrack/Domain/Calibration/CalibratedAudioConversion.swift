@@ -305,7 +305,7 @@ extension CalibratedHeadphoneProfile {
                 "retspl_dBFS_AIRPODSPROV2.plist"
             ],
             volumeBucketingPolicy: "Floor AVAudioSession.outputVolume to 1/16 buckets, clamp below 0.0625 to 0.0625, and reject values outside 0.0...1.0.",
-            dBFSCalibrationPolicy: "Use ResearchKit generator's inspected hardcoded +30 dB dBFS calibration offset for this Phase 1 reference conversion.",
+            dBFSCalibrationPolicy: "Use ResearchKit generator's inspected hardcoded +30 dB dBFS calibration offset for this reference conversion.",
             retsplDBFSPolicy: "Bundle includes retspl_dBFS_AIRPODSPROV2.plist, but the inspected generator does not consume it; it is recorded as reference data and not used blindly.",
             validationStatus: .researchKitReferenceAvailable
         ),

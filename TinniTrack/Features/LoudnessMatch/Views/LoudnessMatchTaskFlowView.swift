@@ -99,7 +99,17 @@ struct LoudnessMatchTaskFlowView: View {
             Section("Tinnitus Location") {
                 ForEach(TinnitusLaterality.allCases, id: \.self) { laterality in
                     Button(lateralityTitle(laterality)) {
-                        viewModel.selectLaterality(laterality)
+                        Task {
+                            await viewModel.selectLaterality(laterality)
+                        }
+                    }
+                    .disabled(viewModel.isResolvingAudiogramThreshold)
+                }
+
+                if viewModel.isResolvingAudiogramThreshold {
+                    HStack {
+                        ProgressView()
+                        Text("Loading hearing-test threshold...")
                     }
                 }
             }
@@ -107,34 +117,10 @@ struct LoudnessMatchTaskFlowView: View {
 
         case .awaitingThreshold:
             Section {
-                Button {
-                    viewModel.playThresholdTone()
-                } label: {
-                    Label("Play Threshold Tone", systemImage: "play.fill")
-                }
-                .disabled(!viewModel.canPlayThresholdTone)
-
-                Button(role: .destructive) {
-                    viewModel.stopTone()
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                }
-
-                HStack {
-                    Button("Heard") {
-                        viewModel.recordThresholdResponse(.heard)
-                    }
-                    Button("Not Heard") {
-                        viewModel.recordThresholdResponse(.notHeard)
-                    }
-                }
-                .disabled(!viewModel.canRecordThresholdResponse)
-
-                LabeledContent("Responses", value: "\(viewModel.thresholdStaircase.presentations.count)")
+                Text("Study No. 1 now uses the imported Apple hearing-test threshold for dB SL.")
+                    .foregroundStyle(.secondary)
             } header: {
-                Text("1000 Hz Threshold")
-            } footer: {
-                Text("The threshold staircase records every presented 1000 Hz level and heard/not-heard response before loudness matching starts.")
+                Text("Hearing-Test Threshold")
             }
 
         case .readyForTrial:
@@ -327,7 +313,15 @@ struct LoudnessMatchTaskFlowView: View {
         case .playbackDisabled:
             return "Calibrated playback is still disabled for this participant workflow."
         case .environmentGateFailed:
-            return "The quiet-room gate did not collect enough consecutive samples below the Study A threshold."
+            return "The quiet-room gate did not collect enough consecutive samples below the Study No. 1 threshold."
+        case .airPodsNotInEar:
+            return "Please place your AirPods in your ear."
+        case .unsupportedHeadphones:
+            return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .calibratedPlaybackRouteUnavailable:
+            return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
+        case .missingAudiogramThreshold(let message):
+            return message
         case .missingPreflight(let message):
             return message
         case .incompletePayload(let message):

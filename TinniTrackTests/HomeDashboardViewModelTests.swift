@@ -136,12 +136,26 @@ private actor MockStudyService: StudyServiceProtocol {
         []
     }
 
+    func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
+        throw NSError(
+            domain: "MockStudyService",
+            code: 404,
+            userInfo: [NSLocalizedDescriptionKey: "No orientation threshold task configured."]
+        )
+    }
+
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
 
     func submitLoudnessMatch(
         scheduledTaskID: UUID,
         enrollmentID: UUID,
         submission: LoudnessMatchSubmission
+    ) async throws {}
+
+    func submitStudyNo1OrientationThreshold(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: StudyNo1OrientationThresholdSubmission
     ) async throws {}
 
     func setStudiesError(_ error: Error?) {

@@ -11,7 +11,7 @@ struct StudyTaskDashboardView: View {
     @StateObject private var developerToolsViewModel: DeveloperToolsViewModel
     #endif
     @State private var isOrientationPresented = false
-    @State private var orientationStep: StudyTaskOrientationStep = .hearingTest
+    @State private var orientationStep: StudyTaskOrientationStep = .welcome
     @State private var activeLoudnessTask: ScheduledTask?
 
     private let studyService: StudyServiceProtocol
@@ -51,7 +51,7 @@ struct StudyTaskDashboardView: View {
             .task {
                 await viewModel.loadIfNeeded()
             }
-            .sheet(isPresented: $isOrientationPresented, onDismiss: handleOrientationDismissed) {
+            .fullScreenCover(isPresented: $isOrientationPresented, onDismiss: handleOrientationDismissed) {
                 orientationSheet
             }
             .fullScreenCover(item: $activeLoudnessTask) { task in
@@ -109,7 +109,7 @@ struct StudyTaskDashboardView: View {
                 )
 
                 StudyActionButton(title: "Begin Orientation", isPrimary: true) {
-                    orientationStep = .hearingTest
+                    orientationStep = .welcome
                     isOrientationPresented = true
                 }
             }
@@ -127,7 +127,7 @@ struct StudyTaskDashboardView: View {
                 )
 
                 StudyActionButton(title: "Resolve Prerequisites", isPrimary: true) {
-                    orientationStep = .importAudiogram
+                    orientationStep = .hearingTest
                     isOrientationPresented = true
                 }
             }
@@ -212,6 +212,8 @@ struct StudyTaskDashboardView: View {
         StudyTaskOrientationSheet(
             step: $orientationStep,
             viewModel: viewModel,
+            enrollment: enrollment,
+            studyService: studyService,
             openHealthApp: openHealthApp,
             close: { isOrientationPresented = false }
         )
@@ -223,7 +225,7 @@ struct StudyTaskDashboardView: View {
     }
 
     private func handleOrientationDismissed() {
-        orientationStep = .hearingTest
+        orientationStep = .welcome
         Task { await viewModel.refresh() }
     }
 

@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct LoudnessMatchPreparationStepView: View {
     let step: LoudnessMatchModalStep
@@ -16,7 +19,7 @@ struct LoudnessMatchPreparationStepView: View {
                 showSuggestions: showNoiseSuggestions
             )
         case .correctEar:
-            AirPodsCorrectEarStepView()
+            AirPodsCorrectEarStepView(assessment: viewModel.headphoneRouteAssessment)
         case .fit:
             AirPodsFitStepView()
         case .maxVolume:
@@ -57,6 +60,8 @@ private struct IntroStepView: View {
 }
 
 private struct AirPodsCorrectEarStepView: View {
+    let assessment: HeadphoneRouteAssessment
+
     var body: some View {
         VStack(alignment: .leading, spacing: 34) {
             Spacer(minLength: 0)
@@ -73,9 +78,21 @@ private struct AirPodsCorrectEarStepView: View {
                 bodyText: "Having your right AirPod in your right ear and left in your left ear can help with test quality.\n\nIf you wear hearing aids, be sure to remove them first."
             )
 
+            Text(statusText)
+                .font(.callout)
+                .foregroundStyle(statusColor)
+                .lineLimit(3)
+                .minimumScaleFactor(0.82)
+                .accessibilityIdentifier("loudness_airpods_status_label")
+
+            #if DEBUG
+            diagnosticsDisclosure
+            #endif
+
             Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        .accessibilityIdentifier("loudness_airpods_step")
     }
 
     private func airPodGlyph(label: String) -> some View {
@@ -88,6 +105,74 @@ private struct AirPodsCorrectEarStepView: View {
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
         }
     }
+
+    private var statusText: String {
+        if assessment.passesAirPodsPro2PlaybackHeuristic {
+            return "AirPods Pro 2 playback route detected."
+        }
+
+        if assessment.passesAirPodsPro2Heuristic, assessment.isBluetoothHeadsetProfile {
+            return "AirPods Pro 2 detected, but another app is using them for call audio. Close Phone, Zoom, or other audio apps, then try again."
+        }
+
+        switch assessment.primaryIssue {
+        case .noOutput, .builtInOutput, .bluetoothHeadsetProfile, .bluetoothLowEnergyRoute, .unknownRoute, nil:
+            return "Waiting for your AirPods Pro 2 playback route."
+        case .multipleOutputs, .unsupportedWiredOrExternalRoute, .unsupportedBluetoothPlaybackDevice, .outputVolumeUnavailable:
+            return "The current audio output is not eligible for this study."
+        }
+    }
+
+    private var statusColor: Color {
+        if assessment.passesAirPodsPro2PlaybackHeuristic {
+            return LoudnessMatchModalColors.success
+        }
+
+        if assessment.passesAirPodsPro2Heuristic {
+            return LoudnessMatchModalColors.primary
+        }
+
+        return LoudnessMatchModalColors.secondaryText
+    }
+
+    #if DEBUG
+    private var diagnosticsDisclosure: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(assessment.diagnosticItems) { item in
+                    diagnosticRow(item.title, item.value)
+                }
+
+                #if canImport(UIKit)
+                Button {
+                    UIPasteboard.general.string = assessment.diagnosticReport
+                } label: {
+                    Label("Copy diagnostics", systemImage: "doc.on.doc")
+                }
+                .font(.caption)
+                .padding(.top, 4)
+                #endif
+            }
+            .padding(.top, 6)
+        } label: {
+            Label("AirPods route diagnostics", systemImage: "stethoscope")
+                .font(.footnote)
+        }
+        .font(.caption)
+        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+        .accessibilityIdentifier("loudness_airpods_diagnostics")
+    }
+
+    private func diagnosticRow(_ title: String, _ value: String) -> some View {
+        LabeledContent {
+            Text(value)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
+        } label: {
+            Text(title)
+        }
+    }
+    #endif
 }
 
 private struct AirPodsFitStepView: View {
@@ -172,6 +257,11 @@ private struct MaxVolumeGateStepView: View {
 
         switch error {
         case .unsupportedRoute:
+            if let output = validation.metadata.routeDetails?.outputs.first,
+               output.portType == .bluetoothHFP,
+               HeadphoneRouteAssessor.looksLikeAirPodsPro2(output.portName) {
+                return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
+            }
             return "Connect your AirPods Pro 2 and keep them selected as the only audio output."
         case .unverifiedHeadphoneProfile:
             return "AirPods Pro 2 verification is required before this research task can start."

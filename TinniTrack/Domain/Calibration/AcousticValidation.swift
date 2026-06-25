@@ -37,7 +37,7 @@ struct AcousticValidationTolerancePolicy: Codable, Equatable {
     let reviewToleranceDB: Double
     let minimumChannelSeparationDB: Double
 
-    static let airPodsPro2Phase5 = AcousticValidationTolerancePolicy(
+    static let airPodsPro2 = AcousticValidationTolerancePolicy(
         passToleranceDB: 3.0,
         reviewToleranceDB: 5.0,
         minimumChannelSeparationDB: 40.0
@@ -73,15 +73,15 @@ struct AcousticValidationProtocol: Codable, Equatable {
     let tolerancePolicy: AcousticValidationTolerancePolicy
 
     static let airPodsPro2MaxVolume = AcousticValidationProtocol(
-        identifier: "airpods-pro-2-phase-5-acoustic-validation",
-        version: "phase-5-v1",
+        identifier: "airpods-pro-2-acoustic-validation",
+        version: "airpods-pro-2-acoustic-validation-v1",
         headphoneIdentifier: CalibratedHeadphoneIdentifier.airPodsPro2,
         requiredFrequenciesHz: [250, 500, 1_000, 2_000, 3_000, 4_000, 6_000, 8_000],
         requiredChannels: [.left, .right],
         validationLevelDBHL: 30.0,
         volumePolicy: .maximum,
         requiredNoiseControlMode: .off,
-        tolerancePolicy: .airPodsPro2Phase5
+        tolerancePolicy: .airPodsPro2
     )
 
     func makeMatrix(

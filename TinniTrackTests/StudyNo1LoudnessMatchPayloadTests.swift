@@ -2,15 +2,15 @@ import Foundation
 import Testing
 @testable import TinniTrack
 
-struct Phase6LoudnessMatchPayloadTests {
+struct StudyNo1LoudnessMatchPayloadTests {
     private let timestamp = Date(timeIntervalSince1970: 1_800_030_000)
 
     @Test
-    func studyAPayloadCapturesRequiredPhase6ContextAndEncodes() throws {
+    func studyNo1PayloadCapturesRequiredContextAndEncodes() throws {
         let payload = try makeCompletedPayload()
 
-        #expect(payload.payloadVersion == "phase-6-study-a-v1")
-        #expect(payload.protocolKind == "studyAFixedOneKilohertz")
+        #expect(payload.payloadVersion == "study-no-1-loudness-match-v2")
+        #expect(payload.protocolKind == "studyNo1FixedOneKilohertz")
         #expect(payload.identifiers.enrollmentId == enrollmentID.uuidString)
         #expect(payload.identifiers.scheduledTaskId == scheduledTaskID.uuidString)
         #expect(payload.device.deviceModel == "iPhone17,2")
@@ -28,7 +28,7 @@ struct Phase6LoudnessMatchPayloadTests {
         #expect(payload.stimulus.frequencyHz == 1_000)
         #expect(payload.stimulus.kind == "pureTone")
         #expect(payload.threshold.levelDBHL == 10)
-        #expect(payload.threshold.source == .measured)
+        #expect(payload.threshold.source == .healthKitAudiogram)
         #expect(payload.trials.map(\.acceptedLevelDBHL) == [16, 14, 20])
         #expect(payload.summary.medianMatchedDBHL == 16)
         #expect(payload.summary.medianDBSL == 6)
@@ -36,17 +36,17 @@ struct Phase6LoudnessMatchPayloadTests {
         #expect(payload.protocolEvents.contains { $0.guardrailState == "passed" && $0.guardrailOutputVolume == 1.0 })
         #expect(payload.playbackEvents.count == 6)
         #expect(payload.refusals.contains { $0.reason == "stopRequested" })
-        #expect(payload.limitations.contains(Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation))
+        #expect(payload.limitations.contains(StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation))
 
         let data = try JSONEncoder().encode(payload)
-        let decoded = try JSONDecoder().decode(Phase6LoudnessMatchRunPayload.self, from: data)
+        let decoded = try JSONDecoder().decode(StudyNo1LoudnessMatchRunPayload.self, from: data)
         #expect(decoded == payload)
     }
 
     @Test
     func missingRequiredPreflightMetadataRefusesCompletedPayload() throws {
         var payload = try makeCompletedPayload()
-        payload = Phase6LoudnessMatchRunPayload(
+        payload = StudyNo1LoudnessMatchRunPayload(
             payloadVersion: payload.payloadVersion,
             protocolKind: payload.protocolKind,
             identifiers: payload.identifiers,
@@ -57,7 +57,7 @@ struct Phase6LoudnessMatchPayloadTests {
             audioRoute: payload.audioRoute,
             audioSession: payload.audioSession,
             volume: payload.volume,
-            environment: Phase6EnvironmentSPLContext(
+            environment: StudyNo1EnvironmentSPLContext(
                 thresholdDBA: 45,
                 requiredContiguousSamples: 5,
                 samplingInterval: 1.0,
@@ -65,12 +65,12 @@ struct Phase6LoudnessMatchPayloadTests {
                 samplesDBA: [],
                 gateResult: .failed
             ),
-            fitSeal: Phase6FitSealContext(
+            fitSeal: StudyNo1FitSealContext(
                 status: .unavailable,
                 confirmedAt: nil,
                 limitations: "Participant did not confirm fit/seal."
             ),
-            safety: Phase6SafetyContext(
+            safety: StudyNo1SafetyContext(
                 acknowledgedAt: nil,
                 stopControlVisibleBeforePlayback: false,
                 maximumLevelDBHL: 100,
@@ -87,9 +87,9 @@ struct Phase6LoudnessMatchPayloadTests {
         )
 
         do {
-            try payload.validateCompletedStudyA()
+            try payload.validateCompletedStudyNo1()
             Issue.record("Expected missing preflight metadata to fail validation")
-        } catch Phase6PayloadValidationError.missingRequiredFields(let fields) {
+        } catch StudyNo1PayloadValidationError.missingRequiredFields(let fields) {
             #expect(fields.contains("environment.samplesDBA"))
             #expect(fields.contains("safety.acknowledgedAt"))
             #expect(fields.contains("safety.stopControlVisibleBeforePlayback"))
@@ -98,7 +98,7 @@ struct Phase6LoudnessMatchPayloadTests {
     }
 
     @Test
-    func builderRefusesUnavailableThresholdForPhase6Completion() {
+    func builderRefusesUnavailableThresholdForStudyNo1Completion() {
         var engine = makeEngine()
         engine.selectLaterality(.left)
         engine.markThresholdUnavailable(reason: "Manual threshold not collected.")
@@ -107,18 +107,18 @@ struct Phase6LoudnessMatchPayloadTests {
         acceptCurrentTrial(&engine, adjustment: .louder, confidence: .high)
 
         guard case .completed(let summary) = engine.state else {
-            Issue.record("Expected completed protocol scaffold")
+            Issue.record("Expected completed protocol fixture")
             return
         }
 
         do {
-            _ = try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+            _ = try StudyNo1LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
                 summary: summary,
                 events: engine.events,
                 preflight: preflightContext()
             )
-            Issue.record("Expected Phase 6 builder to reject threshold-unavailable completion")
-        } catch Phase6PayloadValidationError.incompleteStudyA(let reason) {
+            Issue.record("Expected Study No. 1 loudness-match builder to reject threshold-unavailable completion")
+        } catch StudyNo1PayloadValidationError.incompleteStudyNo1(let reason) {
             #expect(reason.contains("threshold"))
         } catch {
             Issue.record("Unexpected error \(error)")
@@ -126,9 +126,9 @@ struct Phase6LoudnessMatchPayloadTests {
     }
 
     @Test
-    func completedStudyAValidationRefusesManualScaffoldThresholdSource() throws {
+    func completedStudyNo1ValidationRefusesManualThresholdSource() throws {
         let valid = try makeCompletedPayload()
-        let invalid = Phase6LoudnessMatchRunPayload(
+        let invalid = StudyNo1LoudnessMatchRunPayload(
             payloadVersion: valid.payloadVersion,
             protocolKind: valid.protocolKind,
             identifiers: valid.identifiers,
@@ -143,12 +143,12 @@ struct Phase6LoudnessMatchPayloadTests {
             fitSeal: valid.fitSeal,
             safety: valid.safety,
             stimulus: valid.stimulus,
-            threshold: Phase6ThresholdContext(
+            threshold: StudyNo1ThresholdContext(
                 frequencyHz: valid.threshold.frequencyHz,
                 levelDBHL: valid.threshold.levelDBHL,
-                source: .manualScaffold,
+                source: .measured,
                 recordedAt: valid.threshold.recordedAt,
-                limitation: "Legacy scaffold fixture."
+                limitation: "Legacy fixture."
             ),
             trials: valid.trials,
             summary: valid.summary,
@@ -159,15 +159,15 @@ struct Phase6LoudnessMatchPayloadTests {
         )
 
         do {
-            try invalid.validateCompletedStudyA()
-            Issue.record("Expected completed Study A validation to reject manual scaffold thresholds")
-        } catch Phase6PayloadValidationError.incompleteStudyA(let reason) {
-            #expect(reason.contains("measured"))
+            try invalid.validateCompletedStudyNo1()
+            Issue.record("Expected completed Study No. 1 validation to reject manual thresholds")
+        } catch StudyNo1PayloadValidationError.incompleteStudyNo1(let reason) {
+            #expect(reason.contains("HealthKit audiogram"))
         }
     }
 
     @Test
-    func builderRefusesNonStudyAFrequency() {
+    func builderRefusesNonStudyNo1Frequency() {
         var summary = TinnitusLoudnessMatchSummary(
             frequencyHz: 2_000,
             channel: .left,
@@ -208,20 +208,20 @@ struct Phase6LoudnessMatchPayloadTests {
         _ = summary
 
         do {
-            _ = try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+            _ = try StudyNo1LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
                 summary: summary,
                 events: [],
                 preflight: preflightContext()
             )
             Issue.record("Expected non-1000 Hz summary to be rejected")
-        } catch Phase6PayloadValidationError.incompleteStudyA(let reason) {
+        } catch StudyNo1PayloadValidationError.incompleteStudyNo1(let reason) {
             #expect(reason.contains("1000"))
         } catch {
             Issue.record("Unexpected error \(error)")
         }
     }
 
-    private func makeCompletedPayload() throws -> Phase6LoudnessMatchRunPayload {
+    private func makeCompletedPayload() throws -> StudyNo1LoudnessMatchRunPayload {
         var engine = makeEngine()
         engine.selectLaterality(.left)
         engine.recordThreshold(levelDBHL: 10)
@@ -234,10 +234,10 @@ struct Phase6LoudnessMatchPayloadTests {
         acceptCurrentTrial(&engine, adjustment: .muchLouder, confidence: .low)
 
         guard case .completed(let summary) = engine.state else {
-            throw Phase6PayloadValidationError.incompleteStudyA(reason: "Expected completed test fixture.")
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(reason: "Expected completed test fixture.")
         }
 
-        return try Phase6LoudnessMatchPayloadBuilder().buildStudyAPayload(
+        return try StudyNo1LoudnessMatchPayloadBuilder().buildStudyNo1Payload(
             summary: summary,
             events: engine.events,
             preflight: preflightContext()
@@ -266,9 +266,9 @@ struct Phase6LoudnessMatchPayloadTests {
         )
     }
 
-    private func preflightContext() -> Phase6PreflightContext {
-        Phase6PreflightContext(
-            identifiers: Phase6IdentifierContext(
+    private func preflightContext() -> StudyNo1PreflightContext {
+        StudyNo1PreflightContext(
+            identifiers: StudyNo1IdentifierContext(
                 participantId: participantID.uuidString,
                 studySessionId: "study-session-1",
                 enrollmentId: enrollmentID.uuidString,
@@ -277,24 +277,24 @@ struct Phase6LoudnessMatchPayloadTests {
             startedAt: timestamp,
             submittedAt: timestamp.addingTimeInterval(60),
             guardrailValidation: passedGuardrails(),
-            device: Phase6DeviceContext(
+            device: StudyNo1DeviceContext(
                 deviceModel: "iPhone17,2",
                 systemName: "iOS",
                 systemVersion: "26.0"
             ),
-            airPods: Phase6AirPodsContext(
+            airPods: StudyNo1AirPodsContext(
                 modelIdentifier: "AIRPODSPROV2",
                 firmwareVersion: nil,
                 unavailableReason: "Firmware unavailable through public iOS route APIs."
             ),
-            audioSession: Phase6AudioSessionContext(
+            audioSession: StudyNo1AudioSessionContext(
                 category: "playback",
                 mode: "default",
                 options: [],
                 sampleRate: 44_100,
                 bufferSize: 512
             ),
-            environment: Phase6EnvironmentSPLContext(
+            environment: StudyNo1EnvironmentSPLContext(
                 thresholdDBA: 45,
                 requiredContiguousSamples: 5,
                 samplingInterval: 1.0,
@@ -302,18 +302,18 @@ struct Phase6LoudnessMatchPayloadTests {
                 samplesDBA: [34.0, 35.0, 36.0, 37.0, 38.0],
                 gateResult: .passed
             ),
-            fitSeal: Phase6FitSealContext(
+            fitSeal: StudyNo1FitSealContext(
                 status: .confirmedPassed,
                 confirmedAt: timestamp,
                 limitations: "Participant confirmed fit/seal; public API does not expose Apple Ear Tip Fit Test result."
             ),
-            safety: Phase6SafetyContext(
+            safety: StudyNo1SafetyContext(
                 acknowledgedAt: timestamp,
                 stopControlVisibleBeforePlayback: true,
                 maximumLevelDBHL: 100,
                 limitation: "Immediate stop is available; no diagnostic claim."
             ),
-            thresholdSource: .measured
+            thresholdSource: .healthKitAudiogram
         )
     }
 

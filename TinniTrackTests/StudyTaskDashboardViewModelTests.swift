@@ -235,6 +235,44 @@ struct StudyTaskDashboardViewModelTests {
     }
 
     @Test
+    func preparingOrientationThresholdTaskRequiresImportedAudiogramAndUsesServiceBoundary() async {
+        let hearingTestDate = Date(timeIntervalSince1970: 1_710_000_000)
+        let coordinator = MockAudiogramImportCoordinator()
+        coordinator.enqueuePrerequisite(.needsPermission)
+        coordinator.enqueuePrerequisite(.met(latestMeasuredAt: hearingTestDate))
+
+        let enrollment = sampleEnrollment(onboardingCompletedAt: nil)
+        let service = MockTaskStudyService()
+        let onboardingTask = sampleScheduledTask(
+            enrollmentID: enrollment.id,
+            status: .scheduled,
+            scheduledFor: Date(timeIntervalSince1970: 1_750_000_000),
+            windowStart: Date(timeIntervalSince1970: 1_750_000_000),
+            windowEnd: Date(timeIntervalSince1970: 1_750_043_200),
+            dayIndex: -1,
+            slotIndex: 0
+        )
+        await service.setOnboardingThresholdTask(onboardingTask)
+
+        let viewModel = StudyTaskDashboardViewModel(
+            study: Self.sampleStudyNo1(),
+            enrollment: enrollment,
+            coordinator: coordinator,
+            studyService: service
+        )
+
+        await viewModel.refresh()
+        #expect(await viewModel.prepareStudyOnboardingThresholdTask() == nil)
+
+        await viewModel.checkOrientationImportStatus()
+        let preparedTask = await viewModel.prepareStudyOnboardingThresholdTask()
+
+        #expect(preparedTask == onboardingTask)
+        #expect(viewModel.onboardingThresholdTask == onboardingTask)
+        #expect(await service.beginOnboardingTaskCallCount() == 1)
+    }
+
+    @Test
     func scheduledTasksAreGroupedAndSorted() async {
         let hearingTestDate = Date(timeIntervalSince1970: 1_710_000_000)
         let coordinator = MockAudiogramImportCoordinator()
@@ -357,13 +395,13 @@ struct StudyTaskDashboardViewModelTests {
         windowEnd: Date,
         dayIndex: Int = 0,
         slotIndex: Int = 0,
-        completedAt: Date? = nil
+            completedAt: Date? = nil
     ) -> ScheduledTask {
         ScheduledTask(
             id: UUID(),
             enrollmentID: enrollmentID,
-            taskKey: "lm_1khz_v1",
-            taskVersion: 1,
+            taskKey: dayIndex < 0 ? "threshold_1khz_orientation_v1" : "lm_1khz_v2",
+            taskVersion: dayIndex < 0 ? 1 : 2,
             scheduledFor: scheduledFor,
             windowStart: windowStart,
             windowEnd: windowEnd,
@@ -399,6 +437,8 @@ private final class MockAudiogramImportCoordinator: AudiogramImportCoordinating 
 private actor MockTaskStudyService: StudyServiceProtocol {
     private var scheduledTasksByEnrollment: [UUID: [ScheduledTask]] = [:]
     private var completeOnboardingCalls: [(enrollmentID: UUID, timezone: String)] = []
+    private var onboardingThresholdTask: ScheduledTask?
+    private var beginOnboardingTaskCalls: [UUID] = []
 
     func fetchStudies() async throws -> [Study] { [] }
 
@@ -410,6 +450,18 @@ private actor MockTaskStudyService: StudyServiceProtocol {
 
     func enroll(studyID: UUID) async throws {}
 
+    func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
+        beginOnboardingTaskCalls.append(enrollmentID)
+        if let onboardingThresholdTask {
+            return onboardingThresholdTask
+        }
+        throw NSError(
+            domain: "MockTaskStudyService",
+            code: 404,
+            userInfo: [NSLocalizedDescriptionKey: "No onboarding task configured."]
+        )
+    }
+
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {
         completeOnboardingCalls.append((enrollmentID: enrollmentID, timezone: timezone))
     }
@@ -420,11 +472,25 @@ private actor MockTaskStudyService: StudyServiceProtocol {
         submission: LoudnessMatchSubmission
     ) async throws {}
 
+    func submitStudyNo1OrientationThreshold(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: StudyNo1OrientationThresholdSubmission
+    ) async throws {}
+
     func setScheduledTasks(_ tasks: [ScheduledTask], for enrollmentID: UUID) {
         scheduledTasksByEnrollment[enrollmentID] = tasks
     }
 
+    func setOnboardingThresholdTask(_ task: ScheduledTask) {
+        onboardingThresholdTask = task
+    }
+
     func completeOnboardingCallCount() -> Int {
         completeOnboardingCalls.count
+    }
+
+    func beginOnboardingTaskCallCount() -> Int {
+        beginOnboardingTaskCalls.count
     }
 }

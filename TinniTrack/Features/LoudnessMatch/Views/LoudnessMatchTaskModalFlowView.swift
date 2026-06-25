@@ -36,7 +36,7 @@ struct LoudnessMatchTaskModalFlowView: View {
                     scheduledTask: scheduledTask,
                     enrollment: enrollment,
                     studyService: studyService
-                ) {
+                ) { @MainActor in
                     onSubmitted()
                     dismiss()
                 }
@@ -50,7 +50,8 @@ struct LoudnessMatchTaskModalFlowView: View {
                 } footer: {
                     LoudnessMatchModalPrimaryButton(
                         title: primaryButtonTitle,
-                        isEnabled: isPrimaryButtonEnabled
+                        isEnabled: isPrimaryButtonEnabled,
+                        isInteractionEnabled: isPrimaryButtonInteractionEnabled
                     ) {
                         advance()
                     }
@@ -58,6 +59,16 @@ struct LoudnessMatchTaskModalFlowView: View {
             }
 
             topControls
+
+            if shouldShowAirPodsInterruptionOverlay {
+                airPodsInterruptionPopup
+                    .transition(.opacity)
+                    .zIndex(2)
+            } else if shouldShowQuietRoomInterruptionPopup {
+                quietRoomInterruptionPopup
+                    .transition(.opacity)
+                    .zIndex(2)
+            }
         }
         .foregroundStyle(LoudnessMatchModalColors.text)
         .interactiveDismissDisabled(true)
@@ -66,6 +77,11 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
         .onChange(of: step) { newStep in
             handleStepEntered(newStep)
+        }
+        .onChange(of: viewModel.isAirPodsRouteInterrupted) { isInterrupted in
+            if !isInterrupted {
+                resumeCurrentStepAfterAirPodsReconnect()
+            }
         }
         .onDisappear {
             cleanupForDismiss(abortActiveTest: false)
@@ -127,6 +143,118 @@ struct LoudnessMatchTaskModalFlowView: View {
         .padding(.top, 18)
     }
 
+    private var shouldShowAirPodsInterruptionOverlay: Bool {
+        viewModel.isAirPodsRouteInterrupted && step != .intro && step != .correctEar
+    }
+
+    private var shouldShowQuietRoomInterruptionPopup: Bool {
+        viewModel.isEnvironmentQuietnessInterrupted
+            && step != .intro
+            && step != .correctEar
+            && step != .quietRoom
+    }
+
+    private var airPodsInterruptionPopup: some View {
+        interruptionPopup(
+            systemName: "airpodspro",
+            title: airPodsInterruptionTitle,
+            bodyText: airPodsInterruptionBodyText,
+            accessibilityIdentifier: "loudness_airpods_interruption_popup"
+        )
+    }
+
+    private var airPodsInterruptionTitle: String {
+        viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp
+            ? "Calibrated Audio Blocked"
+            : "Reconnect Your AirPods"
+    }
+
+    private var airPodsInterruptionBodyText: String {
+        if viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp {
+            return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones. The task will resume once AirPods return to calibrated playback."
+        }
+
+        return "Please put both AirPods in your ears and reconnect to continue the task. The task will automatically resume once your AirPods are connected and in both ears."
+    }
+
+    private var quietRoomInterruptionPopup: some View {
+        interruptionPopup(
+            systemName: "ear.badge.waveform",
+            title: "Find a Quiet Place",
+            bodyText: "The room is too loud for this task. The task will automatically resume once the room is quiet enough.",
+            accessibilityIdentifier: "loudness_quiet_room_interruption_popup",
+            quietRoomLevelRatio: quietRoomInterruptionLevelRatio
+        )
+    }
+
+    private func interruptionPopup(
+        systemName: String,
+        title: String,
+        bodyText: String,
+        accessibilityIdentifier: String,
+        quietRoomLevelRatio: Double? = nil
+    ) -> some View {
+        ZStack {
+            Color.black.opacity(0.32)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 18) {
+                if let quietRoomLevelRatio {
+                    LoudnessMatchNoiseGateMeter(
+                        status: .tooLoud,
+                        levelRatio: quietRoomLevelRatio,
+                        isCompact: true
+                    )
+                    .padding(.horizontal, 6)
+                    .accessibilityHidden(true)
+                } else {
+                    Image(systemName: systemName)
+                        .font(.system(size: 58, weight: .regular))
+                        .foregroundStyle(LoudnessMatchModalColors.primary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
+                }
+
+                Text(title)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundStyle(LoudnessMatchModalColors.text)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .multilineTextAlignment(.center)
+
+                Text(bodyText)
+                    .font(.callout)
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(5)
+                    .minimumScaleFactor(0.82)
+
+                LoudnessMatchModalPrimaryButton(
+                    title: "Exit Task",
+                    isEnabled: true
+                ) {
+                    exitTask()
+                }
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(LoudnessMatchModalColors.background)
+                    .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 12)
+            )
+            .padding(.horizontal, 30)
+        }
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private var quietRoomInterruptionLevelRatio: Double {
+        guard let latestSampleDBA = viewModel.environmentGateUpdate?.latestSampleDBA else {
+            return 1.2
+        }
+
+        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
+    }
+
     private var primaryButtonTitle: String {
         switch step {
         case .intro:
@@ -142,14 +270,25 @@ struct LoudnessMatchTaskModalFlowView: View {
 
     private var isPrimaryButtonEnabled: Bool {
         switch step {
-        case .intro, .correctEar, .fit:
+        case .intro, .fit:
             return true
+        case .correctEar:
+            return viewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic
         case .quietRoom:
             return viewModel.environmentGateResult?.passed == true
         case .maxVolume:
             return viewModel.currentGuardrailValidation.state == .passed
         case .activeTest:
             return false
+        }
+    }
+
+    private var isPrimaryButtonInteractionEnabled: Bool {
+        switch step {
+        case .correctEar:
+            return true
+        default:
+            return isPrimaryButtonEnabled
         }
     }
 
@@ -160,13 +299,20 @@ struct LoudnessMatchTaskModalFlowView: View {
     private func advance() {
         switch step {
         case .intro:
+            step = .correctEar
+        case .correctEar:
+            guard viewModel.validateAirPodsForCorrectEarStep() else {
+                return
+            }
+            viewModel.stopHeadphoneRouteMonitoring()
+            viewModel.startAirPodsContinuityMonitoring()
+            viewModel.prepareEnvironmentGateForQuietRoomStep()
             step = .quietRoom
         case .quietRoom:
             guard viewModel.environmentGateResult?.passed == true else {
                 return
             }
-            step = .correctEar
-        case .correctEar:
+            viewModel.cancelEnvironmentGate()
             step = .fit
         case .fit:
             viewModel.completeFitConfirmation()
@@ -192,11 +338,13 @@ struct LoudnessMatchTaskModalFlowView: View {
             break
         case .quietRoom:
             viewModel.cancelEnvironmentGate()
-            step = .intro
-        case .correctEar:
-            step = .quietRoom
-        case .fit:
+            viewModel.stopAirPodsContinuityMonitoring()
             step = .correctEar
+        case .correctEar:
+            viewModel.stopHeadphoneRouteMonitoring()
+            step = .intro
+        case .fit:
+            step = .quietRoom
         case .maxVolume:
             viewModel.stopVolumeGateMonitoring()
             step = .fit
@@ -214,8 +362,33 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
     }
 
+    private func exitTask() {
+        cleanupForDismiss(abortActiveTest: hasStartedTest)
+        dismiss()
+    }
+
     private func handleStepEntered(_ newStep: LoudnessMatchModalStep) {
         switch newStep {
+        case .correctEar:
+            viewModel.stopAirPodsContinuityMonitoring()
+            viewModel.stopVolumeGateMonitoring()
+            viewModel.cancelEnvironmentGate()
+            viewModel.startHeadphoneRouteMonitoring()
+        case .quietRoom:
+            viewModel.stopHeadphoneRouteMonitoring()
+            if viewModel.environmentGateResult?.passed != true {
+                viewModel.startContinuousEnvironmentGate()
+            }
+        case .maxVolume:
+            viewModel.stopHeadphoneRouteMonitoring()
+            viewModel.startVolumeGateMonitoring()
+        default:
+            break
+        }
+    }
+
+    private func resumeCurrentStepAfterAirPodsReconnect() {
+        switch step {
         case .quietRoom:
             if viewModel.environmentGateResult?.passed != true {
                 viewModel.startContinuousEnvironmentGate()
@@ -228,6 +401,8 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     private func cleanupForDismiss(abortActiveTest: Bool) {
+        viewModel.stopHeadphoneRouteMonitoring()
+        viewModel.stopAirPodsContinuityMonitoring()
         viewModel.cancelEnvironmentGate()
         viewModel.stopVolumeGateMonitoring()
 
@@ -243,7 +418,15 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .playbackDisabled:
             return "Calibrated playback is still disabled for this participant workflow."
         case .environmentGateFailed:
-            return "The quiet-room gate did not collect enough consecutive samples below the Study A threshold."
+            return "The quiet-room gate did not collect enough consecutive samples below the Study No. 1 threshold."
+        case .airPodsNotInEar:
+            return "Please place your AirPods in your ear."
+        case .unsupportedHeadphones:
+            return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .calibratedPlaybackRouteUnavailable:
+            return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
+        case .missingAudiogramThreshold(let message):
+            return message
         case .missingPreflight(let message):
             return message
         case .incompletePayload(let message):
@@ -267,8 +450,8 @@ struct LoudnessMatchTaskModalFlowView: View {
         scheduledTask: ScheduledTask(
             id: UUID(),
             enrollmentID: UUID(),
-            taskKey: "lm_1khz_v1",
-            taskVersion: 1,
+            taskKey: "lm_1khz_v2",
+            taskVersion: 2,
             scheduledFor: Date(),
             windowStart: Date(),
             windowEnd: Date().addingTimeInterval(3_600),

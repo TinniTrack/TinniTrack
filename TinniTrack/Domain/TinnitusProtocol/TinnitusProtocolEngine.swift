@@ -16,7 +16,7 @@ struct TinnitusProtocolEngine {
     private var sessionQualityFlags: [TinnitusProtocolQualityFlag] = []
 
     init(
-        configuration: TinnitusProtocolConfiguration = .studyAFixedOneKilohertz,
+        configuration: TinnitusProtocolConfiguration = .studyNo1FixedOneKilohertz,
         converter: CalibratedAudioConverter = CalibratedAudioConverter(),
         playbackPlanner: CalibratedTonePlaybackPlanner = CalibratedTonePlaybackPlanner(),
         dateProvider: @escaping () -> Date = Date.init
@@ -25,7 +25,7 @@ struct TinnitusProtocolEngine {
         self.converter = converter
         self.playbackPlanner = playbackPlanner
         self.dateProvider = dateProvider
-        pitchMatchStatus = configuration.kind == .studyAFixedOneKilohertz
+        pitchMatchStatus = configuration.kind == .studyNo1FixedOneKilohertz
             ? .notRequiredFixedFrequency
             : .deferred
 
@@ -61,8 +61,44 @@ struct TinnitusProtocolEngine {
             kind: .lateralitySelected,
             channel: selectedChannel,
             laterality: laterality,
-            response: "study_a_rule_unilateral_affected_else_left_first"
+            response: "study_no_1_rule_unilateral_affected_else_left_first"
         )
+    }
+
+    mutating func selectLaterality(
+        _ laterality: TinnitusLaterality,
+        healthKitAudiogramThresholdDBHL: Double
+    ) {
+        guard case .collectingLaterality = state else {
+            abort(.invalidState("Laterality can only be selected before loudness matching starts."))
+            return
+        }
+
+        let selectedChannel = Self.channel(for: laterality)
+        self.laterality = laterality
+        channel = selectedChannel
+        if laterality == .bilateral || laterality == .central || laterality == .unclear {
+            insertQualityFlag(.ambiguousLaterality)
+        }
+
+        appendEvent(
+            kind: .lateralitySelected,
+            channel: selectedChannel,
+            laterality: laterality,
+            response: "study_no_1_rule_unilateral_affected_else_left_first"
+        )
+
+        thresholdStatus = .measured(levelDBHL: healthKitAudiogramThresholdDBHL)
+        appendEvent(
+            kind: .thresholdRecorded,
+            frequencyHz: configuration.frequencyHz,
+            presentedLevelDBHL: healthKitAudiogramThresholdDBHL,
+            estimatedDBSPL: estimatedDBSPL(for: healthKitAudiogramThresholdDBHL),
+            dbSL: 0.0,
+            channel: selectedChannel,
+            response: "healthkit_audiogram"
+        )
+        startNextTrial()
     }
 
     mutating func recordThreshold(levelDBHL: Double) {
@@ -538,7 +574,7 @@ struct TinnitusProtocolEngine {
         ))
     }
 
-    private static func channel(for laterality: TinnitusLaterality) -> CalibratedTonePlaybackChannel {
+    static func channel(for laterality: TinnitusLaterality) -> CalibratedTonePlaybackChannel {
         switch laterality {
         case .left:
             return .left

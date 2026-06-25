@@ -37,6 +37,8 @@ final class StudyTaskDashboardViewModel: ObservableObject {
     @Published private(set) var isLoadingTasks = false
     @Published private(set) var taskLoadErrorMessage: String?
     @Published private(set) var isCompletingStudyOnboarding = false
+    @Published private(set) var onboardingThresholdTask: ScheduledTask?
+    @Published private(set) var isPreparingOnboardingThresholdTask = false
 
     private let study: Study
     private var enrollment: StudyEnrollment?
@@ -80,13 +82,13 @@ final class StudyTaskDashboardViewModel: ObservableObject {
 
     var futureTasks: [ScheduledTask] {
         scheduledTasks
-            .filter { $0.status == .scheduled }
+            .filter { $0.status == .scheduled && !$0.isHiddenOnboardingTask }
             .sorted { $0.scheduledFor < $1.scheduledFor }
     }
 
     var completedTasks: [ScheduledTask] {
         scheduledTasks
-            .filter { $0.status == .completed }
+            .filter { $0.status == .completed && !$0.isHiddenOnboardingTask }
             .sorted {
                 let lhs = $0.completedAt ?? $0.scheduledFor
                 let rhs = $1.completedAt ?? $1.scheduledFor
@@ -119,6 +121,46 @@ final class StudyTaskDashboardViewModel: ObservableObject {
 
     func checkOrientationImportStatus() async {
         await evaluatePrerequisite(showLoadingState: false)
+    }
+
+    func prepareStudyOnboardingThresholdTask() async -> ScheduledTask? {
+        guard requiresStudyOnboardingCompletion else {
+            return onboardingThresholdTask
+        }
+
+        guard isAudiogramPrerequisiteMet else {
+            taskLoadErrorMessage = "Import your Apple hearing test before starting the onboarding loudness task."
+            return nil
+        }
+
+        guard let enrollment else {
+            taskLoadErrorMessage = "Unable to find enrollment for this study."
+            return nil
+        }
+
+        if let onboardingThresholdTask, onboardingThresholdTask.status == .scheduled {
+            return onboardingThresholdTask
+        }
+
+        isPreparingOnboardingThresholdTask = true
+        defer { isPreparingOnboardingThresholdTask = false }
+
+        do {
+            let task = try await studyService.beginStudyNo1OrientationThresholdTask(enrollmentID: enrollment.id)
+            if task.status == .completed {
+                onboardingThresholdTask = nil
+                taskLoadErrorMessage = nil
+                await completeStudyOnboarding()
+                return nil
+            }
+
+            onboardingThresholdTask = task
+            taskLoadErrorMessage = nil
+            return task
+        } catch {
+            taskLoadErrorMessage = error.localizedDescription
+            return nil
+        }
     }
 
     func completeStudyOnboarding() async {
@@ -156,6 +198,7 @@ final class StudyTaskDashboardViewModel: ObservableObject {
             )
 
             taskLoadErrorMessage = nil
+            onboardingThresholdTask = nil
             await reloadScheduledTasksIfReady(force: true)
         } catch {
             taskLoadErrorMessage = error.localizedDescription

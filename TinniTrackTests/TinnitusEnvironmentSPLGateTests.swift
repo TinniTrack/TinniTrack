@@ -7,19 +7,19 @@ struct TinnitusEnvironmentSPLGateTests {
     func gatePassesAfterRequiredContiguousQuietSamples() {
         let result = TinnitusEnvironmentSPLGateEvaluator().evaluate(
             samplesDBA: [50, 44, 43, 42, 41, 40],
-            configuration: .studyA
+            configuration: .studyNo1
         )
 
         #expect(result.gateResult == .passed)
-        #expect(result.phase6Context.gateResult == .passed)
-        #expect(result.phase6Context.samplesDBA == [50, 44, 43, 42, 41, 40])
+        #expect(result.studyNo1Context.gateResult == .passed)
+        #expect(result.studyNo1Context.samplesDBA == [50, 44, 43, 42, 41, 40])
     }
 
     @Test
     func gateFailsWithoutContiguousQuietSamples() {
         let result = TinnitusEnvironmentSPLGateEvaluator().evaluate(
             samplesDBA: [44, 43, 46, 42, 41, 47, 40],
-            configuration: .studyA
+            configuration: .studyNo1
         )
 
         #expect(result.gateResult == .failed)
@@ -30,7 +30,7 @@ struct TinnitusEnvironmentSPLGateTests {
     func gateDropsNonFiniteSamples() {
         let result = TinnitusEnvironmentSPLGateEvaluator().evaluate(
             samplesDBA: [Double.nan, 41, 42, 43, 44, 40],
-            configuration: .studyA
+            configuration: .studyNo1
         )
 
         #expect(result.gateResult == .passed)
@@ -41,7 +41,7 @@ struct TinnitusEnvironmentSPLGateTests {
     func streamingUpdateTracksContiguousQuietSamples() {
         let update = TinnitusEnvironmentSPLGateEvaluator().update(
             samplesDBA: [50, 44, 43],
-            configuration: .studyA
+            configuration: .studyNo1
         )
 
         #expect(update.status == .measuring)
@@ -54,7 +54,7 @@ struct TinnitusEnvironmentSPLGateTests {
     func streamingUpdateResetsCounterAtThreshold() {
         let update = TinnitusEnvironmentSPLGateEvaluator().update(
             samplesDBA: [44, 43, 45, 42],
-            configuration: .studyA
+            configuration: .studyNo1
         )
 
         #expect(update.status == .measuring)
@@ -66,7 +66,7 @@ struct TinnitusEnvironmentSPLGateTests {
     func streamingUpdateReportsTooLoudWithoutFailing() {
         let update = TinnitusEnvironmentSPLGateEvaluator().update(
             samplesDBA: [44, 43, 46],
-            configuration: .studyA
+            configuration: .studyNo1
         )
 
         #expect(update.status == .tooLoud)
@@ -78,7 +78,7 @@ struct TinnitusEnvironmentSPLGateTests {
     func streamingUpdatePassPreservesFiniteSamples() {
         let update = TinnitusEnvironmentSPLGateEvaluator().update(
             samplesDBA: [Double.nan, 44, 43, 42, 41, 40],
-            configuration: .studyA
+            configuration: .studyNo1
         )
 
         #expect(update.status == .passed)

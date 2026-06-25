@@ -1,9 +1,14 @@
 import SwiftUI
 
-enum StudyTaskOrientationStep {
+enum StudyTaskOrientationStep: Equatable {
+    case welcome
     case hearingTest
-    case importAudiogram
-    case nextSteps
+    case taskIntro
+    case correctEar
+    case quietRoom
+    case fit
+    case maxVolume
+    case activeTest
 }
 
 struct StudyPrerequisiteCard: View {
@@ -49,18 +54,18 @@ struct StudyActionButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-        }
-        .buttonStyle(.plain)
-        .background(isPrimary ? StudyTaskColors.primaryActionBackground : StudyTaskColors.cardBackground)
-        .foregroundStyle(isPrimary ? Color.white : StudyTaskColors.action)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            if !isPrimary {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(StudyTaskColors.cardStroke, lineWidth: 1)
+            .background(isPrimary ? StudyTaskColors.primaryActionBackground : StudyTaskColors.cardBackground)
+            .foregroundStyle(isPrimary ? Color.white : StudyTaskColors.action)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                if !isPrimary {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(StudyTaskColors.cardStroke, lineWidth: 1)
+                }
             }
+            .shadow(color: isPrimary ? .clear : StudyTaskColors.cardShadow, radius: 3, x: 0, y: 1)
         }
-        .shadow(color: isPrimary ? .clear : StudyTaskColors.cardShadow, radius: 3, x: 0, y: 1)
+        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 12))
     }
 }
 

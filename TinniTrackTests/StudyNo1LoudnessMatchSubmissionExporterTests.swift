@@ -2,13 +2,13 @@ import Foundation
 import Testing
 @testable import TinniTrack
 
-struct Phase6LoudnessMatchSubmissionExporterTests {
+struct StudyNo1LoudnessMatchSubmissionExporterTests {
     private let timestamp = Date(timeIntervalSince1970: 1_800_040_000)
 
     @Test
-    func exporterMapsPhase6PayloadIntoExistingSubmissionShape() throws {
+    func exporterMapsStudyNo1PayloadIntoExistingSubmissionShape() throws {
         let payload = makePayload()
-        let exporter = Phase6LoudnessMatchSubmissionExporter(appVersion: "1.2.3")
+        let exporter = StudyNo1LoudnessMatchSubmissionExporter(appVersion: "1.2.3")
 
         let submission = try exporter.makeSubmission(from: payload)
 
@@ -23,8 +23,8 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
         #expect(submission.gating["environment"] != nil)
         #expect(submission.gating["fit_seal"] != nil)
         #expect(submission.gating["safety"] != nil)
-        #expect(submission.rawPayload["payloadVersion"] == .string("phase-6-study-a-v1"))
-        #expect(submission.rawPayload["protocolKind"] == .string("studyAFixedOneKilohertz"))
+        #expect(submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v2"))
+        #expect(submission.rawPayload["protocolKind"] == .string("studyNo1FixedOneKilohertz"))
 
         guard case .object(let summary)? = submission.rawPayload["summary"] else {
             Issue.record("Expected summary object in raw payload")
@@ -37,7 +37,7 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
     @Test
     func exporterRefusesPayloadMissingRequiredPreflightData() {
         let valid = makePayload()
-        let invalid = Phase6LoudnessMatchRunPayload(
+        let invalid = StudyNo1LoudnessMatchRunPayload(
             payloadVersion: valid.payloadVersion,
             protocolKind: valid.protocolKind,
             identifiers: valid.identifiers,
@@ -48,7 +48,7 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
             audioRoute: valid.audioRoute,
             audioSession: valid.audioSession,
             volume: valid.volume,
-            environment: Phase6EnvironmentSPLContext(
+            environment: StudyNo1EnvironmentSPLContext(
                 thresholdDBA: 45,
                 requiredContiguousSamples: 5,
                 samplingInterval: 1,
@@ -69,54 +69,54 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
         )
 
         do {
-            _ = try Phase6LoudnessMatchSubmissionExporter(appVersion: "1.2.3")
+            _ = try StudyNo1LoudnessMatchSubmissionExporter(appVersion: "1.2.3")
                 .makeSubmission(from: invalid)
             Issue.record("Expected exporter to validate and reject incomplete preflight data")
-        } catch Phase6PayloadValidationError.missingRequiredFields(let fields) {
+        } catch StudyNo1PayloadValidationError.missingRequiredFields(let fields) {
             #expect(fields.contains("environment.samplesDBA"))
         } catch {
             Issue.record("Unexpected error \(error)")
         }
     }
 
-    private func makePayload() -> Phase6LoudnessMatchRunPayload {
-        Phase6LoudnessMatchRunPayload(
-            payloadVersion: Phase6LoudnessMatchRunPayload.payloadVersion,
-            protocolKind: "studyAFixedOneKilohertz",
-            identifiers: Phase6IdentifierContext(
+    private func makePayload() -> StudyNo1LoudnessMatchRunPayload {
+        StudyNo1LoudnessMatchRunPayload(
+            payloadVersion: StudyNo1LoudnessMatchRunPayload.payloadVersion,
+            protocolKind: "studyNo1FixedOneKilohertz",
+            identifiers: StudyNo1IdentifierContext(
                 participantId: "participant-1",
                 studySessionId: "session-1",
                 enrollmentId: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!.uuidString,
                 scheduledTaskId: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!.uuidString
             ),
-            lifecycle: Phase6RunLifecycle(
+            lifecycle: StudyNo1RunLifecycle(
                 startedAt: timestamp,
                 completedAt: timestamp.addingTimeInterval(90),
                 submittedAt: timestamp.addingTimeInterval(120),
                 abortedAt: nil,
                 interruptedAt: []
             ),
-            device: Phase6DeviceContext(
+            device: StudyNo1DeviceContext(
                 deviceModel: "iPhone17,2",
                 systemName: "iOS",
                 systemVersion: "26.0"
             ),
-            airPods: Phase6AirPodsContext(
+            airPods: StudyNo1AirPodsContext(
                 modelIdentifier: "AIRPODSPROV2",
                 firmwareVersion: nil,
                 unavailableReason: "Firmware unavailable through public APIs."
             ),
-            calibration: Phase6ResearchKitCalibrationContext(
+            calibration: StudyNo1ResearchKitCalibrationContext(
                 sourceRepositoryURL: CalibratedHeadphoneProfile.airPodsPro2.metadata.sourceRepositoryURL,
                 vendoredResearchKitCommit: CalibratedHeadphoneProfile.airPodsPro2.metadata.vendoredResearchKitCommit,
                 designDocumentResearchKitCommit: CalibratedHeadphoneProfile.airPodsPro2.metadata.designDocumentResearchKitCommit,
                 assetSourceVersion: CalibratedHeadphoneProfile.airPodsPro2.metadata.sourceFileNames.joined(separator: ","),
                 sourceFileNames: CalibratedHeadphoneProfile.airPodsPro2.metadata.sourceFileNames,
                 validationStatus: CalibratedHeadphoneProfile.airPodsPro2.metadata.validationStatus.rawValue,
-                limitation: Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation
+                limitation: StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation
             ),
-            audioRoute: Phase6AudioRouteContext(outputs: [
-                Phase6RouteOutputContext(
+            audioRoute: StudyNo1AudioRouteContext(outputs: [
+                StudyNo1RouteOutputContext(
                     portType: "bluetoothA2DP",
                     portName: "Verified AirPods Pro 2",
                     portUID: "route-1",
@@ -125,20 +125,20 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
                     verificationSource: "appCalibrationProfile"
                 )
             ]),
-            audioSession: Phase6AudioSessionContext(
+            audioSession: StudyNo1AudioSessionContext(
                 category: "playback",
                 mode: "default",
                 options: [],
                 sampleRate: 44_100,
                 bufferSize: 512
             ),
-            volume: Phase6VolumeContext(
+            volume: StudyNo1VolumeContext(
                 outputVolume: 1.0,
                 bucketedOutputVolume: 1.0,
                 volumeCurveOffsetDB: 0,
                 policy: CalibratedAudioVolumePolicy.maximum.description
             ),
-            environment: Phase6EnvironmentSPLContext(
+            environment: StudyNo1EnvironmentSPLContext(
                 thresholdDBA: 45,
                 requiredContiguousSamples: 5,
                 samplingInterval: 1,
@@ -146,18 +146,18 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
                 samplesDBA: [32, 33, 34, 35, 36],
                 gateResult: .passed
             ),
-            fitSeal: Phase6FitSealContext(
+            fitSeal: StudyNo1FitSealContext(
                 status: .confirmedPassed,
                 confirmedAt: timestamp,
                 limitations: "Participant confirmation only."
             ),
-            safety: Phase6SafetyContext(
+            safety: StudyNo1SafetyContext(
                 acknowledgedAt: timestamp,
                 stopControlVisibleBeforePlayback: true,
                 maximumLevelDBHL: 100,
                 limitation: "Immediate stop visible before playback."
             ),
-            stimulus: Phase6StimulusContext(
+            stimulus: StudyNo1StimulusContext(
                 kind: "pureTone",
                 frequencyHz: 1_000,
                 channel: "left",
@@ -165,19 +165,19 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
                 toneDuration: 1,
                 rampDuration: 0.2
             ),
-            threshold: Phase6ThresholdContext(
+            threshold: StudyNo1ThresholdContext(
                 frequencyHz: 1_000,
                 levelDBHL: 10,
-                source: .measured,
+                source: .healthKitAudiogram,
                 recordedAt: timestamp,
                 limitation: nil
             ),
             trials: [
-                Phase6LoudnessTrialContext(trialIndex: 1, acceptedLevelDBHL: 15, estimatedDBSPL: 24.27, dbSL: 5, confidence: "high", acceptedAt: timestamp),
-                Phase6LoudnessTrialContext(trialIndex: 2, acceptedLevelDBHL: 16, estimatedDBSPL: 25.27, dbSL: 6, confidence: "medium", acceptedAt: timestamp),
-                Phase6LoudnessTrialContext(trialIndex: 3, acceptedLevelDBHL: 17, estimatedDBSPL: 26.27, dbSL: 7, confidence: "high", acceptedAt: timestamp)
+                StudyNo1LoudnessTrialContext(trialIndex: 1, acceptedLevelDBHL: 15, estimatedDBSPL: 24.27, dbSL: 5, confidence: "high", acceptedAt: timestamp),
+                StudyNo1LoudnessTrialContext(trialIndex: 2, acceptedLevelDBHL: 16, estimatedDBSPL: 25.27, dbSL: 6, confidence: "medium", acceptedAt: timestamp),
+                StudyNo1LoudnessTrialContext(trialIndex: 3, acceptedLevelDBHL: 17, estimatedDBSPL: 26.27, dbSL: 7, confidence: "high", acceptedAt: timestamp)
             ],
-            summary: Phase6LoudnessSummaryContext(
+            summary: StudyNo1LoudnessSummaryContext(
                 medianMatchedDBHL: 16,
                 medianEstimatedDBSPL: 25.27,
                 medianDBSL: 6,
@@ -186,7 +186,7 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
                 completedAt: timestamp.addingTimeInterval(90)
             ),
             protocolEvents: [
-                Phase6ProtocolEventContext(
+                StudyNo1ProtocolEventContext(
                     timestamp: timestamp,
                     kind: "sessionStarted",
                     frequencyHz: nil,
@@ -205,7 +205,7 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
                 )
             ],
             playbackEvents: [
-                Phase6PlaybackEventContext(
+                StudyNo1PlaybackEventContext(
                     timestamp: timestamp,
                     frequencyHz: 1_000,
                     channel: "left",
@@ -223,7 +223,7 @@ struct Phase6LoudnessMatchSubmissionExporterTests {
             ],
             refusals: [],
             limitations: [
-                Phase6LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
+                StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
                 "No clinical or diagnostic claim is made by this payload."
             ]
         )

@@ -2,29 +2,29 @@ import AVFoundation
 import Foundation
 import UIKit
 
-protocol Phase6RuntimeContextProviding {
-    func deviceContext() -> Phase6DeviceContext
-    func audioSessionContext() -> Phase6AudioSessionContext
-    func airPodsContext(guardrailValidation: CalibratedAudioGuardrailValidation) -> Phase6AirPodsContext
+protocol StudyNo1RuntimeContextProviding {
+    func deviceContext() -> StudyNo1DeviceContext
+    func audioSessionContext() -> StudyNo1AudioSessionContext
+    func airPodsContext(guardrailValidation: CalibratedAudioGuardrailValidation) -> StudyNo1AirPodsContext
 }
 
-struct SystemPhase6RuntimeContextProvider: Phase6RuntimeContextProviding {
+struct SystemStudyNo1RuntimeContextProvider: StudyNo1RuntimeContextProviding {
     private let audioSession: AVAudioSession
 
     init(audioSession: AVAudioSession = .sharedInstance()) {
         self.audioSession = audioSession
     }
 
-    func deviceContext() -> Phase6DeviceContext {
-        Phase6DeviceContext(
+    func deviceContext() -> StudyNo1DeviceContext {
+        StudyNo1DeviceContext(
             deviceModel: Self.hardwareModelIdentifier(),
             systemName: UIDevice.current.systemName,
             systemVersion: UIDevice.current.systemVersion
         )
     }
 
-    func audioSessionContext() -> Phase6AudioSessionContext {
-        Phase6AudioSessionContext(
+    func audioSessionContext() -> StudyNo1AudioSessionContext {
+        StudyNo1AudioSessionContext(
             category: audioSession.category.rawValue,
             mode: audioSession.mode.rawValue,
             options: optionDescriptions(audioSession.categoryOptions),
@@ -33,10 +33,10 @@ struct SystemPhase6RuntimeContextProvider: Phase6RuntimeContextProviding {
         )
     }
 
-    func airPodsContext(guardrailValidation: CalibratedAudioGuardrailValidation) -> Phase6AirPodsContext {
+    func airPodsContext(guardrailValidation: CalibratedAudioGuardrailValidation) -> StudyNo1AirPodsContext {
         let identifier = guardrailValidation.metadata.supportedHeadphoneIdentifier
             ?? guardrailValidation.metadata.routeDetails?.outputs.first?.verifiedCalibratedHeadphoneIdentifier
-        return Phase6AirPodsContext(
+        return StudyNo1AirPodsContext(
             modelIdentifier: identifier,
             firmwareVersion: nil,
             unavailableReason: "AirPods firmware is unavailable through public iOS route APIs."
