@@ -181,7 +181,7 @@ struct LoudnessMatchNoiseGateMeter: View {
     private static let greenLimitRatio = 0.66
     private static let quietRangeFloorRatio = 0.45
     private static let quietRangeFloorFill = 0.18
-    private static let greenRangeSensitivity = 1.45
+    private static let greenRangeSensitivity = 1.7
     private static let barHeight: CGFloat = 44
     private static let animationFrameDuration: UInt64 = 33_000_000
 
