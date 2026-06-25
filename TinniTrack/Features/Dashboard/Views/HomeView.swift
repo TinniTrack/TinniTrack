@@ -9,9 +9,14 @@ struct HomeView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @StateObject private var dashboardViewModel: HomeDashboardViewModel
     @State private var selectedTab: Tab = .dashboard
+    private let consentService: ConsentServiceProtocol
 
-    init(studyService: StudyServiceProtocol? = nil) {
+    init(
+        studyService: StudyServiceProtocol? = nil,
+        consentService: ConsentServiceProtocol? = nil
+    ) {
         _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: studyService ?? SupabaseStudyService()))
+        self.consentService = consentService ?? SupabaseConsentService()
     }
 
     var body: some View {
@@ -20,7 +25,8 @@ struct HomeView: View {
                 DashboardTabView(
                     firstName: displayFirstName,
                     profileTimezone: sessionStore.state.profile?.timezone,
-                    viewModel: dashboardViewModel
+                    viewModel: dashboardViewModel,
+                    consentService: consentService
                 )
             }
             .tabItem {
@@ -54,6 +60,7 @@ private struct DashboardTabView: View {
     let firstName: String
     let profileTimezone: String?
     @ObservedObject var viewModel: HomeDashboardViewModel
+    let consentService: ConsentServiceProtocol
 
     var body: some View {
         ScrollView {
@@ -151,8 +158,11 @@ private struct DashboardTabView: View {
                 profileTimezone: profileTimezone
             )
         } else {
-            StudyDetailView(studyCard: studyCard) {
-                try await viewModel.enroll(studyID: studyCard.study.id)
+            StudyDetailView(
+                studyCard: studyCard,
+                consentService: consentService
+            ) {
+                await viewModel.refresh()
             }
         }
     }
@@ -213,10 +223,11 @@ private struct StudyCardView: View {
 
 private struct StudyDetailView: View {
     let studyCard: DashboardStudyCard
-    let onEnroll: () async throws -> Void
+    let consentService: ConsentServiceProtocol
+    let onEnrollmentCompleted: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var isEnrolling = false
+    @State private var activeConsentFlow: ActiveConsentFlow?
     @State private var enrollmentErrorMessage: String?
 
     var body: some View {
@@ -227,16 +238,11 @@ private struct StudyDetailView: View {
                 criteriaCard(title: "Exclusion Criteria", items: Self.exclusionCriteria)
 
                 Button {
-                    Task { await handleEnrollTapped() }
+                    handleEnrollTapped()
                 } label: {
                     HStack {
-                        if isEnrolling {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text(canEnroll ? "Begin eConsent & Enroll" : "Enrollment Unavailable")
-                                .fontWeight(.semibold)
-                        }
+                        Text(canEnroll ? "Begin eConsent & Enroll" : "Enrollment Unavailable")
+                            .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -245,7 +251,7 @@ private struct StudyDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(AppRoundedButtonStyle(cornerRadius: 12))
-                .disabled(!canEnroll || isEnrolling)
+                .disabled(!canEnroll || activeConsentFlow != nil)
             }
             .padding(20)
         }
@@ -265,6 +271,16 @@ private struct StudyDetailView: View {
             }
         } message: {
             Text(enrollmentErrorMessage ?? "")
+        }
+        .fullScreenCover(item: $activeConsentFlow) { flow in
+            StudyConsentFlowView(
+                study: studyCard.study,
+                definition: flow.definition,
+                consentService: consentService
+            ) {
+                await onEnrollmentCompleted()
+                dismiss()
+            }
         }
     }
 
@@ -318,18 +334,13 @@ private struct StudyDetailView: View {
         .shadow(color: DashboardColors.cardShadow, radius: 3, x: 0, y: 1)
     }
 
-    @MainActor
-    private func handleEnrollTapped() async {
+    private func handleEnrollTapped() {
         guard canEnroll else { return }
-        isEnrolling = true
-        defer { isEnrolling = false }
-
-        do {
-            try await onEnroll()
-            dismiss()
-        } catch {
-            enrollmentErrorMessage = error.localizedDescription
+        guard let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) else {
+            enrollmentErrorMessage = "This study does not have an eConsent definition."
+            return
         }
+        activeConsentFlow = ActiveConsentFlow(definition: definition)
     }
 
     private static let inclusionCriteria = [
@@ -343,6 +354,14 @@ private struct StudyDetailView: View {
         "No compatible headphones for calibration workflows.",
         "Medical conditions that make headphone listening unsafe."
     ]
+
+    private struct ActiveConsentFlow: Identifiable {
+        let definition: StudyConsentDefinition
+
+        var id: String {
+            definition.consentVersion
+        }
+    }
 }
 
 private struct ShimmerStudyCardView: View {
