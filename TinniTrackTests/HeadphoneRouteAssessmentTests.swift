@@ -56,14 +56,28 @@ struct HeadphoneRouteAssessmentTests {
     }
 
     @Test
-    func bluetoothHeadsetProfileFails() {
+    func airPodsPro2HeadsetProfilePassesIdentityHeuristicDuringCalls() {
         let assessment = assessor.assess(
             outputs: [output(name: "AirPods Pro 2", portType: .bluetoothHFP)],
             outputVolume: 1.0
         )
 
+        #expect(assessment.level == .likelyAirPodsPro2CommunicationRoute)
+        #expect(assessment.issues.isEmpty)
+        #expect(assessment.passesAirPodsPro2Heuristic)
+        #expect(assessment.passesAirPodsPro2PlaybackHeuristic == false)
+    }
+
+    @Test
+    func genericBluetoothHeadsetProfileFails() {
+        let assessment = assessor.assess(
+            outputs: [output(name: "Bluetooth Headset", portType: .bluetoothHFP)],
+            outputVolume: 1.0
+        )
+
         #expect(assessment.level == .failed)
         #expect(assessment.primaryIssue == .bluetoothHeadsetProfile)
+        #expect(assessment.passesAirPodsPro2Heuristic == false)
     }
 
     @Test
@@ -132,10 +146,12 @@ struct HeadphoneRouteAssessmentTests {
         let resolver = RouteNameHeuristicCalibratedHeadphoneResolver()
 
         let verified = resolver.verification(for: output(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP))
+        let callRoute = resolver.verification(for: output(name: "Vasyl's AirPods Pro 2", portType: .bluetoothHFP))
         let rejected = resolver.verification(for: output(name: "AirPods Max", portType: .bluetoothA2DP))
 
         #expect(verified?.identifier == "AIRPODSPROV2")
         #expect(verified?.source == .routeNameHeuristic)
+        #expect(callRoute == nil)
         #expect(rejected == nil)
     }
 

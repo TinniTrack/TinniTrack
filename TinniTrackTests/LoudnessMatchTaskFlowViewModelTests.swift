@@ -499,6 +499,25 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func correctEarGatePassesForAirPodsPro2HeadsetProfileDuringCall() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothHFP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { CalibratedAudioGuardrailSession().validation },
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        #expect(viewModel.validateAirPodsForCorrectEarStep())
+        #expect(viewModel.message == nil)
+        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
+        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic == false)
+    }
+
+    @Test
     func headphoneRouteMonitoringUpdatesAssessmentAndStopsObservation() async {
         let routeProvider = MockAudioSessionRouteVolumeProvider(outputs: [], outputVolume: 1.0)
         let viewModel = LoudnessMatchTaskFlowViewModel(

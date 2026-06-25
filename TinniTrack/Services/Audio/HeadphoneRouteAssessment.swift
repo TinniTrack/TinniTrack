@@ -5,6 +5,7 @@ enum HeadphoneRouteVerificationLevel: String, Equatable, Codable {
     case failed
     case compatibleBluetoothPlaybackRoute
     case likelyAirPodsPro2Route
+    case likelyAirPodsPro2CommunicationRoute
 }
 
 enum HeadphoneRouteIssue: String, Equatable, Codable {
@@ -43,7 +44,20 @@ struct HeadphoneRouteAssessment: Equatable {
     )
 
     var passesAirPodsPro2Heuristic: Bool {
+        switch level {
+        case .likelyAirPodsPro2Route, .likelyAirPodsPro2CommunicationRoute:
+            return issues.isEmpty
+        case .failed, .compatibleBluetoothPlaybackRoute:
+            return false
+        }
+    }
+
+    var passesAirPodsPro2PlaybackHeuristic: Bool {
         level == .likelyAirPodsPro2Route && issues.isEmpty
+    }
+
+    var isBluetoothHeadsetProfile: Bool {
+        portType == .bluetoothHFP
     }
 
     var primaryIssue: HeadphoneRouteIssue? {
@@ -149,12 +163,16 @@ struct HeadphoneRouteAssessor {
         portName: String,
         issue: HeadphoneRouteIssue?
     ) -> HeadphoneRouteVerificationLevel {
-        guard portType == .bluetoothA2DP else {
-            return .failed
+        if portType == .bluetoothA2DP, issue == nil {
+            return .likelyAirPodsPro2Route
         }
 
-        if issue == nil {
-            return .likelyAirPodsPro2Route
+        if portType == .bluetoothHFP, issue == nil {
+            return .likelyAirPodsPro2CommunicationRoute
+        }
+
+        guard portType == .bluetoothA2DP else {
+            return .failed
         }
 
         return .compatibleBluetoothPlaybackRoute
@@ -168,7 +186,7 @@ struct HeadphoneRouteAssessor {
         case .bluetoothA2DP:
             return Self.looksLikeAirPodsPro2(portName) ? nil : .unsupportedBluetoothPlaybackDevice
         case .bluetoothHFP:
-            return .bluetoothHeadsetProfile
+            return Self.looksLikeAirPodsPro2(portName) ? nil : .bluetoothHeadsetProfile
         case .bluetoothLE:
             return .bluetoothLowEnergyRoute
         case .builtInSpeaker, .builtInReceiver:
@@ -210,7 +228,7 @@ struct RouteNameHeuristicCalibratedHeadphoneResolver: CalibratedHeadphoneProfile
 
     func verification(for output: AudioSessionRouteOutputSnapshot) -> CalibratedHeadphoneVerification? {
         let assessment = assessor.assess(outputs: [output], outputVolume: nil)
-        guard assessment.passesAirPodsPro2Heuristic else {
+        guard assessment.passesAirPodsPro2PlaybackHeuristic else {
             return nil
         }
 

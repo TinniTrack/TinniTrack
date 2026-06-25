@@ -80,7 +80,7 @@ private struct AirPodsCorrectEarStepView: View {
 
             Text(statusText)
                 .font(.callout)
-                .foregroundStyle(assessment.passesAirPodsPro2Heuristic ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.secondaryText)
+                .foregroundStyle(statusColor)
                 .lineLimit(3)
                 .minimumScaleFactor(0.82)
                 .accessibilityIdentifier("loudness_airpods_status_label")
@@ -107,8 +107,12 @@ private struct AirPodsCorrectEarStepView: View {
     }
 
     private var statusText: String {
-        if assessment.passesAirPodsPro2Heuristic {
+        if assessment.passesAirPodsPro2PlaybackHeuristic {
             return "AirPods Pro 2 playback route detected."
+        }
+
+        if assessment.passesAirPodsPro2Heuristic, assessment.isBluetoothHeadsetProfile {
+            return "AirPods Pro 2 detected. Call audio is using the headset profile; calibrated playback is checked before the test starts."
         }
 
         switch assessment.primaryIssue {
@@ -117,6 +121,18 @@ private struct AirPodsCorrectEarStepView: View {
         case .multipleOutputs, .unsupportedWiredOrExternalRoute, .unsupportedBluetoothPlaybackDevice, .outputVolumeUnavailable:
             return "The current audio output is not eligible for this study."
         }
+    }
+
+    private var statusColor: Color {
+        if assessment.passesAirPodsPro2PlaybackHeuristic {
+            return LoudnessMatchModalColors.success
+        }
+
+        if assessment.passesAirPodsPro2Heuristic {
+            return LoudnessMatchModalColors.primary
+        }
+
+        return LoudnessMatchModalColors.secondaryText
     }
 
     #if DEBUG
@@ -241,6 +257,11 @@ private struct MaxVolumeGateStepView: View {
 
         switch error {
         case .unsupportedRoute:
+            if let output = validation.metadata.routeDetails?.outputs.first,
+               output.portType == .bluetoothHFP,
+               HeadphoneRouteAssessor.looksLikeAirPodsPro2(output.portName) {
+                return "Your AirPods are connected in call audio mode. End the call or switch Zoom audio off your AirPods before starting the calibrated test."
+            }
             return "Connect your AirPods Pro 2 and keep them selected as the only audio output."
         case .unverifiedHeadphoneProfile:
             return "AirPods Pro 2 verification is required before this research task can start."
