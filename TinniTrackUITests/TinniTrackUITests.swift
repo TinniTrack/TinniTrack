@@ -138,7 +138,7 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
-    func testStudyNo1DashboardOpensConsentLandingDirectly() throws {
+    func testStudyNo1DashboardConsentFlowUsesNativePushAndSwipeBack() throws {
         let app = makeAuthenticatedStudyApp()
         app.launch()
 
@@ -146,13 +146,25 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(studyCard.waitForExistence(timeout: 3))
         studyCard.tap()
 
+        XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Loudness Match Study"].exists)
-        XCTAssertTrue(app.buttons["study_consent_back_button"].exists)
-        XCTAssertFalse(app.buttons["study_consent_close_button"].exists)
-        XCTAssertTrue(app.buttons["Review Study Consent"].exists)
+        let reviewButton = app.buttons["study_consent_review_button"]
+        XCTAssertTrue(reviewButton.exists)
         XCTAssertFalse(app.staticTexts["Inclusion Criteria"].exists)
         XCTAssertFalse(app.staticTexts["Exclusion Criteria"].exists)
+
+        reviewButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Step 1 of 2"].waitForExistence(timeout: 3))
+
+        swipeBack(in: app)
+        XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 2))
+
+        swipeBack(in: app)
+        XCTAssertTrue(app.navigationBars["Dashboard"].waitForExistence(timeout: 2))
     }
 
     @MainActor
@@ -202,5 +214,12 @@ final class TinniTrackUITests: XCTestCase {
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count))
         }
         field.typeText(text)
+    }
+
+    @MainActor
+    private func swipeBack(in app: XCUIApplication) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 }

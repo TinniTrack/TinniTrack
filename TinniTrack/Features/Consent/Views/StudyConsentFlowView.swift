@@ -11,6 +11,8 @@ struct StudyConsentFlowView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: StudyConsentFlowViewModel
+    @State private var isReviewPresented = false
+    @State private var isSignaturePresented = false
 
     init(
         study: Study,
@@ -27,109 +29,68 @@ struct StudyConsentFlowView: View {
     }
 
     var body: some View {
-        ZStack {
-            StudyConsentModalChrome(
-                isBackEnabled: viewModel.state != .finalizing,
-                goBack: viewModel.navigateBackOrDismiss
-            ) {
-                content
+        StudyConsentLandingView(
+            definition: viewModel.definition,
+            reviewConsent: { isReviewPresented = true }
+        )
+            .navigationTitle("Study Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .foregroundStyle(LoudnessMatchModalColors.text)
+            .background(LoudnessMatchModalColors.background)
+            .onAppear {
+                viewModel.returnToLandingAfterNavigationPop()
             }
-
-            if viewModel.state == .finalizing {
-                StudyConsentFinalizingView()
-            }
-        }
-        .interactiveDismissDisabled(true)
-        .task(id: viewModel.state) {
-            switch viewModel.state {
-            case .completed:
-                await onCompleted()
-                dismiss()
-            case .dismissed:
-                dismiss()
-            case .landing, .reviewingConsent, .signing, .finalizing, .failed:
-                break
-            }
-        }
-        .alert("Unable to Finish Enrollment", isPresented: Binding(
-            get: { viewModel.errorMessage != nil },
-            set: { shouldShow in
-                if !shouldShow {
-                    viewModel.errorMessage = nil
+            .navigationDestination(isPresented: $isReviewPresented) {
+                StudyConsentReaderView(
+                    viewModel: viewModel,
+                    continueToSignature: { isSignaturePresented = true }
+                )
+                .navigationTitle("Informed Consent")
+                .navigationBarTitleDisplayMode(.inline)
+                .foregroundStyle(LoudnessMatchModalColors.text)
+                .background(LoudnessMatchModalColors.background)
+                .onAppear {
+                    viewModel.reviewConsent()
                 }
             }
-        )) {
-            Button("Try Again") {
-                viewModel.retryAfterFailure()
+            .navigationDestination(isPresented: $isSignaturePresented) {
+                StudyConsentSignatureView(viewModel: viewModel)
+                    .navigationTitle("Sign Consent")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .foregroundStyle(LoudnessMatchModalColors.text)
+                    .background(LoudnessMatchModalColors.background)
+                    .onAppear {
+                        viewModel.continueToSignature()
+                    }
             }
-            Button("Cancel", role: .cancel) {
-                viewModel.declineOrCancel()
+            .task(id: viewModel.state) {
+                switch viewModel.state {
+                case .completed:
+                    await onCompleted()
+                    dismiss()
+                case .dismissed:
+                    dismiss()
+                case .landing, .reviewingConsent, .signing, .finalizing, .failed:
+                    break
+                }
             }
-        } message: {
-            Text(viewModel.errorMessage ?? "")
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch viewModel.state {
-        case .landing:
-            StudyConsentLandingView(
-                definition: viewModel.definition,
-                reviewConsent: viewModel.reviewConsent
-            )
-        case .reviewingConsent:
-            StudyConsentReaderView(viewModel: viewModel)
-        case .signing:
-            StudyConsentSignatureView(viewModel: viewModel)
-        case .finalizing:
-            StudyConsentSignatureView(viewModel: viewModel)
-        case .completed:
-            StudyConsentSuccessView()
-        case .dismissed, .failed:
-            EmptyView()
-        }
-    }
-}
-
-private struct StudyConsentModalChrome<Content: View>: View {
-    let isBackEnabled: Bool
-    let goBack: () -> Void
-    let content: Content
-
-    init(
-        isBackEnabled: Bool,
-        goBack: @escaping () -> Void,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.isBackEnabled = isBackEnabled
-        self.goBack = goBack
-        self.content = content()
-    }
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            LoudnessMatchModalColors.background
-                .ignoresSafeArea()
-
-            content
-                .padding(.top, 84)
-
-            HStack {
-                LoudnessMatchModalIconButton(
-                    systemName: "chevron.left",
-                    accessibilityLabel: "Back",
-                    accessibilityIdentifier: "study_consent_back_button",
-                    action: goBack
-                )
-                .disabled(!isBackEnabled)
-
-                Spacer()
+            .alert("Unable to Finish Enrollment", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { shouldShow in
+                    if !shouldShow {
+                        viewModel.errorMessage = nil
+                    }
+                }
+            )) {
+                Button("Try Again") {
+                    viewModel.retryAfterFailure()
+                }
+                Button("Cancel", role: .cancel) {
+                    viewModel.declineOrCancel()
+                }
+            } message: {
+                Text(viewModel.errorMessage ?? "")
             }
-            .padding(.horizontal, 30)
-            .padding(.top, 28)
-        }
-        .foregroundStyle(LoudnessMatchModalColors.text)
     }
 }
 
@@ -191,9 +152,11 @@ private struct StudyConsentLandingView: View {
                     bodyText: definition.landing.beforeEnrollBody
                 )
 
-                LoudnessMatchModalPrimaryButton(title: definition.landing.primaryActionTitle) {
-                    reviewConsent()
+                Button(action: reviewConsent) {
+                    StudyConsentPrimaryNavigationLabel(title: definition.landing.primaryActionTitle)
                 }
+                .buttonStyle(AppCapsuleButtonStyle())
+                .accessibilityIdentifier("study_consent_review_button")
                 .padding(.top, 2)
 
                 Text(definition.landing.footerNote)
@@ -204,12 +167,14 @@ private struct StudyConsentLandingView: View {
             .padding(.horizontal, 34)
             .padding(.bottom, 28)
         }
+        .background(LoudnessMatchModalColors.background)
         .accessibilityIdentifier("study_consent_landing")
     }
 }
 
 private struct StudyConsentReaderView: View {
     @ObservedObject var viewModel: StudyConsentFlowViewModel
+    let continueToSignature: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -262,9 +227,10 @@ private struct StudyConsentReaderView: View {
                 primaryTitle: "I agree, continue to signature",
                 isPrimaryEnabled: viewModel.canContinueToSignature,
                 secondaryAction: viewModel.declineOrCancel,
-                primaryAction: viewModel.continueToSignature
+                primaryAction: continueToSignature
             )
         }
+        .background(LoudnessMatchModalColors.background)
         .accessibilityIdentifier("study_consent_reader")
     }
 }
@@ -335,6 +301,12 @@ private struct StudyConsentSignatureView: View {
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 20)
+        }
+        .background(LoudnessMatchModalColors.background)
+        .overlay {
+            if viewModel.state == .finalizing {
+                StudyConsentFinalizingView()
+            }
         }
         .accessibilityIdentifier("study_consent_signature")
     }
@@ -662,11 +634,15 @@ private struct StudyConsentBottomActionBar: View {
                 .foregroundStyle(LoudnessMatchModalColors.primary)
                 .frame(width: 92)
 
-            LoudnessMatchModalPrimaryButton(
-                title: primaryTitle,
-                isEnabled: isPrimaryEnabled,
-                action: primaryAction
-            )
+            Button(action: primaryAction) {
+                StudyConsentPrimaryNavigationLabel(
+                    title: primaryTitle,
+                    isEnabled: isPrimaryEnabled
+                )
+            }
+            .buttonStyle(AppCapsuleButtonStyle())
+            .disabled(!isPrimaryEnabled)
+            .accessibilityIdentifier("study_consent_signature_button")
         }
         .padding(.horizontal, 28)
         .padding(.top, 14)
@@ -675,6 +651,29 @@ private struct StudyConsentBottomActionBar: View {
         .overlay(alignment: .top) {
             Divider()
         }
+    }
+}
+
+private struct StudyConsentPrimaryNavigationLabel: View {
+    let title: String
+    var isEnabled = true
+
+    var body: some View {
+        Text(title)
+            .font(.headline)
+            .fontWeight(.semibold)
+            .lineLimit(2)
+            .minimumScaleFactor(0.82)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 58)
+            .padding(.horizontal, 18)
+            .background(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledFill)
+            .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.disabledText)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
+            }
     }
 }
 
@@ -877,7 +876,10 @@ private struct StudyConsentSuccessView: View {
 }
 
 #Preview("Reader") {
-    StudyConsentReaderView(viewModel: StudyConsentFlowPreviewModel.makeReader())
+    StudyConsentReaderView(
+        viewModel: StudyConsentFlowPreviewModel.makeReader(),
+        continueToSignature: {}
+    )
 }
 
 #Preview("Signature") {
