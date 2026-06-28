@@ -246,7 +246,7 @@ private struct StudyDetailView: View {
                 )
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .interactivePopGestureEnabled()
         .onChange(of: studyCard.enrollment?.status) { _, status in
             guard status == .enrolled else { return }
             dismiss()

@@ -81,7 +81,17 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     func reviewConsent() {
+        guard state != .finalizing else { return }
         state = .reviewingConsent
+    }
+
+    func returnToLandingAfterNavigationPop() {
+        switch state {
+        case .reviewingConsent, .signing:
+            state = .landing
+        case .landing, .finalizing, .completed, .dismissed, .failed:
+            break
+        }
     }
 
     func selectSection(_ section: StudyConsentSection) {
