@@ -32,6 +32,25 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
+    func chromeBackDismissesLandingAndNavigatesWithinConsentFlow() {
+        let viewModel = Self.viewModel()
+
+        viewModel.navigateBackOrDismiss()
+        #expect(viewModel.state == .dismissed)
+
+        let secondViewModel = Self.viewModel()
+        secondViewModel.reviewConsent()
+        secondViewModel.navigateBackOrDismiss()
+        #expect(secondViewModel.state == .landing)
+
+        secondViewModel.reviewConsent()
+        secondViewModel.markConsentScrolledToEnd()
+        secondViewModel.continueToSignature()
+        secondViewModel.navigateBackOrDismiss()
+        #expect(secondViewModel.state == .reviewingConsent)
+    }
+
+    @Test
     func signatureStepRequiresAttestationNamesAndSignature() {
         let viewModel = Self.viewModel()
         viewModel.reviewConsent()

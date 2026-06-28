@@ -108,6 +108,17 @@ final class StudyConsentFlowViewModel: ObservableObject {
         }
     }
 
+    func navigateBackOrDismiss() {
+        switch state {
+        case .landing:
+            declineOrCancel()
+        case .reviewingConsent, .signing:
+            goBack()
+        case .finalizing, .completed, .dismissed, .failed:
+            break
+        }
+    }
+
     func declineOrCancel() {
         state = .dismissed
     }

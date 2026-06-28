@@ -11,7 +11,12 @@ struct StudyConsentCatalogTests {
         #expect(definition.consentVersion == "study-no-1-consent-v2")
         #expect(definition.keyInformation.bulletItems.contains("This is research, not treatment."))
         #expect(definition.keyInformation.checkItems.contains("Compensation is up to $100."))
+        #expect(definition.landing.title == "Loudness Match Study")
         #expect(definition.landing.atAGlanceRows.map(\.value).contains("14 days"))
+        #expect(definition.landing.atAGlanceRows.count == 5)
+        #expect(definition.landing.atAGlanceRows.contains { $0.label == "You're in control" } == false)
+        #expect(definition.landing.whatYouWillDo == "Take an Apple Hearing Test with your AirPods, complete loudness matching tasks, and answer brief check-ins throughout the day.")
+        #expect(definition.landing.eligibilityItems.contains("You own Apple AirPods Pro Generation 2 or 3."))
         #expect(definition.sections.contains { $0.blocks.contains(.scheduleChips(["8 AM", "12 PM", "4 PM", "8 PM"])) })
         #expect(definition.sections.map(\.title) == [
             "Key information",

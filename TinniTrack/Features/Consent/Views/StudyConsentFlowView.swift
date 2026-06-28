@@ -29,9 +29,8 @@ struct StudyConsentFlowView: View {
     var body: some View {
         ZStack {
             StudyConsentModalChrome(
-                canGoBack: viewModel.state == .reviewingConsent || viewModel.state == .signing,
-                goBack: viewModel.goBack,
-                close: viewModel.declineOrCancel
+                isBackEnabled: viewModel.state != .finalizing,
+                goBack: viewModel.navigateBackOrDismiss
             ) {
                 content
             }
@@ -94,20 +93,17 @@ struct StudyConsentFlowView: View {
 }
 
 private struct StudyConsentModalChrome<Content: View>: View {
-    let canGoBack: Bool
+    let isBackEnabled: Bool
     let goBack: () -> Void
-    let close: () -> Void
     let content: Content
 
     init(
-        canGoBack: Bool,
+        isBackEnabled: Bool,
         goBack: @escaping () -> Void,
-        close: @escaping () -> Void,
         @ViewBuilder content: () -> Content
     ) {
-        self.canGoBack = canGoBack
+        self.isBackEnabled = isBackEnabled
         self.goBack = goBack
-        self.close = close
         self.content = content()
     }
 
@@ -126,17 +122,9 @@ private struct StudyConsentModalChrome<Content: View>: View {
                     accessibilityIdentifier: "study_consent_back_button",
                     action: goBack
                 )
-                .opacity(canGoBack ? 1 : 0)
-                .disabled(!canGoBack)
+                .disabled(!isBackEnabled)
 
                 Spacer()
-
-                LoudnessMatchModalIconButton(
-                    systemName: "xmark",
-                    accessibilityLabel: "Close",
-                    accessibilityIdentifier: "study_consent_close_button",
-                    action: close
-                )
             }
             .padding(.horizontal, 30)
             .padding(.top, 28)
@@ -173,12 +161,12 @@ private struct StudyConsentLandingView: View {
                 StudyConsentAtAGlanceCard(rows: definition.landing.atAGlanceRows)
 
                 StudyConsentTextSection(
-                    title: "What you'll do",
+                    title: "What you'll do:",
                     bodyText: definition.landing.whatYouWillDo
                 )
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("You may be eligible if")
+                    Text("You may be eligible if:")
                         .font(.system(size: 16, weight: .bold))
 
                     ForEach(definition.landing.eligibilityItems, id: \.self) { item in
@@ -291,7 +279,7 @@ private struct StudyConsentSignatureView: View {
                     stepText: "Step 2 of 2",
                     progress: 1,
                     title: "Sign Consent",
-                    subtitle: "By signing below, you confirm that you reviewed the consent information and choose to participate in Study No. 1: Loudness Match."
+                    subtitle: "By signing below, you confirm that you reviewed the consent information and choose to participate in the Loudness Match Study."
                 )
 
                 Button {

@@ -147,7 +147,9 @@ final class TinniTrackUITests: XCTestCase {
         studyCard.tap()
 
         XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Study No. 1: Loudness Match"].exists)
+        XCTAssertTrue(app.staticTexts["Loudness Match Study"].exists)
+        XCTAssertTrue(app.buttons["study_consent_back_button"].exists)
+        XCTAssertFalse(app.buttons["study_consent_close_button"].exists)
         XCTAssertTrue(app.buttons["Review Study Consent"].exists)
         XCTAssertFalse(app.staticTexts["Inclusion Criteria"].exists)
         XCTAssertFalse(app.staticTexts["Exclusion Criteria"].exists)

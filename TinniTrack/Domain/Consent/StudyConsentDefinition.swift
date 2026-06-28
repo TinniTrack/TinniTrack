@@ -359,22 +359,25 @@ enum StudyConsentCatalog {
         ),
         landing: StudyConsentLandingContent(
             eyebrow: "Study Details",
-            title: "Study No. 1: Loudness Match",
+            title: "Loudness Match Study",
             subtitle: "Help us understand how tinnitus loudness changes throughout the day.",
             atAGlanceRows: [
                 StudyConsentAtAGlanceRow(symbolName: "calendar", label: "Duration", value: "14 days"),
                 StudyConsentAtAGlanceRow(symbolName: "clock", label: "Daily effort", value: "4 brief check-ins per day"),
                 StudyConsentAtAGlanceRow(symbolName: "stopwatch", label: "Time per check-in", value: "About 1-3 minutes"),
-                StudyConsentAtAGlanceRow(symbolName: "headphones", label: "Equipment", value: "iPhone + AirPods Pro (2nd gen)"),
-                StudyConsentAtAGlanceRow(symbolName: "flask", label: "Type", value: "Research, not treatment"),
-                StudyConsentAtAGlanceRow(symbolName: "shield.checkered", label: "You're in control", value: "You can stop at any time")
+                StudyConsentAtAGlanceRow(symbolName: "headphones", label: "Equipment", value: "iPhone + AirPods Pro Gen 2 or 3"),
+                StudyConsentAtAGlanceRow(symbolName: "flask", label: "Type", value: "Research, not treatment")
             ],
-            whatYouWillDo: "Import baseline audiogram data from Apple Health, complete a loudness-matching task, and answer brief check-ins during the day.",
+            whatYouWillDo: "Take an Apple Hearing Test with your AirPods, complete loudness matching tasks, and answer brief check-ins throughout the day.",
             eligibilityItems: [
-                "You are 18 or older.",
-                "You experience tinnitus.",
-                "You have an iPhone and AirPods Pro.",
-                "You can complete scheduled tasks."
+                "You are 18 years or older.",
+                "Your tinnitus has been present for at least 3 months, occurs daily, and is always audible in a quiet room.",
+                "You experience periods of more than one hour during which tinnitus seems noticeably louder than usual at least twice per week.",
+                "Your tinnitus has been evaluated by a doctor or audiologist and determined to be primary tinnitus or sensorineural tinnitus, not related to a medical condition or structural issue. Your tinnitus does not have another known medical cause, such as vascular conditions, jaw disorders, Meniere's disease, or otosclerosis.",
+                "Your tinnitus is non-pulsatile and does not seem to track your heartbeat or sound like a heartbeat.",
+                "You own an iPhone 11 or newer, which is required for the study app.",
+                "You own Apple AirPods Pro Generation 2 or 3.",
+                "You are able to complete short assessments, about 3 minutes each, four times per day at 8 AM, 12 PM, 4 PM, and 8 PM for 14 days on your phone."
             ],
             beforeEnrollTitle: "Before you enroll",
             beforeEnrollBody: "You'll review the full study consent form and decide whether you want to participate. You can stop at any time.",
@@ -447,11 +450,11 @@ enum StudyConsentCatalog {
                         "You are 18 years or older.",
                         "Your tinnitus has been present for at least 3 months, occurs daily, and is always audible in a quiet room.",
                         "You experience periods of more than one hour during which tinnitus seems noticeably louder than usual at least twice per week.",
-                        "Your tinnitus has been evaluated by a doctor or audiologist and determined to be primary tinnitus or sensorineural tinnitus.",
-                        "Your tinnitus is non-pulsatile.",
-                        "You own an iPhone 11 or newer.",
+                        "Your tinnitus has been evaluated by a doctor or audiologist and determined to be primary tinnitus or sensorineural tinnitus, not related to a medical condition or structural issue. Your tinnitus does not have another known medical cause, such as vascular conditions, jaw disorders, Meniere's disease, or otosclerosis.",
+                        "Your tinnitus is non-pulsatile and does not seem to track your heartbeat or sound like a heartbeat.",
+                        "You own an iPhone 11 or newer, which is required for the study app.",
                         "You own Apple AirPods Pro Generation 2 or 3.",
-                        "You are able to complete short assessments four times per day for 14 days on your phone."
+                        "You are able to complete short assessments, about 3 minutes each, four times per day at 8 AM, 12 PM, 4 PM, and 8 PM for 14 days on your phone."
                     ]),
                     .callout(title: "Eligibility questions", body: "If you have questions about eligibility, contact armstrtr@whitman.edu.")
                 ]
