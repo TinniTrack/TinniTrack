@@ -50,6 +50,48 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
+    func testSignupSubmitFlowAndDOBToolbarDoneDismissesKeyboard() throws {
+        let app = makeApp()
+        app.launch()
+
+        app.buttons["Sign Up"].tap()
+
+        let emailField = app.textFields["signup_email_field"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 2))
+        emailField.tap()
+        emailField.typeText("signup@example.com")
+        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
+        app.keyboards.buttons["Next"].tap()
+
+        let passwordField = app.secureTextFields["signup_password_field"]
+        XCTAssertTrue(passwordField.waitForExistence(timeout: 2))
+        passwordField.typeText("password123")
+        if app.keyboards.buttons["Continue"].waitForExistence(timeout: 1) {
+            app.keyboards.buttons["Continue"].tap()
+        } else {
+            app.buttons["signup_continue_button"].tap()
+        }
+
+        let firstNameField = app.textFields["signup_first_name_field"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))
+        firstNameField.tap()
+        firstNameField.typeText("Taylor")
+        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
+        app.keyboards.buttons["Next"].tap()
+
+        let lastNameField = app.textFields["signup_last_name_field"]
+        lastNameField.typeText("Rivers")
+        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
+        app.keyboards.buttons["Next"].tap()
+
+        let monthField = app.textFields["signup_birth_month_field"]
+        XCTAssertTrue(monthField.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["signup_keyboard_done_button"].waitForExistence(timeout: 2))
+        app.buttons["signup_keyboard_done_button"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 2))
+    }
+
+    @MainActor
     func testEmailVerificationWaitingScreenBlocksDashboard() throws {
         let app = makeApp()
         app.launchEnvironment["UITEST_PENDING_VERIFICATION_EMAIL"] = "waiting@example.com"
@@ -115,6 +157,13 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(firstNameField.waitForExistence(timeout: 3))
         XCTAssertTrue(app.textFields["profile_last_name_field"].exists)
         XCTAssertTrue(app.datePickers["profile_date_of_birth_picker"].exists)
+
+        firstNameField.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        app.buttons["profile_cancel_edit_button"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+        XCTAssertFalse(app.textFields["profile_first_name_field"].exists)
     }
 
     @MainActor
@@ -197,16 +246,35 @@ final class TinniTrackUITests: XCTestCase {
 
         let firstNameField = app.textFields["study_consent_first_name_field"]
         XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))
+        let lastNameField = app.textFields["study_consent_last_name_field"]
+        XCTAssertTrue(lastNameField.exists)
         firstNameField.tap()
         firstNameField.typeText("Alex")
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
-        app.scrollViews["study_consent_signature"].swipeUp()
+
+        app.staticTexts["study_consent_attestation_text"].tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+
+        firstNameField.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
+        app.keyboards.buttons["Next"].tap()
+        lastNameField.typeText("River")
+        XCTAssertTrue(app.keyboards.buttons["Done"].waitForExistence(timeout: 2))
+        app.keyboards.buttons["Done"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+
+        firstNameField.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        lastNameField.tap()
+        lastNameField.typeText("s")
+        XCTAssertTrue(keyboard.exists)
 
         let drawSignatureButton = app.buttons["study_consent_draw_signature_button"]
         XCTAssertTrue(drawSignatureButton.waitForExistence(timeout: 2))
         drawSignatureButton.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
         XCTAssertTrue(app.buttons["study_signature_clear_button"].waitForExistence(timeout: 2))
         let saveSignatureButton = app.buttons["study_signature_save_button"]
         XCTAssertTrue(saveSignatureButton.exists)
@@ -216,6 +284,11 @@ final class TinniTrackUITests: XCTestCase {
         saveSignatureButton.tap()
         XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
+
+        firstNameField.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        app.scrollViews["study_consent_signature"].swipeUp()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))

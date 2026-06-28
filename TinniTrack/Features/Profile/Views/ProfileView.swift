@@ -6,6 +6,12 @@
 import SwiftUI
 
 struct ProfileView: View {
+    private enum Field: Hashable {
+        case firstName
+        case lastName
+        case email
+    }
+
     @EnvironmentObject private var sessionStore: SessionStore
     @State private var firstName = ""
     @State private var lastName = ""
@@ -15,6 +21,7 @@ struct ProfileView: View {
     @State private var isEditingPersonalInfo = false
     @State private var accountNoticeMessage: String?
     @State private var isDeleteConfirmationPresented = false
+    @FocusState private var focusedField: Field?
     #if DEBUG
     @StateObject private var developerToolsViewModel = DeveloperToolsViewModel(service: SupabaseDeveloperToolingService())
     #endif
@@ -25,6 +32,8 @@ struct ProfileView: View {
         Form {
             Section {
                 profileHeader
+                    .contentShape(Rectangle())
+                    .onTapGesture { dismissTextFocus() }
             }
 
             Section {
@@ -39,6 +48,7 @@ struct ProfileView: View {
                             .accessibilityIdentifier("profile_account_notice")
                     }
                     Button {
+                        dismissTextFocus()
                         beginEditing()
                     } label: {
                         Label("Change Personal Info", systemImage: "pencil")
@@ -53,6 +63,7 @@ struct ProfileView: View {
 
             Section {
                 Button(role: .destructive) {
+                    dismissTextFocus()
                     Task { await sessionStore.signOut() }
                 } label: {
                     Text("Log Out")
@@ -60,6 +71,7 @@ struct ProfileView: View {
                 .disabled(sessionStore.state.isBusy)
 
                 Button(role: .destructive) {
+                    dismissTextFocus()
                     isDeleteConfirmationPresented = true
                 } label: {
                     if isDeleting {
@@ -83,6 +95,7 @@ struct ProfileView: View {
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.immediately)
         .onAppear(perform: loadInitialValuesIfNeeded)
         .confirmationDialog("Delete Account?", isPresented: $isDeleteConfirmationPresented, titleVisibility: .visible) {
             Button("Cancel", role: .cancel) {}
@@ -133,10 +146,20 @@ struct ProfileView: View {
         Group {
             TextField("First Name", text: $firstName)
                 .textContentType(.givenName)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.next)
+                .focused($focusedField, equals: .firstName)
+                .onSubmit { focusedField = .lastName }
                 .accessibilityIdentifier("profile_first_name_field")
 
             TextField("Last Name", text: $lastName)
                 .textContentType(.familyName)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.next)
+                .focused($focusedField, equals: .lastName)
+                .onSubmit { focusedField = .email }
                 .accessibilityIdentifier("profile_last_name_field")
 
             TextField("Login Email", text: $loginEmail)
@@ -144,6 +167,9 @@ struct ProfileView: View {
                 .textInputAutocapitalization(.never)
                 .keyboardType(.emailAddress)
                 .autocorrectionDisabled()
+                .submitLabel(.done)
+                .focused($focusedField, equals: .email)
+                .onSubmit { dismissTextFocus() }
                 .accessibilityIdentifier("profile_email_field")
 
             DatePicker(
@@ -152,12 +178,14 @@ struct ProfileView: View {
                 in: ...Date(),
                 displayedComponents: .date
             )
+            .onTapGesture { dismissTextFocus() }
             .accessibilityIdentifier("profile_date_of_birth_picker")
 
             LabeledContent("Age", value: ageText)
 
             HStack {
                 Button {
+                    dismissTextFocus()
                     cancelEditing()
                 } label: {
                     Label("Cancel", systemImage: "xmark")
@@ -168,6 +196,7 @@ struct ProfileView: View {
                 Spacer()
 
                 Button {
+                    dismissTextFocus()
                     Task { await saveChanges() }
                 } label: {
                     if isSaving {
@@ -288,6 +317,7 @@ struct ProfileView: View {
     }
 
     private func cancelEditing() {
+        dismissTextFocus()
         if let profile = sessionStore.state.profile {
             loadEditableValues(from: profile)
         }
@@ -296,6 +326,7 @@ struct ProfileView: View {
 
     @MainActor
     private func saveChanges() async {
+        dismissTextFocus()
         guard let profile = sessionStore.state.profile else { return }
 
         let dateChanged = profile.dateOfBirth.map { !calendar.isDate($0, inSameDayAs: dateOfBirth) } ?? true
@@ -336,6 +367,10 @@ struct ProfileView: View {
 
     private func formattedDate(_ date: Date) -> String {
         Self.dateFormatter.string(from: date)
+    }
+
+    private func dismissTextFocus() {
+        focusedField = nil
     }
 
     private static let defaultDateOfBirth: Date = {
