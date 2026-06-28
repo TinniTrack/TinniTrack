@@ -115,12 +115,10 @@ private struct StudyConsentLandingView: View {
 
                     ForEach(definition.landing.eligibilityItems, id: \.self) { item in
                         HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 15, height: 15)
-                                .background(LoudnessMatchModalColors.primary)
-                                .clipShape(Circle())
+                            Circle()
+                                .fill(LoudnessMatchModalColors.primary)
+                                .frame(width: 5, height: 5)
+                                .padding(.top, 7)
 
                             Text(item)
                                 .font(.system(size: 14))
