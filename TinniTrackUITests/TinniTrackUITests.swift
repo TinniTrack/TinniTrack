@@ -143,7 +143,10 @@ final class TinniTrackUITests: XCTestCase {
         app.launch()
 
         let studyCard = app.buttons["study_card_study-no-1"]
-        XCTAssertTrue(studyCard.waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            studyCard.waitForExistence(timeout: 15),
+            "Timed out waiting for the hosted development study catalog to show Study No. 1."
+        )
         studyCard.tap()
 
         XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 3))
