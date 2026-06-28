@@ -1061,24 +1061,6 @@ The current test suite includes coverage for:
 
 Typical Xcode test execution should use `TinniTrack Development` and the hosted development Supabase project. UI tests that need authenticated app state should use test hooks, seeded development users, or test-only credentials supplied outside source control; do not commit real personal account credentials or passwords. For documentation-only changes, a markdown/diff check is usually enough; for behavior changes, run the relevant unit tests, UI tests for changed navigation or flows, and any physical-device checks that match the changed boundary.
 
-### Local Xcode Test Workflow
-
-Run signed simulator tests from Terminal.app or Xcode. Commands launched from some host apps can cause macOS to attach `com.apple.provenance` extended attributes to generated build products; Apple's `codesign` rejects those bundles with `resource fork, Finder information, or similar detritus not allowed`. If you are driving tests from Codex or another app that triggers those attributes, use the Terminal wrapper so the actual `xcodebuild` process is owned by Terminal.app:
-
-```sh
-scripts/xcode-test-terminal.sh \
-  -only-testing:TinniTrackTests/StudyConsentCatalogTests
-```
-
-For UI flow checks:
-
-```sh
-scripts/xcode-test-terminal.sh \
-  -only-testing:TinniTrackUITests/TinniTrackUITests/testStudyNo1DashboardOpensConsentLandingDirectly
-```
-
-The wrapper defaults to the `TinniTrack Development` scheme, `Debug Development` configuration, a single iPhone simulator, and a 10-minute wait for cold UI-test builds. Override the simulator with `TINNITRACK_SIMULATOR_ID=<udid>` when needed, or adjust the wait with `TINNITRACK_XCODE_WAIT_SECONDS=<seconds>`. Keep using one simulator at a time.
-
 ## Future Plans
 
 ### ResearchKit Parity
