@@ -71,5 +71,8 @@ fastlane/test_output
 build/
 DerivedData/
 
+# Codex local environment
+.codex/environments/environment.toml
+
 # macOS
 .DS_Store
