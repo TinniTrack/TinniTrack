@@ -115,12 +115,10 @@ private struct StudyConsentLandingView: View {
 
                     ForEach(definition.landing.eligibilityItems, id: \.self) { item in
                         HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 15, height: 15)
-                                .background(LoudnessMatchModalColors.primary)
-                                .clipShape(Circle())
+                            Circle()
+                                .fill(LoudnessMatchModalColors.primary)
+                                .frame(width: 5, height: 5)
+                                .padding(.top, 7)
 
                             Text(item)
                                 .font(.system(size: 14))
@@ -644,13 +642,82 @@ private struct StudyConsentBlockView: View {
         case .contacts(let contacts):
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(contacts, id: \.email) { contact in
-                    Text(contact.displayText)
-                        .font(.system(size: 14))
-                        .lineSpacing(3)
-                        .foregroundStyle(StudyConsentReadableColors.bodyText)
+                    StudyConsentContactView(contact: contact)
                 }
             }
         }
+    }
+}
+
+private struct StudyConsentContactView: View {
+    let contact: StudyConsentContact
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(contact.title)
+            Text(contact.name)
+            if let affiliation = contact.affiliation {
+                Text(affiliation)
+            }
+            StudyConsentEmailLink(email: contact.email)
+            ForEach(contact.addressLines, id: \.self) { addressLine in
+                Text(addressLine)
+            }
+        }
+        .font(.system(size: 14))
+        .lineSpacing(3)
+        .foregroundStyle(StudyConsentReadableColors.bodyText)
+    }
+}
+
+struct StudyConsentEmailInteraction {
+    static func mailtoURL(for email: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = email
+        return components.url
+    }
+
+    static func copyEmailToPasteboard(_ email: String) {
+        UIPasteboard.general.string = email
+    }
+
+    static func accessibilityIdentifier(for email: String) -> String {
+        let sanitized = email
+            .lowercased()
+            .map { character in
+                character.isLetter || character.isNumber ? character : "_"
+            }
+        return "study_consent_email_\(String(sanitized))"
+    }
+}
+
+private struct StudyConsentEmailLink: View {
+    let email: String
+
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            if let mailtoURL = StudyConsentEmailInteraction.mailtoURL(for: email) {
+                openURL(mailtoURL)
+            }
+        } label: {
+            Text(email)
+                .underline()
+                .foregroundStyle(.blue)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                StudyConsentEmailInteraction.copyEmailToPasteboard(email)
+            } label: {
+                Label("Copy Email", systemImage: "doc.on.doc")
+            }
+        }
+        .accessibilityLabel("Email \(email)")
+        .accessibilityHint("Opens a new email. Long press to copy the address.")
+        .accessibilityIdentifier(StudyConsentEmailInteraction.accessibilityIdentifier(for: email))
     }
 }
 

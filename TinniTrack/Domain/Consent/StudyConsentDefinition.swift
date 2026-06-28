@@ -363,7 +363,7 @@ enum StudyConsentCatalog {
                 StudyConsentAtAGlanceRow(symbolName: "calendar", label: "Duration", value: "14 days"),
                 StudyConsentAtAGlanceRow(symbolName: "clock", label: "Daily effort", value: "4 brief check-ins per day"),
                 StudyConsentAtAGlanceRow(symbolName: "stopwatch", label: "Time per check-in", value: "About 1-3 minutes"),
-                StudyConsentAtAGlanceRow(symbolName: "headphones", label: "Equipment", value: "iPhone + AirPods Pro Gen 2 or 3"),
+                StudyConsentAtAGlanceRow(symbolName: "headphones", label: "Equipment", value: "iPhone + AirPods Pro Gen 2"),
                 StudyConsentAtAGlanceRow(symbolName: "flask", label: "Type", value: "Research, not treatment")
             ],
             whatYouWillDo: "Take an Apple Hearing Test with your AirPods, complete loudness matching tasks, and answer brief check-ins throughout the day.",
@@ -374,7 +374,7 @@ enum StudyConsentCatalog {
                 "Your tinnitus has been evaluated by a doctor or audiologist and determined to be primary tinnitus or sensorineural tinnitus, not related to a medical condition or structural issue. Your tinnitus does not have another known medical cause, such as vascular conditions, jaw disorders, Meniere's disease, or otosclerosis.",
                 "Your tinnitus is non-pulsatile and does not seem to track your heartbeat or sound like a heartbeat.",
                 "You own an iPhone 11 or newer, which is required for the study app.",
-                "You own Apple AirPods Pro Generation 2 or 3.",
+                "You own Apple AirPods Pro Generation 2.",
                 "You are able to complete short assessments, about 3 minutes each, four times per day at 8 AM, 12 PM, 4 PM, and 8 PM for 14 days on your phone."
             ],
             beforeEnrollTitle: "Before you enroll",
@@ -451,7 +451,7 @@ enum StudyConsentCatalog {
                         "Your tinnitus has been evaluated by a doctor or audiologist and determined to be primary tinnitus or sensorineural tinnitus, not related to a medical condition or structural issue. Your tinnitus does not have another known medical cause, such as vascular conditions, jaw disorders, Meniere's disease, or otosclerosis.",
                         "Your tinnitus is non-pulsatile and does not seem to track your heartbeat or sound like a heartbeat.",
                         "You own an iPhone 11 or newer, which is required for the study app.",
-                        "You own Apple AirPods Pro Generation 2 or 3.",
+                        "You own Apple AirPods Pro Generation 2.",
                         "You are able to complete short assessments, about 3 minutes each, four times per day at 8 AM, 12 PM, 4 PM, and 8 PM for 14 days on your phone."
                     ]),
                     .callout(title: "Eligibility questions", body: "If you have questions about eligibility, contact armstrtr@whitman.edu.")
@@ -464,7 +464,7 @@ enum StudyConsentCatalog {
                 blocks: [
                     .paragraph("You will download the app on your iPhone. Before the baseline session, you will complete the Apple Hearing Test in iOS Settings with your AirPods Pro connected."),
                     .paragraph("The app will ask for permission to access your hearing data via Apple HealthKit. This is used only to import your audiogram to calibrate the loudness match tones to your personal hearing level. No other health data are accessed."),
-                    .paragraph("You will use your Apple AirPods Pro Generation 2 or 3 with Active Noise Cancellation on.")
+                    .paragraph("You will use your Apple AirPods Pro Generation 2 with Active Noise Cancellation on.")
                 ]
             ),
             StudyConsentSection(

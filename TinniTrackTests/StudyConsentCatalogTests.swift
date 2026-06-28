@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import TinniTrack
 
 struct StudyConsentCatalogTests {
@@ -18,7 +19,7 @@ struct StudyConsentCatalogTests {
         #expect(definition.landing.atAGlanceRows.count == 5)
         #expect(definition.landing.atAGlanceRows.contains { $0.label == "You're in control" } == false)
         #expect(definition.landing.whatYouWillDo == "Take an Apple Hearing Test with your AirPods, complete loudness matching tasks, and answer brief check-ins throughout the day.")
-        #expect(definition.landing.eligibilityItems.contains("You own Apple AirPods Pro Generation 2 or 3."))
+        #expect(definition.landing.eligibilityItems.contains("You own Apple AirPods Pro Generation 2."))
         #expect(definition.sections.contains { $0.blocks.contains(.scheduleChips(["8 AM", "12 PM", "4 PM", "8 PM"])) })
         #expect(definition.sections.map(\.title) == [
             "Key information",
@@ -62,6 +63,22 @@ struct StudyConsentCatalogTests {
         #expect(Self.completion(contentSHA256Hex: "abc").isValidSignedConsent == false)
         #expect(Self.completion(signatureImageSHA256Hex: nil).isValidSignedConsent == false)
         #expect(Self.completion(collectionMethod: "researchkit").isValidSignedConsent == false)
+    }
+
+    @Test
+    func consentEmailInteractionBuildsMailtoURLsAndStableAccessibilityIDs() {
+        #expect(StudyConsentEmailInteraction.mailtoURL(for: "armstrtr@whitman.edu")?.absoluteString == "mailto:armstrtr@whitman.edu")
+        #expect(StudyConsentEmailInteraction.mailtoURL(for: "irb@whitman.edu")?.absoluteString == "mailto:irb@whitman.edu")
+        #expect(StudyConsentEmailInteraction.accessibilityIdentifier(for: "armstrtr@whitman.edu") == "study_consent_email_armstrtr_whitman_edu")
+        #expect(StudyConsentEmailInteraction.accessibilityIdentifier(for: "irb@whitman.edu") == "study_consent_email_irb_whitman_edu")
+    }
+
+    @MainActor
+    @Test
+    func consentEmailInteractionCopiesAddressToPasteboard() {
+        StudyConsentEmailInteraction.copyEmailToPasteboard("armstrtr@whitman.edu")
+
+        #expect(UIPasteboard.general.string == "armstrtr@whitman.edu")
     }
 
     private static func completion(
