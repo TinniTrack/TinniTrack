@@ -891,7 +891,6 @@ Configuration can come from process environment or bundle Info.plist. The app us
 Environment naming:
 
 - explicit `SUPABASE_ENVIRONMENT` wins,
-- localhost resolves as Local,
 - a runtime URL differing from bundled URL resolves as Development,
 - otherwise Production.
 
@@ -905,7 +904,7 @@ Current schema is migration-driven. Important tables include:
   - Biological sex was removed from profile requirements.
 - `studies`
   - Study catalog rows such as `study-no-1`.
-  - Authenticated users can read recruiting studies.
+  - Recruiting studies are public catalog rows.
 - `consents`
   - User-scoped consent records.
 - `audiograms`
@@ -930,7 +929,7 @@ RLS is enabled for user-scoped tables. The current policies are based on ownersh
 Important policy intent:
 
 - users can read and update their own profile,
-- users can select recruiting studies,
+- anon and authenticated clients can select recruiting study catalog rows,
 - users can select, insert, and update their own audiograms,
 - users can select, insert, and update their own enrollments,
 - users can select scheduled tasks linked to their own enrollments,
@@ -1016,15 +1015,17 @@ If Xcode cannot resolve `ResearchKit`, `ResearchKitUI`, or `ResearchKitActiveTas
 Simulator guidance:
 
 - Run only one iOS Simulator at a time.
-- Use `TinniTrack Local Dev` for simulator testing.
+- Use `TinniTrack Development` for simulator and development-device testing against the hosted development Supabase project.
 - Use `TinniTrack` only for production testing on a physical device.
-- Use `TinniTrack iPhone Dev` for physical-device testing against the separate development database.
+- Do not run app tests against a local Supabase stack. Development, UI testing, and manual replay checks should use the hosted development Supabase project.
 
 Supabase configuration:
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - optional `SUPABASE_ENVIRONMENT`
+
+The iOS app uses a publishable anon key. That key is safe to ship only because Row Level Security defines the data boundary. Keep unauthenticated access limited to public catalog data such as recruiting study rows; participant-specific records, consent records, task state, profiles, audiograms, and developer reset/replay tools must remain authenticated and user-scoped.
 
 HealthKit and AirPods behavior is limited in the simulator. The full Study No. 1 path requires physical-device testing for:
 
@@ -1058,7 +1059,7 @@ The current test suite includes coverage for:
 - signup draft store,
 - developer tools view model.
 
-Typical Xcode test execution should use the local-dev scheme. For documentation-only changes, a markdown/diff check is usually enough; for behavior changes, run the relevant unit tests and any physical-device checks that match the changed boundary.
+Typical Xcode test execution should use `TinniTrack Development` and the hosted development Supabase project. UI tests that need authenticated app state should use test hooks, seeded development users, or test-only credentials supplied outside source control; do not commit real personal account credentials or passwords. For documentation-only changes, a markdown/diff check is usually enough; for behavior changes, run the relevant unit tests, UI tests for changed navigation or flows, and any physical-device checks that match the changed boundary.
 
 ## Future Plans
 

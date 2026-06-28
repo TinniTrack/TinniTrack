@@ -13,12 +13,14 @@
 - Feature code should not import ResearchKit directly by default. Use `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift` as the boundary for ResearchKit presentation and result handling.
 - Supabase schema changes must be made through new SQL migration files in `supabase/migrations/`. Do not rewrite migrations that may already have been applied remotely.
 
-## iOS Simulator Guidance
+## Development And Testing Guidance
 
 - Run only one iOS Simulator at a time. Do not run simulators in parallel; parallel simulator sessions cause local performance issues and can make build, run, and UI testing results less reliable.
-- Use the `TinniTrack Local Dev` scheme for simulator testing.
+- Use the `TinniTrack Development` scheme for simulator testing and development-device testing against the hosted development Supabase project.
 - Use the regular `TinniTrack` scheme only for production testing on a physical device.
-- Use the `TinniTrack iPhone Dev` scheme for physical-device testing against the separate development database.
+- Do not use or recreate a local Supabase stack for app testing. Automated tests and manual development checks should target the hosted development Supabase project through development configuration.
+- UI tests that need authenticated state should use test hooks, seeded development users, or test-only credentials supplied outside source control. Do not commit real personal account credentials or passwords.
+- Public unauthenticated Supabase access should be limited to nonsensitive catalog-style data, such as recruiting study rows. Participant data, consent records, task data, profiles, audiograms, and developer tools must stay authenticated and user-scoped.
 
 ## Commit Workflow
 

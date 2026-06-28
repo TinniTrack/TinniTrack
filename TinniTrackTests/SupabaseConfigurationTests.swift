@@ -36,21 +36,6 @@ struct SupabaseConfigurationTests {
     }
 
     @Test
-    func bundledLocalhostValuesResolveToLocalWithoutExplicitEnvironment() {
-        let environment = SupabaseConfiguration.currentEnvironment(
-            bundleInfo: [
-                "SUPABASE_URL": "http://127.0.0.1:54321",
-                "SUPABASE_ANON_KEY": "local-anon-key"
-            ],
-            processEnvironment: [:]
-        )
-
-        #expect(environment.name == "Local")
-        #expect(environment.isProduction == false)
-        #expect(environment.hostDescription == "127.0.0.1")
-    }
-
-    @Test
     func processEnvironmentOverridesBundledValues() {
         let environment = SupabaseConfiguration.currentEnvironment(
             bundleInfo: [

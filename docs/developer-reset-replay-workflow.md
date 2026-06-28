@@ -1,6 +1,8 @@
 # Developer Reset and Replay Workflow
 
-Use a non-production Supabase project for normal device testing. The checked-in `TinniTrack Local` scheme is useful for simulator work against `supabase start`, but `http://127.0.0.1:54321` points at the iPhone itself on a physical device. For phone testing, edit the Debug scheme environment variables in Xcode:
+Use the hosted development Supabase project for normal simulator and device testing. The checked-in `TinniTrack Development` scheme uses the `Debug Development` build configuration, which points at that hosted development project for both local simulator runs and development-device testing.
+
+Expected app configuration:
 
 - `SUPABASE_URL`: hosted development Supabase project URL
 - `SUPABASE_ANON_KEY`: hosted development project publishable or anon key
@@ -44,4 +46,3 @@ join public.study_enrollments se on se.id = st.enrollment_id
 where se.user_id <> auth.uid()
 order by st.scheduled_for;
 ```
-

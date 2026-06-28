@@ -390,19 +390,53 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		E12657D92FEA3F5700996BE7 /* Debug iPhone Dev */ = {
+		E12657D92FEA3F5700996BE7 /* Debug Development */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PRODUCT_NAME = TinniTrackTests;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILD_DIR)/Release$(EFFECTIVE_PLATFORM_NAME)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.BARScapstone.TinniTrackTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TinniTrack.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TinniTrack";
 			};
-			name = "Debug iPhone Dev";
+			name = "Debug Development";
 		};
-		E12657DA2FEA3F5700996BE7 /* Debug iPhone Dev */ = {
+		E12657DA2FEA3F5700996BE7 /* Debug Development */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				PRODUCT_NAME = TinniTrackUITests;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILD_DIR)/Release$(EFFECTIVE_PLATFORM_NAME)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.BARScapstone.TinniTrackUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TinniTrack;
 			};
-			name = "Debug iPhone Dev";
+			name = "Debug Development";
 		};
 		E1CBE41B2EE269DE005AB9B0 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -665,7 +699,7 @@
 			};
 			name = Release;
 		};
-		E1CBE5302EE50000005AB9B0 /* Debug iPhone Dev */ = {
+		E1CBE5302EE50000005AB9B0 /* Debug Development */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -699,9 +733,9 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
-			name = "Debug iPhone Dev";
+			name = "Debug Development";
 		};
-		E1CBE5312EE50000005AB9B0 /* Debug iPhone Dev */ = {
+		E1CBE5312EE50000005AB9B0 /* Debug Development */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -762,7 +796,7 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
-			name = "Debug iPhone Dev";
+			name = "Debug Development";
 		};
 /* End XCBuildConfiguration section */
 
@@ -771,7 +805,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E1CBE41B2EE269DE005AB9B0 /* Debug */,
-				E1CBE5312EE50000005AB9B0 /* Debug iPhone Dev */,
+				E1CBE5312EE50000005AB9B0 /* Debug Development */,
 				E1CBE41C2EE269DE005AB9B0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -781,7 +815,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E1CBE41E2EE269DE005AB9B0 /* Debug */,
-				E1CBE5302EE50000005AB9B0 /* Debug iPhone Dev */,
+				E1CBE5302EE50000005AB9B0 /* Debug Development */,
 				E1CBE41F2EE269DE005AB9B0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -792,7 +826,7 @@
 			buildConfigurations = (
 				E1CBE4212EE269DE005AB9B0 /* Debug */,
 				E1CBE4222EE269DE005AB9B0 /* Release */,
-				E12657D92FEA3F5700996BE7 /* Debug iPhone Dev */,
+				E12657D92FEA3F5700996BE7 /* Debug Development */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -802,7 +836,7 @@
 			buildConfigurations = (
 				E1CBE4242EE269DE005AB9B0 /* Debug */,
 				E1CBE4252EE269DE005AB9B0 /* Release */,
-				E12657DA2FEA3F5700996BE7 /* Debug iPhone Dev */,
+				E12657DA2FEA3F5700996BE7 /* Debug Development */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

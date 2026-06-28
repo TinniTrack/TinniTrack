@@ -84,7 +84,7 @@ private struct DashboardTabView: View {
         .task {
             await viewModel.loadIfNeeded()
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
                 await viewModel.refreshForLifecycleEvent()
@@ -144,6 +144,7 @@ private struct DashboardTabView: View {
                         StudyCardView(studyCard: studyCard)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("study_card_\(studyCard.study.slug)")
                 }
             }
         }
@@ -227,60 +228,28 @@ private struct StudyDetailView: View {
     let onEnrollmentCompleted: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var activeConsentFlow: ActiveConsentFlow?
-    @State private var enrollmentErrorMessage: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                detailCard(title: "Description", body: studyCard.study.description)
-                criteriaCard(title: "Inclusion Criteria", items: Self.inclusionCriteria)
-                criteriaCard(title: "Exclusion Criteria", items: Self.exclusionCriteria)
-
-                Button {
-                    handleEnrollTapped()
-                } label: {
-                    HStack {
-                        Text(canEnroll ? "Begin eConsent & Enroll" : "Enrollment Unavailable")
-                            .fontWeight(.semibold)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(canEnroll ? DashboardColors.brandBlue : Color(uiColor: .systemGray3))
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        Group {
+            if canEnroll, let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) {
+                StudyConsentFlowView(
+                    study: studyCard.study,
+                    definition: definition,
+                    consentService: consentService
+                ) {
+                    await onEnrollmentCompleted()
                 }
-                .buttonStyle(AppRoundedButtonStyle(cornerRadius: 12))
-                .disabled(!canEnroll || activeConsentFlow != nil)
+            } else {
+                EnrollmentUnavailableView(
+                    title: unavailableTitle,
+                    message: unavailableMessage
+                )
             }
-            .padding(20)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(studyCard.study.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .alert("Unable to Enroll", isPresented: Binding(
-            get: { enrollmentErrorMessage != nil },
-            set: { shouldShow in
-                if !shouldShow {
-                    enrollmentErrorMessage = nil
-                }
-            }
-        )) {
-            Button("OK", role: .cancel) {
-                enrollmentErrorMessage = nil
-            }
-        } message: {
-            Text(enrollmentErrorMessage ?? "")
-        }
-        .fullScreenCover(item: $activeConsentFlow) { flow in
-            StudyConsentFlowView(
-                study: studyCard.study,
-                definition: flow.definition,
-                consentService: consentService
-            ) {
-                await onEnrollmentCompleted()
-                dismiss()
-            }
+        .toolbar(.hidden, for: .navigationBar)
+        .onChange(of: studyCard.enrollment?.status) { _, status in
+            guard status == .enrolled else { return }
+            dismiss()
         }
     }
 
@@ -291,76 +260,63 @@ private struct StudyDetailView: View {
         return false
     }
 
-    private func detailCard(title: String, body: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-            Text(body)
-                .font(.body)
-                .foregroundStyle(.secondary)
+    private var unavailableTitle: String {
+        if canEnroll {
+            return "Enrollment Unavailable"
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DashboardColors.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(DashboardColors.cardStroke, lineWidth: 1)
-        }
-        .shadow(color: DashboardColors.cardShadow, radius: 3, x: 0, y: 1)
+        return "Study Not Recruiting"
     }
 
-    private func criteriaCard(title: String, items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 8) {
-                    Text("•")
-                    Text(item)
-                }
-                .foregroundStyle(.secondary)
-                .font(.subheadline)
+    private var unavailableMessage: String {
+        if canEnroll {
+            return "This study does not have an eConsent definition."
+        }
+        return "Enrollment is not open for this study right now."
+    }
+}
+
+private struct EnrollmentUnavailableView: View {
+    let title: String
+    let message: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "lock.circle")
+                .font(.system(size: 54, weight: .semibold))
+                .foregroundStyle(DashboardColors.brandBlue)
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title2.weight(.bold))
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
+
+            Button {
+                dismiss()
+            } label: {
+                Label("Back to Dashboard", systemImage: "chevron.left")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 8)
+
+            Spacer()
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DashboardColors.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(DashboardColors.cardStroke, lineWidth: 1)
-        }
-        .shadow(color: DashboardColors.cardShadow, radius: 3, x: 0, y: 1)
-    }
-
-    private func handleEnrollTapped() {
-        guard canEnroll else { return }
-        guard let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) else {
-            enrollmentErrorMessage = "This study does not have an eConsent definition."
-            return
-        }
-        activeConsentFlow = ActiveConsentFlow(definition: definition)
-    }
-
-    private static let inclusionCriteria = [
-        "Adults (18+) with self-reported tinnitus.",
-        "Access to an iPhone and AirPods Pro (2nd generation).",
-        "Able to complete scheduled loudness-matching tasks."
-    ]
-
-    private static let exclusionCriteria = [
-        "Unable to provide informed consent.",
-        "No compatible headphones for calibration workflows.",
-        "Medical conditions that make headphone listening unsafe."
-    ]
-
-    private struct ActiveConsentFlow: Identifiable {
-        let definition: StudyConsentDefinition
-
-        var id: String {
-            definition.consentVersion
-        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

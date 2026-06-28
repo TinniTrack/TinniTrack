@@ -138,6 +138,22 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
+    func testStudyNo1DashboardOpensConsentLandingDirectly() throws {
+        let app = makeAuthenticatedStudyApp()
+        app.launch()
+
+        let studyCard = app.buttons["study_card_study-no-1"]
+        XCTAssertTrue(studyCard.waitForExistence(timeout: 3))
+        studyCard.tap()
+
+        XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Study No. 1: Loudness Match"].exists)
+        XCTAssertTrue(app.buttons["Review Study Consent"].exists)
+        XCTAssertFalse(app.staticTexts["Inclusion Criteria"].exists)
+        XCTAssertFalse(app.staticTexts["Exclusion Criteria"].exists)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
@@ -156,6 +172,14 @@ final class TinniTrackUITests: XCTestCase {
         let app = makeApp()
         app.launchEnvironment["UITEST_READY_PROFILE"] = "1"
         app.launchEnvironment["UITEST_PROFILE_EMAIL"] = "p@e.co"
+        return app
+    }
+
+    private func makeAuthenticatedStudyApp() -> XCUIApplication {
+        let app = makeAuthenticatedProfileApp()
+        app.launchEnvironment["SUPABASE_URL"] = "https://vhgbjeeoqmbqvxtstpcq.supabase.co"
+        app.launchEnvironment["SUPABASE_ANON_KEY"] = "sb_publishable_tzvCA-Go43bESrFD67sr8Q_8bdat__Q"
+        app.launchEnvironment["SUPABASE_ENVIRONMENT"] = "Development"
         return app
     }
 
