@@ -274,14 +274,26 @@ private struct StudyConsentBottomSentinelPreferenceKey: PreferenceKey {
     }
 }
 
+private enum StudyConsentSignatureField: Hashable {
+    case firstName
+    case lastName
+}
+
 private struct StudyConsentSignatureView: View {
     @ObservedObject var viewModel: StudyConsentFlowViewModel
     let exitConsentFlow: () -> Void
     @State private var isSignatureCapturePresented = false
     @State private var isDeclineConfirmationPresented = false
+    @FocusState private var focusedField: StudyConsentSignatureField?
 
     var body: some View {
         ScrollView {
+            Color.clear
+                .frame(height: 1)
+                .contentShape(Rectangle())
+                .onTapGesture { dismissTextFocus() }
+                .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: 18) {
                 StudyConsentProgressHeader(
                     stepText: "Step 2 of 2",
@@ -289,6 +301,8 @@ private struct StudyConsentSignatureView: View {
                     title: "Sign Consent",
                     subtitle: "By signing below, you confirm that you reviewed the consent information and choose to participate in the Loudness Match Study."
                 )
+                .contentShape(Rectangle())
+                .onTapGesture { dismissTextFocus() }
 
                 Text(viewModel.definition.attestation.text)
                     .font(.system(size: 14))
@@ -304,37 +318,60 @@ private struct StudyConsentSignatureView: View {
                             .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
                     }
                     .accessibilityIdentifier("study_consent_attestation_text")
+                    .onTapGesture { dismissTextFocus() }
 
                 StudyConsentTextField(
                     title: "First name",
                     text: $viewModel.firstName,
                     textContentType: .givenName,
-                    accessibilityIdentifier: "study_consent_first_name_field"
+                    accessibilityIdentifier: "study_consent_first_name_field",
+                    focusedField: $focusedField,
+                    field: .firstName,
+                    submitLabel: .next
                 )
+                .onSubmit {
+                    focusedField = .lastName
+                }
+
                 StudyConsentTextField(
                     title: "Last name",
                     text: $viewModel.lastName,
                     textContentType: .familyName,
-                    accessibilityIdentifier: "study_consent_last_name_field"
+                    accessibilityIdentifier: "study_consent_last_name_field",
+                    focusedField: $focusedField,
+                    field: .lastName,
+                    submitLabel: .done
                 )
+                .onSubmit {
+                    dismissTextFocus()
+                }
 
                 StudySignatureCaptureCard(
                     signatureImageData: viewModel.signatureImageData,
-                    drawSignature: { isSignatureCapturePresented = true }
+                    drawSignature: {
+                        dismissTextFocus()
+                        isSignatureCapturePresented = true
+                    }
                 )
+                .contentShape(Rectangle())
+                .onTapGesture { dismissTextFocus() }
 
                 StudyConsentMetadataRows(signedAt: Date())
+                    .contentShape(Rectangle())
+                    .onTapGesture { dismissTextFocus() }
 
                 LoudnessMatchModalPrimaryButton(
                     title: "Sign and Enroll",
                     isEnabled: viewModel.canSignAndEnroll,
                     isLoading: viewModel.state == .finalizing
                 ) {
+                    dismissTextFocus()
                     Task { await viewModel.signAndEnroll() }
                 }
                 .padding(.top, 8)
 
                 Button("I do not agree") {
+                    dismissTextFocus()
                     isDeclineConfirmationPresented = true
                 }
                 .font(.headline)
@@ -345,15 +382,14 @@ private struct StudyConsentSignatureView: View {
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 20)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { _ in
-                        dismissKeyboard()
-                    }
-            )
+            .background {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { dismissTextFocus() }
+            }
         }
         .accessibilityIdentifier("study_consent_signature_scroll")
-        .scrollDismissesKeyboard(.interactively)
+        .scrollDismissesKeyboard(.immediately)
         .background(LoudnessMatchModalColors.background)
         .overlay {
             if viewModel.state == .finalizing {
@@ -371,11 +407,16 @@ private struct StudyConsentSignatureView: View {
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
             exitConsentFlow()
         }
+        .onChange(of: viewModel.state) { state in
+            if state == .finalizing {
+                dismissTextFocus()
+            }
+        }
         .accessibilityIdentifier("study_consent_signature")
     }
 
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    private func dismissTextFocus() {
+        focusedField = nil
     }
 }
 
@@ -799,6 +840,9 @@ private struct StudyConsentTextField: View {
     @Binding var text: String
     let textContentType: UITextContentType
     let accessibilityIdentifier: String
+    let focusedField: FocusState<StudyConsentSignatureField?>.Binding
+    let field: StudyConsentSignatureField
+    let submitLabel: SubmitLabel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -810,6 +854,8 @@ private struct StudyConsentTextField: View {
                 .textContentType(textContentType)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
+                .submitLabel(submitLabel)
+                .focused(focusedField, equals: field)
                 .font(.system(size: 17))
                 .padding(.horizontal, 13)
                 .frame(height: 45)
