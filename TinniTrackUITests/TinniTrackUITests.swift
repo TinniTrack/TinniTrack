@@ -229,6 +229,32 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
+    func testStudyConsentEmailContactsExposeCopyMenu() throws {
+        let app = makeAuthenticatedStudyApp()
+        app.launch()
+
+        let studyCard = app.buttons["study_card_study-no-1"]
+        XCTAssertTrue(
+            studyCard.waitForExistence(timeout: 15),
+            "Timed out waiting for the hosted development study catalog to show Study No. 1."
+        )
+        studyCard.tap()
+
+        XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 3))
+        app.buttons["study_consent_review_button"].tap()
+        XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
+
+        assertConsentEmailCopyMenu(
+            "study_consent_email_armstrtr_whitman_edu",
+            in: app
+        )
+        assertConsentEmailCopyMenu(
+            "study_consent_email_irb_whitman_edu",
+            in: app
+        )
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
@@ -292,6 +318,26 @@ final class TinniTrackUITests: XCTestCase {
         for _ in 0..<10 where !app.buttons["study_consent_signature_button"].isEnabled {
             scrollView.swipeUp()
         }
+    }
+
+    @MainActor
+    private func assertConsentEmailCopyMenu(_ identifier: String, in app: XCUIApplication) {
+        let emailButton = app.buttons[identifier]
+        let scrollView = app.scrollViews["study_consent_reader_scroll"]
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
+
+        for _ in 0..<10 where !emailButton.isHittable {
+            scrollView.swipeUp()
+        }
+
+        XCTAssertTrue(emailButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(emailButton.isHittable)
+        emailButton.press(forDuration: 1.1)
+
+        let copyEmailButton = app.buttons["Copy Email"].firstMatch
+        XCTAssertTrue(copyEmailButton.waitForExistence(timeout: 2))
+        copyEmailButton.tap()
+        XCTAssertTrue(copyEmailButton.waitForNonExistence(timeout: 2))
     }
 
     @MainActor
