@@ -12,7 +12,6 @@ struct StudyConsentFlowView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: StudyConsentFlowViewModel
     @State private var isReviewPresented = false
-    @State private var isSignaturePresented = false
 
     init(
         study: Study,
@@ -41,27 +40,15 @@ struct StudyConsentFlowView: View {
                 viewModel.returnToLandingAfterNavigationPop()
             }
             .navigationDestination(isPresented: $isReviewPresented) {
-                StudyConsentReaderView(
-                    viewModel: viewModel,
-                    continueToSignature: { isSignaturePresented = true }
-                )
+                StudyConsentReaderView(viewModel: viewModel)
                 .navigationTitle("Informed Consent")
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar(.hidden, for: .tabBar)
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .background(LoudnessMatchModalColors.background)
                 .onAppear {
                     viewModel.reviewConsent()
                 }
-            }
-            .navigationDestination(isPresented: $isSignaturePresented) {
-                StudyConsentSignatureView(viewModel: viewModel)
-                    .navigationTitle("Sign Consent")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .foregroundStyle(LoudnessMatchModalColors.text)
-                    .background(LoudnessMatchModalColors.background)
-                    .onAppear {
-                        viewModel.continueToSignature()
-                    }
             }
             .task(id: viewModel.state) {
                 switch viewModel.state {
@@ -102,11 +89,6 @@ private struct StudyConsentLandingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(definition.landing.eyebrow)
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-                        .foregroundStyle(LoudnessMatchModalColors.primary)
-
                     Text(definition.landing.title)
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(LoudnessMatchModalColors.text)
@@ -174,69 +156,90 @@ private struct StudyConsentLandingView: View {
 
 private struct StudyConsentReaderView: View {
     @ObservedObject var viewModel: StudyConsentFlowViewModel
-    let continueToSignature: () -> Void
+    @State private var isSignaturePresented = false
+    @State private var isDeclineConfirmationPresented = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        StudyConsentProgressHeader(
-                            stepText: "Step 1 of 2",
-                            progress: 0.5,
-                            title: "Informed Consent",
-                            subtitle: viewModel.definition.landing.title
-                        )
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    StudyConsentProgressHeader(
+                        stepText: "Step 1 of 2",
+                        progress: 0.5,
+                        title: "Informed Consent",
+                        subtitle: viewModel.definition.landing.title
+                    )
 
-                        StudyConsentKeyInfoCard(keyInformation: viewModel.definition.keyInformation)
+                    StudyConsentKeyInfoCard(keyInformation: viewModel.definition.keyInformation)
 
-                        StudyConsentTabs(
-                            sections: viewModel.tabSections,
-                            selectedSectionID: viewModel.selectedSectionID
-                        ) { section in
-                            viewModel.selectSection(section)
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                proxy.scrollTo(section.id, anchor: .top)
-                            }
-                        }
-
-                        ForEach(viewModel.visibleSections) { section in
-                            StudyConsentSectionView(section: section)
-                                .id(section.id)
-                        }
-
-                        VStack(spacing: 8) {
-                            Image(systemName: viewModel.canContinueToSignature ? "checkmark.lock.open" : "lock")
-                            Text(viewModel.canContinueToSignature ? "You can continue" : "Scroll to the end to continue")
-                        }
-                        .font(.footnote)
-                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
-                        .onAppear {
-                            viewModel.markConsentScrolledToEnd()
+                    StudyConsentTabs(
+                        sections: viewModel.tabSections,
+                        selectedSectionID: viewModel.selectedSectionID
+                    ) { section in
+                        viewModel.selectSection(section)
+                        withAnimation(.easeInOut(duration: 0.22)) {
+                            proxy.scrollTo(section.id, anchor: .top)
                         }
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 20)
-                }
-            }
 
+                    ForEach(viewModel.visibleSections) { section in
+                        StudyConsentSectionView(section: section)
+                            .id(section.id)
+                    }
+
+                    VStack(spacing: 8) {
+                        Image(systemName: viewModel.canContinueToSignature ? "checkmark.lock.open" : "lock")
+                        Text(viewModel.canContinueToSignature ? "You can continue" : "Scroll to the end to continue")
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                    .onAppear {
+                        viewModel.markConsentScrolledToEnd()
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.bottom, 34)
+            }
+            .accessibilityIdentifier("study_consent_reader_scroll")
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             StudyConsentBottomActionBar(
                 secondaryTitle: "I do not agree",
                 primaryTitle: "I agree, continue to signature",
                 isPrimaryEnabled: viewModel.canContinueToSignature,
-                secondaryAction: viewModel.declineOrCancel,
-                primaryAction: continueToSignature
+                secondaryAction: { isDeclineConfirmationPresented = true },
+                primaryAction: {
+                    guard viewModel.canContinueToSignature else { return }
+                    viewModel.continueToSignature()
+                    isSignaturePresented = true
+                }
             )
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationDestination(isPresented: $isSignaturePresented) {
+            StudyConsentSignatureView(viewModel: viewModel)
+            .navigationTitle("Sign Consent")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
+            .foregroundStyle(LoudnessMatchModalColors.text)
+            .background(LoudnessMatchModalColors.background)
+            .onAppear {
+                viewModel.continueToSignature()
+            }
+        }
         .background(LoudnessMatchModalColors.background)
-        .accessibilityIdentifier("study_consent_reader")
+        .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
+            viewModel.declineOrCancel()
+        }
     }
 }
 
 private struct StudyConsentSignatureView: View {
     @ObservedObject var viewModel: StudyConsentFlowViewModel
+    @State private var isSignatureCapturePresented = false
+    @State private var isDeclineConfirmationPresented = false
 
     var body: some View {
         ScrollView {
@@ -275,9 +278,9 @@ private struct StudyConsentSignatureView: View {
                 StudyConsentTextField(title: "First name", text: $viewModel.firstName, textContentType: .givenName)
                 StudyConsentTextField(title: "Last name", text: $viewModel.lastName, textContentType: .familyName)
 
-                StudySignatureCanvasCard(
-                    signatureImageData: $viewModel.signatureImageData,
-                    clear: viewModel.clearSignature
+                StudySignatureCaptureCard(
+                    hasSignature: viewModel.signatureImageData?.isEmpty == false,
+                    drawSignature: { isSignatureCapturePresented = true }
                 )
 
                 StudyConsentMetadataRows(signedAt: Date())
@@ -292,12 +295,13 @@ private struct StudyConsentSignatureView: View {
                 .padding(.top, 8)
 
                 Button("I do not agree") {
-                    viewModel.declineOrCancel()
+                    isDeclineConfirmationPresented = true
                 }
                 .font(.headline)
                 .foregroundStyle(LoudnessMatchModalColors.primary)
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 24)
+                .accessibilityIdentifier("study_consent_signature_decline_button")
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 20)
@@ -307,6 +311,17 @@ private struct StudyConsentSignatureView: View {
             if viewModel.state == .finalizing {
                 StudyConsentFinalizingView()
             }
+        }
+        .sheet(isPresented: $isSignatureCapturePresented) {
+            StudySignatureCaptureSheet(
+                signatureImageData: $viewModel.signatureImageData,
+                clear: viewModel.clearSignature
+            )
+            .presentationDetents([.height(390), .large])
+            .presentationDragIndicator(.visible)
+        }
+        .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
+            viewModel.declineOrCancel()
         }
         .accessibilityIdentifier("study_consent_signature")
     }
@@ -628,21 +643,37 @@ private struct StudyConsentBottomActionBar: View {
     let primaryAction: () -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
-            Button(secondaryTitle, action: secondaryAction)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(LoudnessMatchModalColors.primary)
-                .frame(width: 92)
-
-            Button(action: primaryAction) {
-                StudyConsentPrimaryNavigationLabel(
-                    title: primaryTitle,
-                    isEnabled: isPrimaryEnabled
-                )
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: isPrimaryEnabled ? "checkmark.circle.fill" : "arrow.down.circle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isPrimaryEnabled ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.primary)
+                Text(isPrimaryEnabled ? "Consent reviewed. You can continue." : "Scroll to the bottom of the consent form to continue.")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(AppCapsuleButtonStyle())
-            .disabled(!isPrimaryEnabled)
-            .accessibilityIdentifier("study_consent_signature_button")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("study_consent_scroll_gate_message")
+
+            HStack(spacing: 14) {
+                Button(secondaryTitle, action: secondaryAction)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(LoudnessMatchModalColors.primary)
+                    .frame(width: 92)
+                    .accessibilityIdentifier("study_consent_decline_button")
+
+                Button(action: primaryAction) {
+                    StudyConsentPrimaryNavigationLabel(
+                        title: primaryTitle,
+                        isEnabled: isPrimaryEnabled
+                    )
+                    .accessibilityIdentifier("study_consent_signature_button")
+                }
+                .buttonStyle(AppCapsuleButtonStyle())
+                .disabled(!isPrimaryEnabled)
+                .accessibilityIdentifier("study_consent_signature_button")
+            }
         }
         .padding(.horizontal, 28)
         .padding(.top, 14)
@@ -705,73 +736,207 @@ private struct StudyConsentTextField: View {
     }
 }
 
-private struct StudySignatureCanvasCard: View {
-    @Binding var signatureImageData: Data?
-    let clear: () -> Void
-    @State private var strokes: [[CGPoint]] = []
-    @State private var currentStroke: [CGPoint] = []
+private struct StudySignatureCaptureCard: View {
+    let hasSignature: Bool
+    let drawSignature: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Draw signature")
+            Text("Signature")
                 .font(.footnote)
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
 
-            GeometryReader { proxy in
-                ZStack(alignment: .bottomTrailing) {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color(uiColor: .systemBackground))
+            Button(action: drawSignature) {
+                HStack(spacing: 12) {
+                    Image(systemName: hasSignature ? "checkmark.circle.fill" : "pencil.tip")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(hasSignature ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.primary)
+                        .frame(width: 32, height: 32)
 
-                    Canvas { context, _ in
-                        for stroke in strokes + [currentStroke] where stroke.count > 1 {
-                            var path = Path()
-                            path.move(to: stroke[0])
-                            for point in stroke.dropFirst() {
-                                path.addLine(to: point)
-                            }
-                            context.stroke(path, with: .color(.black), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                        }
-
-                        var baseline = Path()
-                        baseline.move(to: CGPoint(x: 14, y: proxy.size.height - 44))
-                        baseline.addLine(to: CGPoint(x: proxy.size.width - 14, y: proxy.size.height - 44))
-                        context.stroke(baseline, with: .color(Color(uiColor: .systemGray3)), lineWidth: 1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(hasSignature ? "Signature saved" : "No signature yet")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(LoudnessMatchModalColors.text)
+                        Text(hasSignature ? "Tap to redraw your signature." : "Open a dedicated signing sheet to draw with your finger.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                currentStroke.append(value.location)
-                            }
-                            .onEnded { _ in
-                                if currentStroke.count > 1 {
-                                    strokes.append(currentStroke)
-                                }
-                                currentStroke = []
-                                signatureImageData = Self.render(strokes: strokes, size: proxy.size)
-                            }
-                    )
 
-                    Button("Clear") {
-                        strokes = []
-                        currentStroke = []
-                        clear()
-                    }
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(LoudnessMatchModalColors.primary)
-                    .padding(.trailing, 14)
-                    .padding(.bottom, 14)
+                    Spacer(minLength: 8)
+
+                    Text("Draw signature")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(LoudnessMatchModalColors.primary)
                 }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .systemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
                 }
             }
-            .frame(height: 122)
+            .buttonStyle(AppRoundedButtonStyle(cornerRadius: 7))
+            .accessibilityIdentifier("study_consent_draw_signature_button")
         }
     }
+}
 
-    private static func render(strokes: [[CGPoint]], size: CGSize) -> Data? {
+private struct StudySignatureCaptureSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var signatureImageData: Data?
+    let clear: () -> Void
+    @State private var strokes: [[CGPoint]] = []
+    @State private var currentStroke: [CGPoint] = []
+    @State private var canvasSize: CGSize = .zero
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(LoudnessMatchModalColors.text)
+                        .frame(width: 36, height: 36)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("Dismiss signature")
+                .accessibilityIdentifier("study_signature_dismiss_button")
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Draw signature")
+                        .font(.headline)
+                        .foregroundStyle(LoudnessMatchModalColors.text)
+                    Text("Use your finger inside the box, then save.")
+                        .font(.subheadline)
+                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                }
+
+                Spacer()
+
+                Button("Clear") {
+                    clearDrawing()
+                }
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(LoudnessMatchModalColors.primary)
+                .accessibilityIdentifier("study_signature_clear_button")
+
+                Button("Save") {
+                    saveDrawing()
+                }
+                .font(.system(size: 14, weight: .bold))
+                .disabled(!hasDrawableSignature || canvasSize == .zero)
+                .accessibilityIdentifier("study_signature_save_button")
+            }
+
+            StudySignatureDrawingSurface(
+                strokes: $strokes,
+                currentStroke: $currentStroke,
+                canvasSize: $canvasSize
+            )
+            .frame(height: 214)
+
+            Text("Your signature is used only for this consent record.")
+                .font(.footnote)
+                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .background(LoudnessMatchModalColors.background)
+    }
+
+    private var hasDrawableSignature: Bool {
+        strokes.contains { $0.count > 1 } || currentStroke.count > 1
+    }
+
+    private func clearDrawing() {
+        strokes = []
+        currentStroke = []
+        clear()
+    }
+
+    private func saveDrawing() {
+        let allStrokes = strokes + (currentStroke.count > 1 ? [currentStroke] : [])
+        signatureImageData = StudySignatureRenderer.render(strokes: allStrokes, size: canvasSize)
+        strokes = allStrokes
+        currentStroke = []
+        dismiss()
+    }
+}
+
+private struct StudySignatureDrawingSurface: View {
+    @Binding var strokes: [[CGPoint]]
+    @Binding var currentStroke: [CGPoint]
+    @Binding var canvasSize: CGSize
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color(uiColor: .systemBackground))
+
+                Canvas { context, _ in
+                    StudySignatureRenderer.draw(
+                        strokes: strokes + [currentStroke],
+                        size: proxy.size,
+                        context: &context
+                    )
+                }
+            }
+            .contentShape(Rectangle())
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        currentStroke.append(value.location)
+                    }
+                    .onEnded { _ in
+                        if currentStroke.count > 1 {
+                            strokes.append(currentStroke)
+                        }
+                        currentStroke = []
+                    }
+            )
+            .onAppear {
+                canvasSize = proxy.size
+            }
+            .onChange(of: proxy.size) { _, newSize in
+                canvasSize = newSize
+            }
+        }
+    }
+}
+
+private enum StudySignatureRenderer {
+    static func draw(strokes: [[CGPoint]], size: CGSize, context: inout GraphicsContext) {
+        for stroke in strokes where stroke.count > 1 {
+            var path = Path()
+            path.move(to: stroke[0])
+            for point in stroke.dropFirst() {
+                path.addLine(to: point)
+            }
+            context.stroke(path, with: .color(.black), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+        }
+
+        var baseline = Path()
+        baseline.move(to: CGPoint(x: 16, y: size.height - 48))
+        baseline.addLine(to: CGPoint(x: size.width - 16, y: size.height - 48))
+        context.stroke(baseline, with: .color(Color(uiColor: .systemGray3)), lineWidth: 1)
+    }
+
+    static func render(strokes: [[CGPoint]], size: CGSize) -> Data? {
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { context in
             UIColor.white.setFill()
@@ -853,6 +1018,20 @@ struct StudyConsentFinalizingView: View {
     }
 }
 
+private extension View {
+    func declineConsentConfirmation(
+        isPresented: Binding<Bool>,
+        exit: @escaping () -> Void
+    ) -> some View {
+        alert("Consent Required", isPresented: isPresented) {
+            Button("Exit", role: .destructive, action: exit)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("If you do not agree to these terms, you cannot participate in this study.")
+        }
+    }
+}
+
 private struct StudyConsentSuccessView: View {
     var body: some View {
         VStack(spacing: 16) {
@@ -876,10 +1055,7 @@ private struct StudyConsentSuccessView: View {
 }
 
 #Preview("Reader") {
-    StudyConsentReaderView(
-        viewModel: StudyConsentFlowPreviewModel.makeReader(),
-        continueToSignature: {}
-    )
+    StudyConsentReaderView(viewModel: StudyConsentFlowPreviewModel.makeReader())
 }
 
 #Preview("Signature") {

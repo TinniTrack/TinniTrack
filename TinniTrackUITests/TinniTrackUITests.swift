@@ -161,6 +161,34 @@ final class TinniTrackUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Step 1 of 2"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+
+        scrollConsentToBottom(in: app)
+        app.buttons["study_consent_decline_button"].tap()
+        XCTAssertTrue(app.alerts["Consent Required"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.alerts["Consent Required"].staticTexts["If you do not agree to these terms, you cannot participate in this study."].exists)
+        app.alerts["Consent Required"].buttons["Cancel"].tap()
+        XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 2))
+
+        let signatureButton = app.buttons["study_consent_signature_button"]
+        XCTAssertTrue(signatureButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(signatureButton.isEnabled)
+        signatureButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Sign Consent"].exists)
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+
+        let drawSignatureButton = app.buttons["study_consent_draw_signature_button"]
+        XCTAssertTrue(drawSignatureButton.waitForExistence(timeout: 2))
+        drawSignatureButton.tap()
+        XCTAssertTrue(app.buttons["study_signature_clear_button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["study_signature_save_button"].exists)
+        app.buttons["study_signature_dismiss_button"].tap()
+        XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
+
+        swipeBack(in: app)
+        XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 2))
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 2))
@@ -224,5 +252,15 @@ final class TinniTrackUITests: XCTestCase {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    @MainActor
+    private func scrollConsentToBottom(in app: XCUIApplication) {
+        let scrollView = app.scrollViews.firstMatch
+        XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
+
+        for _ in 0..<10 where !app.buttons["study_consent_signature_button"].isEnabled {
+            scrollView.swipeUp()
+        }
     }
 }
