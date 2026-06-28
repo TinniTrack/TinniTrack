@@ -298,7 +298,7 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
-    func testStudyConsentEmailContactsExposeCopyMenu() throws {
+    func testStudyConsentEmailLinksExposeCopyMenu() throws {
         let app = makeAuthenticatedStudyApp()
         app.launch()
 
@@ -313,6 +313,10 @@ final class TinniTrackUITests: XCTestCase {
         app.buttons["study_consent_review_button"].tap()
         XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
 
+        assertConsentEmailCopyMenu(
+            "study_consent_email_armstrtr_whitman_edu_eligibility_questions",
+            in: app
+        )
         assertConsentEmailCopyMenu(
             "study_consent_email_armstrtr_whitman_edu",
             in: app

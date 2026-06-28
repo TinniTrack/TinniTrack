@@ -540,9 +540,8 @@ private struct StudyConsentCallout: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 15, weight: .bold))
-                Text(bodyText)
+                StudyConsentEmailAwareText(text: bodyText, emailContext: title)
                     .font(.system(size: 13))
-                    .lineSpacing(2)
             }
         }
         .padding(12)
@@ -551,6 +550,40 @@ private struct StudyConsentCallout: View {
         .overlay {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(LoudnessMatchModalColors.primary.opacity(0.35), lineWidth: 1)
+        }
+    }
+}
+
+private struct StudyConsentEmailAwareText: View {
+    let text: String
+    let emailContext: String?
+
+    private var emailText: String? {
+        StudyConsentEmailInteraction.firstEmail(in: text)
+    }
+
+    var body: some View {
+        if let emailText,
+           let emailRange = text.range(of: emailText) {
+            let prefix = String(text[..<emailRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let suffix = String(text[emailRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+            VStack(alignment: .leading, spacing: 2) {
+                if !prefix.isEmpty {
+                    Text(prefix)
+                        .lineSpacing(2)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    StudyConsentEmailLink(email: emailText, context: emailContext)
+                    if !suffix.isEmpty {
+                        Text(suffix)
+                            .lineSpacing(2)
+                    }
+                }
+            }
+        } else {
+            Text(text)
+                .lineSpacing(2)
         }
     }
 }
@@ -712,6 +745,18 @@ private struct StudyConsentContactView: View {
 }
 
 struct StudyConsentEmailInteraction {
+    static func firstEmail(in text: String) -> String? {
+        let emailPattern = #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#
+        guard let range = text.range(
+            of: emailPattern,
+            options: [.regularExpression, .caseInsensitive]
+        ) else {
+            return nil
+        }
+
+        return String(text[range])
+    }
+
     static func mailtoURL(for email: String) -> URL? {
         var components = URLComponents()
         components.scheme = "mailto"
@@ -723,18 +768,29 @@ struct StudyConsentEmailInteraction {
         UIPasteboard.general.string = email
     }
 
-    static func accessibilityIdentifier(for email: String) -> String {
+    static func accessibilityIdentifier(for email: String, context: String? = nil) -> String {
         let sanitized = email
             .lowercased()
             .map { character in
                 character.isLetter || character.isNumber ? character : "_"
             }
-        return "study_consent_email_\(String(sanitized))"
+        let baseIdentifier = "study_consent_email_\(String(sanitized))"
+        guard let context else {
+            return baseIdentifier
+        }
+
+        let sanitizedContext = context
+            .lowercased()
+            .map { character in
+                character.isLetter || character.isNumber ? character : "_"
+            }
+        return "\(baseIdentifier)_\(String(sanitizedContext))"
     }
 }
 
 private struct StudyConsentEmailLink: View {
     let email: String
+    var context: String?
 
     @Environment(\.openURL) private var openURL
 
@@ -758,7 +814,7 @@ private struct StudyConsentEmailLink: View {
         }
         .accessibilityLabel("Email \(email)")
         .accessibilityHint("Opens a new email. Long press to copy the address.")
-        .accessibilityIdentifier(StudyConsentEmailInteraction.accessibilityIdentifier(for: email))
+        .accessibilityIdentifier(StudyConsentEmailInteraction.accessibilityIdentifier(for: email, context: context))
     }
 }
 

@@ -69,8 +69,10 @@ struct StudyConsentCatalogTests {
     func consentEmailInteractionBuildsMailtoURLsAndStableAccessibilityIDs() {
         #expect(StudyConsentEmailInteraction.mailtoURL(for: "armstrtr@whitman.edu")?.absoluteString == "mailto:armstrtr@whitman.edu")
         #expect(StudyConsentEmailInteraction.mailtoURL(for: "irb@whitman.edu")?.absoluteString == "mailto:irb@whitman.edu")
+        #expect(StudyConsentEmailInteraction.firstEmail(in: "Contact armstrtr@whitman.edu.") == "armstrtr@whitman.edu")
         #expect(StudyConsentEmailInteraction.accessibilityIdentifier(for: "armstrtr@whitman.edu") == "study_consent_email_armstrtr_whitman_edu")
         #expect(StudyConsentEmailInteraction.accessibilityIdentifier(for: "irb@whitman.edu") == "study_consent_email_irb_whitman_edu")
+        #expect(StudyConsentEmailInteraction.accessibilityIdentifier(for: "armstrtr@whitman.edu", context: "Eligibility questions") == "study_consent_email_armstrtr_whitman_edu_eligibility_questions")
     }
 
     @MainActor
