@@ -32,6 +32,33 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
+    func reviewingConsentResetsPreviousScrollProgress() {
+        let viewModel = Self.viewModel()
+
+        viewModel.reviewConsent()
+        viewModel.markConsentScrolledToEnd()
+        #expect(viewModel.canContinueToSignature)
+
+        viewModel.reviewConsent()
+        #expect(viewModel.state == .reviewingConsent)
+        #expect(viewModel.canContinueToSignature == false)
+    }
+
+    @Test
+    func exitConsentFlowReturnsToLandingWithoutDismissingStudyDetails() {
+        let viewModel = Self.viewModel()
+
+        viewModel.reviewConsent()
+        viewModel.markConsentScrolledToEnd()
+        viewModel.continueToSignature()
+
+        viewModel.exitConsentFlowToStudyDetails()
+
+        #expect(viewModel.state == .landing)
+        #expect(viewModel.canContinueToSignature == false)
+    }
+
+    @Test
     func chromeBackDismissesLandingAndNavigatesWithinConsentFlow() {
         let viewModel = Self.viewModel()
 
@@ -48,6 +75,7 @@ struct StudyConsentFlowViewModelTests {
         secondViewModel.continueToSignature()
         secondViewModel.navigateBackOrDismiss()
         #expect(secondViewModel.state == .reviewingConsent)
+        #expect(secondViewModel.canContinueToSignature == false)
     }
 
     @Test

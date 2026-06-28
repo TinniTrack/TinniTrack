@@ -82,12 +82,14 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
     func reviewConsent() {
         guard state != .finalizing else { return }
+        resetConsentReviewProgress()
         state = .reviewingConsent
     }
 
     func returnToLandingAfterNavigationPop() {
         switch state {
         case .reviewingConsent, .signing:
+            resetConsentReviewProgress()
             state = .landing
         case .landing, .finalizing, .completed, .dismissed, .failed:
             break
@@ -107,11 +109,18 @@ final class StudyConsentFlowViewModel: ObservableObject {
         state = .signing
     }
 
+    func exitConsentFlowToStudyDetails() {
+        resetConsentReviewProgress()
+        state = .landing
+    }
+
     func goBack() {
         switch state {
         case .reviewingConsent:
+            resetConsentReviewProgress()
             state = .landing
         case .signing:
+            resetConsentReviewProgress()
             state = .reviewingConsent
         case .landing, .finalizing, .completed, .dismissed, .failed:
             break
@@ -135,6 +144,11 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
     func clearSignature() {
         signatureImageData = nil
+    }
+
+    private func resetConsentReviewProgress() {
+        hasScrolledToConsentEnd = false
+        selectedSectionID = definition.sections.first?.id ?? ""
     }
 
     func signAndEnroll() async {

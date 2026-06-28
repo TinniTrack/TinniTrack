@@ -46,9 +46,6 @@ struct StudyConsentFlowView: View {
                 .toolbar(.hidden, for: .tabBar)
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .background(LoudnessMatchModalColors.background)
-                .onAppear {
-                    viewModel.reviewConsent()
-                }
             }
             .task(id: viewModel.state) {
                 switch viewModel.state {
@@ -155,54 +152,63 @@ private struct StudyConsentLandingView: View {
 }
 
 private struct StudyConsentReaderView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: StudyConsentFlowViewModel
     @State private var isSignaturePresented = false
     @State private var isDeclineConfirmationPresented = false
+    private let topAnchorID = "study_consent_reader_top"
+    private let scrollCoordinateSpaceName = "study_consent_reader_scroll_space"
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    StudyConsentProgressHeader(
-                        stepText: "Step 1 of 2",
-                        progress: 0.5,
-                        title: "Informed Consent",
-                        subtitle: viewModel.definition.landing.title
-                    )
+        GeometryReader { viewportProxy in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        StudyConsentProgressHeader(
+                            stepText: "Step 1 of 2",
+                            progress: 0.5,
+                            title: "Informed Consent",
+                            subtitle: viewModel.definition.landing.title
+                        )
+                        .id(topAnchorID)
 
-                    StudyConsentKeyInfoCard(keyInformation: viewModel.definition.keyInformation)
+                        StudyConsentKeyInfoCard(keyInformation: viewModel.definition.keyInformation)
 
-                    StudyConsentTabs(
-                        sections: viewModel.tabSections,
-                        selectedSectionID: viewModel.selectedSectionID
-                    ) { section in
-                        viewModel.selectSection(section)
-                        withAnimation(.easeInOut(duration: 0.22)) {
-                            proxy.scrollTo(section.id, anchor: .top)
+                        StudyConsentTabs(
+                            sections: viewModel.tabSections,
+                            selectedSectionID: viewModel.selectedSectionID
+                        ) { section in
+                            viewModel.selectSection(section)
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                proxy.scrollTo(section.id, anchor: .top)
+                            }
                         }
-                    }
 
-                    ForEach(viewModel.visibleSections) { section in
-                        StudyConsentSectionView(section: section)
-                            .id(section.id)
-                    }
+                        ForEach(viewModel.visibleSections) { section in
+                            StudyConsentSectionView(section: section)
+                                .id(section.id)
+                        }
 
-                    VStack(spacing: 8) {
-                        Image(systemName: viewModel.canContinueToSignature ? "checkmark.lock.open" : "lock")
-                        Text(viewModel.canContinueToSignature ? "You can continue" : "Scroll to the end to continue")
+                        StudyConsentBottomSentinel()
                     }
-                    .font(.footnote)
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .onAppear {
-                        viewModel.markConsentScrolledToEnd()
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 34)
+                }
+                .coordinateSpace(name: scrollCoordinateSpaceName)
+                .accessibilityIdentifier("study_consent_reader_scroll")
+                .onPreferenceChange(StudyConsentBottomSentinelPreferenceKey.self) { bottomY in
+                    markConsentReviewedIfBottomIsVisible(
+                        bottomY: bottomY,
+                        viewportHeight: viewportProxy.size.height
+                    )
+                }
+                .onAppear {
+                    viewModel.reviewConsent()
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(topAnchorID, anchor: .top)
                     }
                 }
-                .padding(.horizontal, 32)
-                .padding(.bottom, 34)
             }
-            .accessibilityIdentifier("study_consent_reader_scroll")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             StudyConsentBottomActionBar(
@@ -219,7 +225,14 @@ private struct StudyConsentReaderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationDestination(isPresented: $isSignaturePresented) {
-            StudyConsentSignatureView(viewModel: viewModel)
+            StudyConsentSignatureView(
+                viewModel: viewModel,
+                exitConsentFlow: {
+                    viewModel.exitConsentFlowToStudyDetails()
+                    isSignaturePresented = false
+                    dismiss()
+                }
+            )
             .navigationTitle("Sign Consent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
@@ -231,13 +244,47 @@ private struct StudyConsentReaderView: View {
         }
         .background(LoudnessMatchModalColors.background)
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
-            viewModel.declineOrCancel()
+            viewModel.exitConsentFlowToStudyDetails()
+            dismiss()
         }
+    }
+
+    private func markConsentReviewedIfBottomIsVisible(bottomY: CGFloat, viewportHeight: CGFloat) {
+        guard !viewModel.canContinueToSignature,
+              viewportHeight > 0,
+              bottomY > 0,
+              bottomY <= viewportHeight + 16 else {
+            return
+        }
+        viewModel.markConsentScrolledToEnd()
+    }
+}
+
+private struct StudyConsentBottomSentinel: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .preference(
+                    key: StudyConsentBottomSentinelPreferenceKey.self,
+                    value: proxy.frame(in: .named("study_consent_reader_scroll_space")).maxY
+                )
+        }
+        .frame(height: 1)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct StudyConsentBottomSentinelPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .greatestFiniteMagnitude
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = min(value, nextValue())
     }
 }
 
 private struct StudyConsentSignatureView: View {
     @ObservedObject var viewModel: StudyConsentFlowViewModel
+    let exitConsentFlow: () -> Void
     @State private var isSignatureCapturePresented = false
     @State private var isDeclineConfirmationPresented = false
 
@@ -275,11 +322,21 @@ private struct StudyConsentSignatureView: View {
                 }
                 .buttonStyle(AppRoundedButtonStyle(cornerRadius: 7))
 
-                StudyConsentTextField(title: "First name", text: $viewModel.firstName, textContentType: .givenName)
-                StudyConsentTextField(title: "Last name", text: $viewModel.lastName, textContentType: .familyName)
+                StudyConsentTextField(
+                    title: "First name",
+                    text: $viewModel.firstName,
+                    textContentType: .givenName,
+                    accessibilityIdentifier: "study_consent_first_name_field"
+                )
+                StudyConsentTextField(
+                    title: "Last name",
+                    text: $viewModel.lastName,
+                    textContentType: .familyName,
+                    accessibilityIdentifier: "study_consent_last_name_field"
+                )
 
                 StudySignatureCaptureCard(
-                    hasSignature: viewModel.signatureImageData?.isEmpty == false,
+                    signatureImageData: viewModel.signatureImageData,
                     drawSignature: { isSignatureCapturePresented = true }
                 )
 
@@ -305,7 +362,15 @@ private struct StudyConsentSignatureView: View {
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 20)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .onChanged { _ in
+                        dismissKeyboard()
+                    }
+            )
         }
+        .accessibilityIdentifier("study_consent_signature_scroll")
+        .scrollDismissesKeyboard(.interactively)
         .background(LoudnessMatchModalColors.background)
         .overlay {
             if viewModel.state == .finalizing {
@@ -321,9 +386,13 @@ private struct StudyConsentSignatureView: View {
             .presentationDragIndicator(.visible)
         }
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
-            viewModel.declineOrCancel()
+            exitConsentFlow()
         }
         .accessibilityIdentifier("study_consent_signature")
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
@@ -712,6 +781,7 @@ private struct StudyConsentTextField: View {
     let title: String
     @Binding var text: String
     let textContentType: UITextContentType
+    let accessibilityIdentifier: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -732,44 +802,58 @@ private struct StudyConsentTextField: View {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
                 }
+                .accessibilityIdentifier(accessibilityIdentifier)
         }
     }
 }
 
 private struct StudySignatureCaptureCard: View {
-    let hasSignature: Bool
+    let signatureImageData: Data?
     let drawSignature: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Signature")
                 .font(.footnote)
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
 
+            if let signatureImage {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Saved signature")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LoudnessMatchModalColors.text)
+
+                    Image(uiImage: signatureImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, minHeight: 76, maxHeight: 96)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(uiColor: .systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+                        }
+                        .accessibilityLabel("Saved signature preview")
+                        .accessibilityIdentifier("study_signature_preview_image")
+                }
+            }
+
             Button(action: drawSignature) {
                 HStack(spacing: 12) {
-                    Image(systemName: hasSignature ? "checkmark.circle.fill" : "pencil.tip")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(hasSignature ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.primary)
-                        .frame(width: 32, height: 32)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(hasSignature ? "Signature saved" : "No signature yet")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(LoudnessMatchModalColors.text)
-                        Text(hasSignature ? "Tap to redraw your signature." : "Open a dedicated signing sheet to draw with your finger.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Text("Draw signature")
-                        .font(.system(size: 13, weight: .bold))
+                    Image(systemName: "pencil.tip")
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(LoudnessMatchModalColors.primary)
+
+                    Text(signatureImage == nil ? "Draw signature" : "Redraw signature")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(LoudnessMatchModalColors.primary)
+
+                    Spacer(minLength: 0)
                 }
-                .padding(14)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 52)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(uiColor: .systemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -782,6 +866,11 @@ private struct StudySignatureCaptureCard: View {
             .accessibilityIdentifier("study_consent_draw_signature_button")
         }
     }
+
+    private var signatureImage: UIImage? {
+        guard let signatureImageData else { return nil }
+        return UIImage(data: signatureImageData)
+    }
 }
 
 private struct StudySignatureCaptureSheet: View {
@@ -793,7 +882,7 @@ private struct StudySignatureCaptureSheet: View {
     @State private var canvasSize: CGSize = .zero
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
                 Button {
                     dismiss()
@@ -818,20 +907,6 @@ private struct StudySignatureCaptureSheet: View {
                 }
 
                 Spacer()
-
-                Button("Clear") {
-                    clearDrawing()
-                }
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(LoudnessMatchModalColors.primary)
-                .accessibilityIdentifier("study_signature_clear_button")
-
-                Button("Save") {
-                    saveDrawing()
-                }
-                .font(.system(size: 14, weight: .bold))
-                .disabled(!hasDrawableSignature || canvasSize == .zero)
-                .accessibilityIdentifier("study_signature_save_button")
             }
 
             StudySignatureDrawingSurface(
@@ -847,9 +922,39 @@ private struct StudySignatureCaptureSheet: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
             Spacer(minLength: 0)
+
+            HStack(spacing: 14) {
+                Button {
+                    clearDrawing()
+                } label: {
+                    Text("Clear")
+                        .font(.headline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .tint(LoudnessMatchModalColors.primary)
+                .accessibilityIdentifier("study_signature_clear_button")
+
+                Button {
+                    saveDrawing()
+                } label: {
+                    Text("Save")
+                        .font(.headline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(LoudnessMatchModalColors.primary)
+                .disabled(!hasDrawableSignature || canvasSize == .zero)
+                .accessibilityIdentifier("study_signature_save_button")
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
+        .padding(.bottom, 18)
         .background(LoudnessMatchModalColors.background)
     }
 
@@ -915,6 +1020,8 @@ private struct StudySignatureDrawingSurface: View {
             .onChange(of: proxy.size) { _, newSize in
                 canvasSize = newSize
             }
+            .accessibilityLabel("Signature drawing area")
+            .accessibilityIdentifier("study_signature_drawing_surface")
         }
     }
 }
@@ -1059,7 +1166,10 @@ private struct StudyConsentSuccessView: View {
 }
 
 #Preview("Signature") {
-    StudyConsentSignatureView(viewModel: StudyConsentFlowPreviewModel.makeSignature())
+    StudyConsentSignatureView(
+        viewModel: StudyConsentFlowPreviewModel.makeSignature(),
+        exitConsentFlow: {}
+    )
 }
 
 private struct StudyConsentFlowPreview: View {

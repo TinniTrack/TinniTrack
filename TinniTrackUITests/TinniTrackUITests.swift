@@ -162,11 +162,24 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Step 1 of 2"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertFalse(app.buttons["study_consent_signature_button"].isEnabled)
 
         scrollConsentToBottom(in: app)
         app.buttons["study_consent_decline_button"].tap()
         XCTAssertTrue(app.alerts["Consent Required"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.alerts["Consent Required"].staticTexts["If you do not agree to these terms, you cannot participate in this study."].exists)
+        app.alerts["Consent Required"].buttons["Exit"].tap()
+        XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 2))
+
+        app.buttons["study_consent_review_button"].tap()
+        XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertFalse(app.buttons["study_consent_signature_button"].isEnabled)
+
+        scrollConsentToBottom(in: app)
+        app.buttons["study_consent_decline_button"].tap()
+        XCTAssertTrue(app.alerts["Consent Required"].waitForExistence(timeout: 2))
         app.alerts["Consent Required"].buttons["Cancel"].tap()
         XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 2))
 
@@ -179,16 +192,30 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.tabBars.firstMatch.exists)
 
+        let firstNameField = app.textFields["study_consent_first_name_field"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))
+        firstNameField.tap()
+        firstNameField.typeText("Alex")
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        app.scrollViews["study_consent_signature"].swipeUp()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+
         let drawSignatureButton = app.buttons["study_consent_draw_signature_button"]
         XCTAssertTrue(drawSignatureButton.waitForExistence(timeout: 2))
         drawSignatureButton.tap()
         XCTAssertTrue(app.buttons["study_signature_clear_button"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["study_signature_save_button"].exists)
-        app.buttons["study_signature_dismiss_button"].tap()
+        let saveSignatureButton = app.buttons["study_signature_save_button"]
+        XCTAssertTrue(saveSignatureButton.exists)
+        XCTAssertFalse(saveSignatureButton.isEnabled)
+        drawSignature(in: app)
+        XCTAssertTrue(saveSignatureButton.isEnabled)
+        saveSignatureButton.tap()
         XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
 
         swipeBack(in: app)
-        XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 2))
@@ -262,5 +289,15 @@ final class TinniTrackUITests: XCTestCase {
         for _ in 0..<10 where !app.buttons["study_consent_signature_button"].isEnabled {
             scrollView.swipeUp()
         }
+    }
+
+    @MainActor
+    private func drawSignature(in app: XCUIApplication) {
+        let drawingSurface = app.otherElements["study_signature_drawing_surface"]
+        XCTAssertTrue(drawingSurface.waitForExistence(timeout: 2))
+
+        let start = drawingSurface.coordinate(withNormalizedOffset: CGVector(dx: 0.18, dy: 0.58))
+        let end = drawingSurface.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.42))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 }
