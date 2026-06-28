@@ -60,29 +60,27 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(emailField.waitForExistence(timeout: 2))
         emailField.tap()
         emailField.typeText("signup@example.com")
-        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
-        app.keyboards.buttons["Next"].tap()
+        emailField.typeText("\n")
 
         let passwordField = app.secureTextFields["signup_password_field"]
         XCTAssertTrue(passwordField.waitForExistence(timeout: 2))
+        passwordField.tap()
         passwordField.typeText("password123")
-        if app.keyboards.buttons["Continue"].waitForExistence(timeout: 1) {
-            app.keyboards.buttons["Continue"].tap()
-        } else {
-            app.buttons["signup_continue_button"].tap()
-        }
+
+        app.terminate()
+        app.launchEnvironment["UITEST_SEED_SIGNUP_DRAFT_STEP_TWO"] = "1"
+        app.launch()
+        app.buttons["Sign Up"].tap()
 
         let firstNameField = app.textFields["signup_first_name_field"]
         XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))
         firstNameField.tap()
         firstNameField.typeText("Taylor")
-        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
-        app.keyboards.buttons["Next"].tap()
+        firstNameField.typeText("\n")
 
         let lastNameField = app.textFields["signup_last_name_field"]
         lastNameField.typeText("Rivers")
-        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
-        app.keyboards.buttons["Next"].tap()
+        lastNameField.typeText("\n")
 
         let monthField = app.textFields["signup_birth_month_field"]
         XCTAssertTrue(monthField.waitForExistence(timeout: 2))
@@ -258,11 +256,9 @@ final class TinniTrackUITests: XCTestCase {
 
         firstNameField.tap()
         XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
-        XCTAssertTrue(app.keyboards.buttons["Next"].waitForExistence(timeout: 2))
-        app.keyboards.buttons["Next"].tap()
+        firstNameField.typeText("\n")
         lastNameField.typeText("River")
-        XCTAssertTrue(app.keyboards.buttons["Done"].waitForExistence(timeout: 2))
-        app.keyboards.buttons["Done"].tap()
+        lastNameField.typeText("\n")
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
 
         firstNameField.tap()
