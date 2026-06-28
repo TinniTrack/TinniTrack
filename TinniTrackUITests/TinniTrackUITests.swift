@@ -162,6 +162,8 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Step 1 of 2"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertFalse(app.buttons["Key Info"].exists)
+        XCTAssertFalse(app.buttons["What You'll Do"].exists)
         XCTAssertFalse(app.buttons["study_consent_signature_button"].isEnabled)
 
         scrollConsentToBottom(in: app)
@@ -190,6 +192,7 @@ final class TinniTrackUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.navigationBars["Sign Consent"].exists)
+        XCTAssertTrue(app.staticTexts["study_consent_attestation_text"].exists)
         XCTAssertFalse(app.tabBars.firstMatch.exists)
 
         let firstNameField = app.textFields["study_consent_first_name_field"]

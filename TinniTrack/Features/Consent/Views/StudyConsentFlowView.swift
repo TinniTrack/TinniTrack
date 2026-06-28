@@ -6,6 +6,10 @@
 import SwiftUI
 import UIKit
 
+private enum StudyConsentReadableColors {
+    static let bodyText = Color(uiColor: .label)
+}
+
 struct StudyConsentFlowView: View {
     let onCompleted: () async -> Void
 
@@ -95,7 +99,7 @@ private struct StudyConsentLandingView: View {
                     Text(definition.landing.subtitle)
                         .font(.system(size: 16))
                         .lineSpacing(3)
-                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                        .foregroundStyle(StudyConsentReadableColors.bodyText)
                 }
 
                 StudyConsentAtAGlanceCard(rows: definition.landing.atAGlanceRows)
@@ -140,7 +144,7 @@ private struct StudyConsentLandingView: View {
 
                 Text(definition.landing.footerNote)
                     .font(.footnote)
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
                     .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 34)
@@ -173,16 +177,6 @@ private struct StudyConsentReaderView: View {
                         .id(topAnchorID)
 
                         StudyConsentKeyInfoCard(keyInformation: viewModel.definition.keyInformation)
-
-                        StudyConsentTabs(
-                            sections: viewModel.tabSections,
-                            selectedSectionID: viewModel.selectedSectionID
-                        ) { section in
-                            viewModel.selectSection(section)
-                            withAnimation(.easeInOut(duration: 0.22)) {
-                                proxy.scrollTo(section.id, anchor: .top)
-                            }
-                        }
 
                         ForEach(viewModel.visibleSections) { section in
                             StudyConsentSectionView(section: section)
@@ -298,19 +292,11 @@ private struct StudyConsentSignatureView: View {
                     subtitle: "By signing below, you confirm that you reviewed the consent information and choose to participate in the Loudness Match Study."
                 )
 
-                Button {
-                    viewModel.isAttestationAccepted.toggle()
-                } label: {
-                    HStack(alignment: .top, spacing: 14) {
-                        Image(systemName: viewModel.isAttestationAccepted ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(LoudnessMatchModalColors.primary)
-
-                        Text(viewModel.definition.attestation.text)
-                            .font(.system(size: 14))
-                            .foregroundStyle(LoudnessMatchModalColors.text)
-                            .multilineTextAlignment(.leading)
-                    }
+                Text(viewModel.definition.attestation.text)
+                    .font(.system(size: 14))
+                    .lineSpacing(3)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
+                    .multilineTextAlignment(.leading)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(uiColor: .systemBackground))
@@ -319,8 +305,7 @@ private struct StudyConsentSignatureView: View {
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
                     }
-                }
-                .buttonStyle(AppRoundedButtonStyle(cornerRadius: 7))
+                    .accessibilityIdentifier("study_consent_attestation_text")
 
                 StudyConsentTextField(
                     title: "First name",
@@ -430,7 +415,7 @@ private struct StudyConsentProgressHeader: View {
 
                 Text(subtitle)
                     .font(.system(size: 16))
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -497,7 +482,7 @@ private struct StudyConsentTextSection: View {
             Text(bodyText)
                 .font(.system(size: 15))
                 .lineSpacing(3)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
         }
     }
 }
@@ -543,12 +528,8 @@ private struct StudyConsentKeyInfoCard: View {
                     .font(.system(size: 15, weight: .bold))
             }
 
-            ForEach(keyInformation.bulletItems, id: \.self) { item in
-                consentInfoRow(systemName: "circle.fill", text: item, iconSize: 5)
-            }
-
-            ForEach(keyInformation.checkItems, id: \.self) { item in
-                consentInfoRow(systemName: "checkmark", text: item, iconSize: 11)
+            ForEach(keyInformation.bulletItems + keyInformation.checkItems, id: \.self) { item in
+                consentInfoRow(text: item)
             }
         }
         .padding(12)
@@ -560,50 +541,18 @@ private struct StudyConsentKeyInfoCard: View {
         }
     }
 
-    private func consentInfoRow(systemName: String, text: String, iconSize: CGFloat) -> some View {
+    private func consentInfoRow(text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: systemName)
-                .font(.system(size: iconSize, weight: .bold))
-                .foregroundStyle(LoudnessMatchModalColors.primary)
+            Circle()
+                .fill(LoudnessMatchModalColors.primary)
+                .frame(width: 5, height: 5)
                 .frame(width: 13, height: 18)
+                .padding(.top, 1)
 
             Text(text)
                 .font(.system(size: 14))
                 .lineSpacing(2)
-                .foregroundStyle(LoudnessMatchModalColors.text)
-        }
-    }
-}
-
-private struct StudyConsentTabs: View {
-    let sections: [StudyConsentSection]
-    let selectedSectionID: String
-    let select: (StudyConsentSection) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 7) {
-                ForEach(sections) { section in
-                    Button {
-                        select(section)
-                    } label: {
-                        Text(section.tabTitle ?? section.title)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .lineLimit(1)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(selectedSectionID == section.id ? .white : LoudnessMatchModalColors.text)
-                            .background(selectedSectionID == section.id ? LoudnessMatchModalColors.primary : Color(uiColor: .systemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(AppRoundedButtonStyle(cornerRadius: 6))
-                }
-            }
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
         }
     }
 }
@@ -632,7 +581,7 @@ private struct StudyConsentBlockView: View {
             Text(text)
                 .font(.system(size: 14))
                 .lineSpacing(3)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
         case .bullets(let items):
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(items, id: \.self) { item in
@@ -644,6 +593,7 @@ private struct StudyConsentBlockView: View {
                         Text(item)
                             .font(.system(size: 14))
                             .lineSpacing(3)
+                            .foregroundStyle(StudyConsentReadableColors.bodyText)
                     }
                 }
             }
@@ -670,16 +620,16 @@ private struct StudyConsentBlockView: View {
                 }
             }
         case .scheduleChips(let times):
-            HStack(spacing: 10) {
+            HStack(spacing: 6) {
                 ForEach(times, id: \.self) { time in
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(LoudnessMatchModalColors.primary)
-                        Text(time)
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .padding(.horizontal, 12)
+                    Text(time)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(StudyConsentReadableColors.bodyText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .allowsTightening(true)
+                        .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 9)
                     .background(Color(uiColor: .secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -697,7 +647,7 @@ private struct StudyConsentBlockView: View {
                     Text(contact.displayText)
                         .font(.system(size: 14))
                         .lineSpacing(3)
-                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                        .foregroundStyle(StudyConsentReadableColors.bodyText)
                 }
             }
         }
@@ -719,7 +669,7 @@ private struct StudyConsentBottomActionBar: View {
                     .foregroundStyle(isPrimaryEnabled ? LoudnessMatchModalColors.success : LoudnessMatchModalColors.primary)
                 Text(isPrimaryEnabled ? "Consent reviewed. You can continue." : "Scroll to the bottom of the consent form to continue.")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -787,7 +737,7 @@ private struct StudyConsentTextField: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
                 .font(.footnote)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
 
             TextField(title, text: $text)
                 .textContentType(textContentType)
@@ -815,7 +765,7 @@ private struct StudySignatureCaptureCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Signature")
                 .font(.footnote)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
 
             if let signatureImage {
                 VStack(alignment: .leading, spacing: 8) {
@@ -903,7 +853,7 @@ private struct StudySignatureCaptureSheet: View {
                         .foregroundStyle(LoudnessMatchModalColors.text)
                     Text("Use your finger inside the box, then save.")
                         .font(.subheadline)
-                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                        .foregroundStyle(StudyConsentReadableColors.bodyText)
                 }
 
                 Spacer()
@@ -918,7 +868,7 @@ private struct StudySignatureCaptureSheet: View {
 
             Text("Your signature is used only for this consent record.")
                 .font(.footnote)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             Spacer(minLength: 0)
@@ -1081,13 +1031,13 @@ private struct StudyConsentMetadataRows: View {
             HStack(spacing: 12) {
                 Image(systemName: "lock")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
                     .frame(width: 30, height: 30)
                     .background(Color(uiColor: .systemGray6))
                     .clipShape(Circle())
                 Text("A signed consent copy will be saved securely.")
                     .font(.system(size: 14))
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
             }
         }
     }
@@ -1114,7 +1064,7 @@ struct StudyConsentFinalizingView: View {
                     .font(.headline)
                 Text("Saving your signed consent securely.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
             }
             .padding(22)
             .frame(maxWidth: 300)
@@ -1149,7 +1099,7 @@ private struct StudyConsentSuccessView: View {
                 .font(.title2.bold())
             Text("Your signed consent was saved securely.")
                 .font(.subheadline)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
         }
         .padding(34)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

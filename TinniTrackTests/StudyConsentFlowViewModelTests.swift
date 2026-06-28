@@ -79,7 +79,7 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func signatureStepRequiresAttestationNamesAndSignature() {
+    func signatureStepRequiresNamesAndSignature() {
         let viewModel = Self.viewModel()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
@@ -93,9 +93,6 @@ struct StudyConsentFlowViewModelTests {
 
         viewModel.signatureImageData = Data([1, 2, 3])
         #expect(viewModel.canSignAndEnroll)
-
-        viewModel.isAttestationAccepted = false
-        #expect(viewModel.canSignAndEnroll == false)
     }
 
     @Test

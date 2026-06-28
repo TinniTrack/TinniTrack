@@ -10,9 +10,7 @@ import Foundation
 final class StudyConsentFlowViewModel: ObservableObject {
     @Published private(set) var state: State = .landing
     @Published var errorMessage: String?
-    @Published var selectedSectionID: String
     @Published var hasScrolledToConsentEnd = false
-    @Published var isAttestationAccepted = true
     @Published var firstName = ""
     @Published var lastName = ""
     @Published var signatureImageData: Data?
@@ -45,19 +43,10 @@ final class StudyConsentFlowViewModel: ObservableObject {
         self.consentService = consentService
         self.artifactGenerator = artifactGenerator
         self.now = now
-        self.selectedSectionID = definition.sections.first?.id ?? ""
     }
 
     var visibleSections: [StudyConsentSection] {
         definition.sections
-    }
-
-    var tabSections: [StudyConsentSection] {
-        definition.sections.filter { $0.tabTitle != nil }
-    }
-
-    var selectedSection: StudyConsentSection? {
-        definition.sections.first { $0.id == selectedSectionID } ?? definition.sections.first
     }
 
     var canContinueToSignature: Bool {
@@ -74,7 +63,6 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
     var canSignAndEnroll: Bool {
         state == .signing
-            && isAttestationAccepted
             && !trimmedFirstName.isEmpty
             && !trimmedLastName.isEmpty
             && signatureImageData?.isEmpty == false
@@ -94,10 +82,6 @@ final class StudyConsentFlowViewModel: ObservableObject {
         case .landing, .finalizing, .completed, .dismissed, .failed:
             break
         }
-    }
-
-    func selectSection(_ section: StudyConsentSection) {
-        selectedSectionID = section.id
     }
 
     func markConsentScrolledToEnd() {
@@ -148,7 +132,6 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
     private func resetConsentReviewProgress() {
         hasScrolledToConsentEnd = false
-        selectedSectionID = definition.sections.first?.id ?? ""
     }
 
     func signAndEnroll() async {

@@ -345,17 +345,15 @@ enum StudyConsentCatalog {
         keyInformation: StudyConsentKeyInformation(
             title: "Key information",
             bulletItems: [
-                "This is research, not treatment.",
                 "You'll complete a baseline session, 14 days of brief assessments, and a debrief.",
-                "You'll use your iPhone and AirPods Pro."
-            ],
-            checkItems: [
+                "You'll use your iPhone and AirPods Pro.",
                 "Risks are minimal but may include increased awareness of tinnitus.",
-                "You can stop at any time.",
                 "Participation is voluntary.",
                 "Compensation is up to $100.",
-                "Your data is coded and used for research only."
-            ]
+                "Your data is coded and used for research only.",
+                "This is research, not treatment."
+            ],
+            checkItems: []
         ),
         landing: StudyConsentLandingContent(
             eyebrow: "Study Details",

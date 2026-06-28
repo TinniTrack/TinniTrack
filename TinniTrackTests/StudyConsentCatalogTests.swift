@@ -9,8 +9,10 @@ struct StudyConsentCatalogTests {
 
         #expect(definition.studySlug == "study-no-1")
         #expect(definition.consentVersion == "study-no-1-consent-v2")
-        #expect(definition.keyInformation.bulletItems.contains("This is research, not treatment."))
-        #expect(definition.keyInformation.checkItems.contains("Compensation is up to $100."))
+        #expect(definition.keyInformation.bulletItems.last == "This is research, not treatment.")
+        #expect(definition.keyInformation.bulletItems.contains("You can stop at any time.") == false)
+        #expect(definition.keyInformation.bulletItems.contains("Compensation is up to $100."))
+        #expect(definition.keyInformation.checkItems.isEmpty)
         #expect(definition.landing.title == "Loudness Match Study")
         #expect(definition.landing.atAGlanceRows.map(\.value).contains("14 days"))
         #expect(definition.landing.atAGlanceRows.count == 5)
