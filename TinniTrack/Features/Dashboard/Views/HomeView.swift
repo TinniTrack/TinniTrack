@@ -161,9 +161,15 @@ private struct DashboardTabView: View {
         } else {
             StudyDetailView(
                 studyCard: studyCard,
+                profileTimezone: profileTimezone,
                 consentService: consentService
             ) {
                 await viewModel.refresh()
+                guard let refreshedStudyCard = viewModel.studies.first(where: { $0.study.id == studyCard.study.id }),
+                      refreshedStudyCard.isEnrolledActive else {
+                    return nil
+                }
+                return refreshedStudyCard
             }
         }
     }
@@ -224,20 +230,36 @@ private struct StudyCardView: View {
 
 private struct StudyDetailView: View {
     let studyCard: DashboardStudyCard
+    let profileTimezone: String?
     let consentService: ConsentServiceProtocol
-    let onEnrollmentCompleted: () async -> Void
+    let onEnrollmentCompleted: @MainActor () async -> DashboardStudyCard?
 
     @Environment(\.dismiss) private var dismiss
+    @State private var completedStudyCard: DashboardStudyCard?
 
     var body: some View {
         Group {
-            if canEnroll, let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) {
+            if let completedStudyCard,
+               completedStudyCard.isEnrolledActive,
+               let enrollment = completedStudyCard.enrollment {
+                StudyTaskDashboardView(
+                    study: completedStudyCard.study,
+                    enrollment: enrollment,
+                    profileTimezone: profileTimezone
+                )
+            } else if canEnroll, let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) {
                 StudyConsentFlowView(
                     study: studyCard.study,
                     definition: definition,
                     consentService: consentService
                 ) {
-                    await onEnrollmentCompleted()
+                    let refreshedStudyCard = await onEnrollmentCompleted()
+                    guard let refreshedStudyCard,
+                          refreshedStudyCard.isEnrolledActive else {
+                        return false
+                    }
+                    completedStudyCard = refreshedStudyCard
+                    return true
                 }
             } else {
                 EnrollmentUnavailableView(
@@ -247,6 +269,25 @@ private struct StudyDetailView: View {
             }
         }
         .interactivePopGestureEnabled()
+        .fullScreenCover(isPresented: Binding(
+            get: { completedStudyCard?.isEnrolledActive == true },
+            set: { isPresented in
+                if !isPresented {
+                    completedStudyCard = nil
+                }
+            }
+        )) {
+            if let completedStudyCard,
+               let enrollment = completedStudyCard.enrollment {
+                NavigationStack {
+                    StudyTaskDashboardView(
+                        study: completedStudyCard.study,
+                        enrollment: enrollment,
+                        profileTimezone: profileTimezone
+                    )
+                }
+            }
+        }
         .onChange(of: studyCard.enrollment?.status) { _, status in
             guard status == .enrolled else { return }
             dismiss()

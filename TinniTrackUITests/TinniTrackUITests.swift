@@ -240,6 +240,8 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Step 2 of 2"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.navigationBars["Sign Consent"].exists)
         XCTAssertTrue(app.staticTexts["study_consent_attestation_text"].exists)
+        XCTAssertTrue(app.staticTexts["I am 18 or older, understand participation is voluntary, and agree to participate."].exists)
+        XCTAssertFalse(app.buttons["I am 18 or older, understand participation is voluntary, and agree to participate."].exists)
         XCTAssertFalse(app.tabBars.firstMatch.exists)
 
         let firstNameField = app.textFields["study_consent_first_name_field"]
@@ -269,6 +271,7 @@ final class TinniTrackUITests: XCTestCase {
 
         let drawSignatureButton = app.buttons["study_consent_draw_signature_button"]
         XCTAssertTrue(drawSignatureButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(drawSignatureButton.label.contains("Tap to draw your signature."))
         drawSignatureButton.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
         XCTAssertTrue(app.buttons["study_signature_clear_button"].waitForExistence(timeout: 2))
@@ -280,11 +283,8 @@ final class TinniTrackUITests: XCTestCase {
         saveSignatureButton.tap()
         XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
-
-        firstNameField.tap()
-        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
-        app.scrollViews["study_consent_signature"].swipeUp()
-        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Signed today,")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["A signed consent copy will be saved securely."].exists)
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))

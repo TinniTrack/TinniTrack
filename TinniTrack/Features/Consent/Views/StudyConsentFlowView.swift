@@ -11,7 +11,7 @@ private enum StudyConsentReadableColors {
 }
 
 struct StudyConsentFlowView: View {
-    let onCompleted: () async -> Void
+    let onCompleted: @MainActor () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: StudyConsentFlowViewModel
@@ -21,7 +21,7 @@ struct StudyConsentFlowView: View {
         study: Study,
         definition: StudyConsentDefinition,
         consentService: ConsentServiceProtocol,
-        onCompleted: @escaping () async -> Void
+        onCompleted: @escaping @MainActor () async -> Bool
     ) {
         self.onCompleted = onCompleted
         _viewModel = StateObject(wrappedValue: StudyConsentFlowViewModel(
@@ -54,8 +54,10 @@ struct StudyConsentFlowView: View {
             .task(id: viewModel.state) {
                 switch viewModel.state {
                 case .completed:
-                    await onCompleted()
-                    dismiss()
+                    let didRouteAfterCompletion = await onCompleted()
+                    if !didRouteAfterCompletion {
+                        dismiss()
+                    }
                 case .dismissed:
                     dismiss()
                 case .landing, .reviewingConsent, .signing, .finalizing, .failed:
@@ -304,20 +306,7 @@ private struct StudyConsentSignatureView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { dismissTextFocus() }
 
-                Text(viewModel.definition.attestation.text)
-                    .font(.system(size: 14))
-                    .lineSpacing(3)
-                    .foregroundStyle(StudyConsentReadableColors.bodyText)
-                    .multilineTextAlignment(.leading)
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(uiColor: .systemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
-                    }
-                    .accessibilityIdentifier("study_consent_attestation_text")
+                StudyConsentAttestationCard(text: viewModel.definition.attestation.text)
                     .onTapGesture { dismissTextFocus() }
 
                 StudyConsentTextField(
@@ -417,6 +406,37 @@ private struct StudyConsentSignatureView: View {
 
     private func dismissTextFocus() {
         focusedField = nil
+    }
+}
+
+private struct StudyConsentAttestationCard: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "person")
+                .font(.system(size: 23, weight: .regular))
+                .foregroundStyle(LoudnessMatchModalColors.primary)
+                .frame(width: 34)
+                .accessibilityHidden(true)
+
+            Text(text)
+                .font(.system(size: 14))
+                .lineSpacing(3)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("study_consent_attestation_text")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+        }
     }
 }
 
@@ -960,28 +980,38 @@ private struct StudySignatureCaptureCard: View {
             }
 
             Button(action: drawSignature) {
-                HStack(spacing: 12) {
+                HStack(spacing: 16) {
                     Image(systemName: "pencil.tip")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(LoudnessMatchModalColors.primary)
+                        .frame(width: 36)
+                        .accessibilityHidden(true)
 
-                    Text(signatureImage == nil ? "Draw signature" : "Redraw signature")
+                    Rectangle()
+                        .fill(LoudnessMatchModalColors.primary.opacity(0.22))
+                        .frame(width: 1, height: 34)
+                        .accessibilityHidden(true)
+
+                    Text("Tap to draw your signature.")
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(LoudnessMatchModalColors.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
 
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 16)
-                .frame(minHeight: 52)
+                .frame(minHeight: 62)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .systemBackground))
+                .background(LoudnessMatchModalColors.primary.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+                        .stroke(LoudnessMatchModalColors.primary, lineWidth: 1)
                 }
             }
             .buttonStyle(AppRoundedButtonStyle(cornerRadius: 7))
+            .accessibilityLabel("Tap to draw your signature.")
             .accessibilityIdentifier("study_consent_draw_signature_button")
         }
     }
@@ -1304,7 +1334,7 @@ private struct StudyConsentFlowPreview: View {
             ),
             definition: StudyConsentCatalog.studyNo1,
             consentService: PreviewConsentService(),
-            onCompleted: {}
+            onCompleted: { false }
         )
     }
 }
