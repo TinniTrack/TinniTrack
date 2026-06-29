@@ -16,6 +16,8 @@ struct StudyConsentFlowView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: StudyConsentFlowViewModel
     @State private var isReviewPresented = false
+    @State private var hasHandledCompletion = false
+    @State private var isCompletionHandlingRequested = false
 
     init(
         study: Study,
@@ -44,7 +46,10 @@ struct StudyConsentFlowView: View {
                 viewModel.returnToLandingAfterNavigationPop()
             }
             .navigationDestination(isPresented: $isReviewPresented) {
-                StudyConsentReaderView(viewModel: viewModel)
+                StudyConsentReaderView(
+                    viewModel: viewModel,
+                    isCompletionHandlingRequested: $isCompletionHandlingRequested
+                )
                 .navigationTitle("Informed Consent")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(.hidden, for: .tabBar)
@@ -52,17 +57,15 @@ struct StudyConsentFlowView: View {
                 .background(LoudnessMatchModalColors.background)
             }
             .task(id: viewModel.state) {
-                switch viewModel.state {
-                case .completed:
-                    let didRouteAfterCompletion = await onCompleted()
-                    if !didRouteAfterCompletion {
-                        dismiss()
-                    }
-                case .dismissed:
+                if viewModel.state == .completed {
+                    await handleCompletedEnrollment()
+                } else if viewModel.state == .dismissed {
                     dismiss()
-                case .landing, .reviewingConsent, .signing, .finalizing, .failed:
-                    break
                 }
+            }
+            .task(id: isCompletionHandlingRequested) {
+                guard isCompletionHandlingRequested else { return }
+                await handleCompletedEnrollment()
             }
             .alert("Unable to Finish Enrollment", isPresented: Binding(
                 get: { viewModel.errorMessage != nil },
@@ -81,6 +84,23 @@ struct StudyConsentFlowView: View {
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
+    }
+
+    @MainActor
+    private func handleCompletedEnrollment() async {
+        guard !hasHandledCompletion else {
+            isCompletionHandlingRequested = false
+            return
+        }
+        hasHandledCompletion = true
+        isCompletionHandlingRequested = false
+
+        let didRouteAfterCompletion = await onCompleted()
+        if didRouteAfterCompletion {
+            isReviewPresented = false
+        } else {
+            dismiss()
+        }
     }
 }
 
@@ -158,6 +178,7 @@ private struct StudyConsentLandingView: View {
 private struct StudyConsentReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: StudyConsentFlowViewModel
+    @Binding var isCompletionHandlingRequested: Bool
     @State private var isSignaturePresented = false
     @State private var isDeclineConfirmationPresented = false
     private let topAnchorID = "study_consent_reader_top"
@@ -222,6 +243,7 @@ private struct StudyConsentReaderView: View {
         .navigationDestination(isPresented: $isSignaturePresented) {
             StudyConsentSignatureView(
                 viewModel: viewModel,
+                isCompletionHandlingRequested: $isCompletionHandlingRequested,
                 exitConsentFlow: {
                     viewModel.exitConsentFlowToStudyDetails()
                     isSignaturePresented = false
@@ -284,6 +306,7 @@ private enum StudyConsentSignatureField: Hashable {
 
 private struct StudyConsentSignatureView: View {
     @ObservedObject var viewModel: StudyConsentFlowViewModel
+    @Binding var isCompletionHandlingRequested: Bool
     let exitConsentFlow: () -> Void
     @State private var isSignatureCapturePresented = false
     @State private var isDeclineConfirmationPresented = false
@@ -397,9 +420,12 @@ private struct StudyConsentSignatureView: View {
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
             exitConsentFlow()
         }
-        .onChange(of: viewModel.state) { state in
+        .onChange(of: viewModel.state) { _, state in
             if state == .finalizing {
                 dismissTextFocus()
+            }
+            if state == .completed {
+                isCompletionHandlingRequested = true
             }
         }
         .accessibilityIdentifier("study_consent_signature")
@@ -1328,12 +1354,16 @@ private struct StudyConsentSuccessView: View {
 }
 
 #Preview("Reader") {
-    StudyConsentReaderView(viewModel: StudyConsentFlowPreviewModel.makeReader())
+    StudyConsentReaderView(
+        viewModel: StudyConsentFlowPreviewModel.makeReader(),
+        isCompletionHandlingRequested: .constant(false)
+    )
 }
 
 #Preview("Signature") {
     StudyConsentSignatureView(
         viewModel: StudyConsentFlowPreviewModel.makeSignature(),
+        isCompletionHandlingRequested: .constant(false),
         exitConsentFlow: {}
     )
 }
