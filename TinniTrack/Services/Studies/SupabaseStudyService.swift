@@ -16,7 +16,7 @@ final class SupabaseStudyService: StudyServiceProtocol {
     func fetchStudies() async throws -> [Study] {
         let rows: [StudyRow] = try await client
             .from("studies")
-            .select("id,slug,title,description,status,created_at")
+            .select("id,slug,status,created_at")
             .order("created_at", ascending: false)
             .execute()
             .value
@@ -202,26 +202,23 @@ final class SupabaseStudyService: StudyServiceProtocol {
 private struct StudyRow: Decodable {
     let id: UUID
     let slug: String
-    let title: String
-    let description: String
     let status: String
     let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case slug
-        case title
-        case description
         case status
         case createdAt = "created_at"
     }
 
     func toDomain() -> Study {
-        Study(
+        let copy = StudyCatalog.displayCopy(for: slug)
+        return Study(
             id: id,
             slug: slug,
-            title: title,
-            description: description,
+            title: copy.title,
+            description: copy.description,
             status: StudyRecruitmentStatus(rawValue: status),
             createdAt: Self.parseTimestamp(createdAt)
         )

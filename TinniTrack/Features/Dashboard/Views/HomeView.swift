@@ -71,7 +71,7 @@ private struct DashboardTabView: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                     .tracking(0.8)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DashboardColors.brandBlue)
 
                 content
             }
@@ -93,13 +93,13 @@ private struct DashboardTabView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Hello, \(firstName)")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hi, \(firstName)")
                 .font(.system(.largeTitle, weight: .bold))
                 .foregroundStyle(.primary)
-            Text("Welcome to TinniTrack.")
+            Text("Track your tinnitus and participate in active studies.")
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -173,13 +173,22 @@ private struct StudyCardView: View {
     let studyCard: DashboardStudyCard
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(studyCard.study.title)
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(studyCard.study.title)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(studyCard.study.description)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 Spacer(minLength: 12)
 
@@ -194,10 +203,7 @@ private struct StudyCardView: View {
                     .clipShape(Capsule())
             }
 
-            Text(studyCard.study.description)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            Spacer(minLength: 2)
 
             HStack(spacing: 6) {
                 Text(studyCard.callToActionText)
