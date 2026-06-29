@@ -175,15 +175,12 @@ private struct StudyCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(DashboardColors.iconBackground)
-
-                    Image(systemName: "waveform")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(DashboardColors.brandBlue)
-                }
-                .frame(width: 64, height: 64)
+                Image("TinnitusStudyIcon")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .accessibilityHidden(true)
+                    .frame(width: 64, height: 64)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(studyCard.study.title)
@@ -208,27 +205,27 @@ private struct StudyCardView: View {
 
             HStack(alignment: .center, spacing: 10) {
                 Text(studyCard.timeCommitmentText)
-                    .font(.caption)
-                    .foregroundStyle(DashboardColors.metadataText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .minimumScaleFactor(0.78)
 
                 Text(studyCard.durationText)
-                    .font(.caption)
-                    .foregroundStyle(DashboardColors.metadataText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .minimumScaleFactor(0.78)
 
                 Spacer(minLength: 6)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 12) {
                     Text(studyCard.badgeText)
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .tracking(0.8)
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.82)
+                        .minimumScaleFactor(0.78)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(studyCard.badgeColor)
@@ -236,16 +233,17 @@ private struct StudyCardView: View {
 
                     HStack(spacing: 4) {
                         Text(studyCard.callToActionText)
-                            .font(.caption)
+                            .font(.footnote)
                             .fontWeight(.semibold)
                             .foregroundStyle(DashboardColors.brandBlue)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.82)
+                            .minimumScaleFactor(0.78)
 
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(DashboardColors.brandBlue)
                     }
+                    .layoutPriority(1)
                 }
             }
         }
@@ -425,8 +423,6 @@ private enum DashboardColors {
     static let cardStroke = Color(uiColor: .separator).opacity(0.35)
     static let cardDivider = Color(uiColor: .separator).opacity(0.22)
     static let cardShadow = Color.black.opacity(0.08)
-    static let iconBackground = brandBlue.opacity(0.12)
-    static let metadataText = Color(uiColor: .label).opacity(0.72)
 }
 
 private extension DashboardStudyCard {
