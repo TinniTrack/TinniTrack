@@ -320,7 +320,6 @@ struct LoudnessMatchTaskModalFlowView: View {
             guard viewModel.environmentGateResult?.passed == true else {
                 return
             }
-            viewModel.cancelEnvironmentGate()
             step = .fit
         case .fit:
             viewModel.completeFitConfirmation()
