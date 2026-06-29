@@ -94,11 +94,11 @@ struct StudyConsentFlowView: View {
         }
         hasHandledCompletion = true
         isCompletionHandlingRequested = false
+        isReviewPresented = false
+        await Task.yield()
 
         let didRouteAfterCompletion = await onCompleted()
-        if didRouteAfterCompletion {
-            isReviewPresented = false
-        } else {
+        if !didRouteAfterCompletion {
             dismiss()
         }
     }
@@ -264,6 +264,12 @@ private struct StudyConsentReaderView: View {
             viewModel.exitConsentFlowToStudyDetails()
             dismiss()
         }
+        .onChange(of: viewModel.state) { _, state in
+            guard state == .completed else { return }
+            isSignaturePresented = false
+            isCompletionHandlingRequested = true
+            dismiss()
+        }
     }
 
     private func markConsentReviewedIfBottomIsVisible(bottomY: CGFloat, viewportHeight: CGFloat) {
@@ -305,6 +311,7 @@ private enum StudyConsentSignatureField: Hashable {
 }
 
 private struct StudyConsentSignatureView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: StudyConsentFlowViewModel
     @Binding var isCompletionHandlingRequested: Bool
     let exitConsentFlow: () -> Void
@@ -426,6 +433,7 @@ private struct StudyConsentSignatureView: View {
             }
             if state == .completed {
                 isCompletionHandlingRequested = true
+                dismiss()
             }
         }
         .accessibilityIdentifier("study_consent_signature")
