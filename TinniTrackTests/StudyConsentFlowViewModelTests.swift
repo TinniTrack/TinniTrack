@@ -106,11 +106,39 @@ struct StudyConsentFlowViewModelTests {
         viewModel.firstName = "Taylor"
         viewModel.lastName = "Rivers"
         viewModel.signatureImageData = Data([1, 2, 3])
-        #expect(viewModel.canSignAndEnroll == false)
+        #expect(viewModel.canSignAndEnroll)
 
         viewModel.restoreSignatureStepAfterNavigationPresentation()
 
         #expect(viewModel.canSignAndEnroll)
+    }
+
+    @Test
+    func finalizingConsentDisablesRepeatSubmission() async {
+        let service = BlockingConsentService()
+        let generator = MockConsentArtifactGenerator()
+        let viewModel = Self.viewModel(service: service, generator: generator)
+
+        viewModel.reviewConsent()
+        viewModel.markConsentScrolledToEnd()
+        viewModel.continueToSignature()
+        viewModel.firstName = "Taylor"
+        viewModel.lastName = "Rivers"
+        viewModel.signatureImageData = Data([1, 2, 3])
+
+        let submissionTask = Task {
+            await viewModel.signAndEnroll()
+        }
+
+        while await service.finalizeCallCount() == 0 {
+            await Task.yield()
+        }
+
+        #expect(viewModel.state == .finalizing)
+        #expect(viewModel.canSignAndEnroll == false)
+
+        await service.unblock()
+        await submissionTask.value
     }
 
     @Test
@@ -141,7 +169,7 @@ struct StudyConsentFlowViewModelTests {
     }
 
     private static func viewModel(
-        service: MockConsentService = MockConsentService(),
+        service: any ConsentServiceProtocol = MockConsentService(),
         generator: MockConsentArtifactGenerator = MockConsentArtifactGenerator()
     ) -> StudyConsentFlowViewModel {
         StudyConsentFlowViewModel(
@@ -181,6 +209,30 @@ private actor MockConsentService: ConsentServiceProtocol {
 
     func lastConsent() -> StudyConsentCompletion? {
         capturedConsent
+    }
+}
+
+private actor BlockingConsentService: ConsentServiceProtocol {
+    private var callCount = 0
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws {
+        callCount += 1
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func finalizeCallCount() -> Int {
+        callCount
+    }
+
+    func unblock() {
+        continuation?.resume()
+        continuation = nil
     }
 }
 
