@@ -93,6 +93,11 @@ final class StudyConsentFlowViewModel: ObservableObject {
         state = .signing
     }
 
+    func restoreSignatureStepAfterNavigationPresentation() {
+        guard state != .finalizing else { return }
+        state = .signing
+    }
+
     func exitConsentFlowToStudyDetails() {
         resetConsentReviewProgress()
         state = .landing

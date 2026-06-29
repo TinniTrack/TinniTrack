@@ -96,6 +96,24 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
+    func signatureDestinationRestoresSigningStateAfterReaderRefresh() {
+        let viewModel = Self.viewModel()
+        viewModel.reviewConsent()
+        viewModel.markConsentScrolledToEnd()
+        viewModel.continueToSignature()
+
+        viewModel.reviewConsent()
+        viewModel.firstName = "Taylor"
+        viewModel.lastName = "Rivers"
+        viewModel.signatureImageData = Data([1, 2, 3])
+        #expect(viewModel.canSignAndEnroll == false)
+
+        viewModel.restoreSignatureStepAfterNavigationPresentation()
+
+        #expect(viewModel.canSignAndEnroll)
+    }
+
+    @Test
     func validNativeConsentGeneratesPdfAndFinalizesEnrollment() async {
         let service = MockConsentService()
         let generator = MockConsentArtifactGenerator()
