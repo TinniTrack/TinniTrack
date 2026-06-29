@@ -41,6 +41,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     @Published private(set) var currentGuardrailValidation: CalibratedAudioGuardrailValidation
     @Published private(set) var message: FlowMessage?
     @Published private(set) var isPlaying = false
+    @Published private(set) var isPreparingPlayback = false
     @Published private(set) var isSubmitting = false
     @Published private(set) var hasSubmitted = false
     @Published private(set) var completedSummary: TinnitusLoudnessMatchSummary?
@@ -67,6 +68,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private var environmentGateTask: Task<Void, Never>?
     private var headphoneRouteObservation: AudioSessionObservation?
     private var airPodsContinuityObservation: AudioSessionObservation?
+    private var shouldResumeEnvironmentGateAfterPlayback = false
 
     init(
         engine: TinnitusProtocolEngine? = nil,
@@ -141,6 +143,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             && currentGuardrailValidation.state == .passed
             && preflightReady
             && !isAirPodsRouteInterrupted
+            && !isPreparingPlayback
             && currentCandidateLevelDBHL != nil
     }
 
@@ -564,16 +567,44 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func playTone() {
-        guard !isPlaying else {
+        guard !isPlaying, !isPreparingPlayback else {
+            return
+        }
+
+        if isRunningEnvironmentGate,
+           environmentGateResult?.passed == true {
+            isPreparingPlayback = true
+            Task { @MainActor in
+                let shouldResume = await suspendPassedEnvironmentGateForPlayback()
+                shouldResumeEnvironmentGateAfterPlayback = shouldResume
+                isPreparingPlayback = false
+                startOrRefreshTonePlayback(isRefreshingActivePlayback: false)
+            }
             return
         }
 
         startOrRefreshTonePlayback(isRefreshingActivePlayback: false)
     }
 
+    private func suspendPassedEnvironmentGateForPlayback() async -> Bool {
+        guard isRunningEnvironmentGate,
+              environmentGateResult?.passed == true,
+              let task = environmentGateTask
+        else {
+            return false
+        }
+
+        task.cancel()
+        await task.value
+        environmentGateTask = nil
+        isRunningEnvironmentGate = false
+        return true
+    }
+
     private func startOrRefreshTonePlayback(isRefreshingActivePlayback: Bool) {
         guard allowsCalibratedPlayback else {
             message = .playbackDisabled
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
             return
         }
 
@@ -582,6 +613,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 stopTone()
             }
             message = .missingPreflight("Complete audio guardrails, quiet-room samples, fit/seal confirmation, and safety acknowledgement before playback.")
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
             return
         }
 
@@ -593,6 +625,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             let attempt = engine.playCurrentTone(guardrailValidation: currentGuardrailValidation)
             message = attempt.refusalReason == nil ? .guardrailsUnavailable : .guardrailsUnavailable
             syncFromEngine()
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
             return
         }
 
@@ -603,13 +636,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             }
             message = .guardrailsUnavailable
             syncFromEngine()
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
             return
         }
 
         do {
-            if !isRefreshingActivePlayback {
-                pausePassedEnvironmentGateForPlayback()
-            }
             _ = try player?.play(request)
             isPlaying = true
             startPlaybackGuardrailMonitoring()
@@ -620,17 +651,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             isPlaying = false
             message = .playbackFailed(error.localizedDescription)
             syncFromEngine()
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
         }
-    }
-
-    private func pausePassedEnvironmentGateForPlayback() {
-        guard isRunningEnvironmentGate,
-              environmentGateResult?.passed == true
-        else {
-            return
-        }
-
-        cancelEnvironmentGate()
     }
 
     func stopTone() {
@@ -639,6 +661,19 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         isPlaying = false
         engine.recordStop(playbackMetadata: metadata)
         syncFromEngine()
+        resumeEnvironmentGateAfterPlaybackIfNeeded()
+    }
+
+    private func resumeEnvironmentGateAfterPlaybackIfNeeded() {
+        guard shouldResumeEnvironmentGateAfterPlayback,
+              !isRunningEnvironmentGate,
+              environmentGateTask == nil
+        else {
+            return
+        }
+
+        shouldResumeEnvironmentGateAfterPlayback = false
+        startContinuousEnvironmentGate()
     }
 
     func acceptCurrentLevel() {

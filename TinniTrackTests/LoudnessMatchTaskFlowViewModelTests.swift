@@ -381,23 +381,22 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func playbackPausesPassedContinuousEnvironmentGateWithoutClearingPreflight() async throws {
+    func playbackSuspendsEnvironmentGateAndResumesMonitoringAfterStop() async throws {
         let player = MockCalibratedTonePlayer()
+        let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             player: player,
             guardrailProvider: { passedGuardrails() },
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
-            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
-                samplesByUpdate: [[40, 41, 42, 43, 44]],
-                finishAfterUpdates: false
-            ),
+            environmentGateMonitor: environmentGateMonitor,
             audiogramRepository: MockAudiogramRepository(
                 audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
             )
         )
 
         viewModel.startContinuousEnvironmentGate()
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44])
         #expect(try await waitUntil {
             viewModel.isRunningEnvironmentGate
                 && viewModel.environmentGateResult?.passed == true
@@ -409,10 +408,32 @@ struct LoudnessMatchTaskFlowViewModelTests {
         await completeAudiogramThreshold(viewModel, laterality: .left)
         viewModel.playTone()
 
-        #expect(player.playedRequests.count == 1)
-        #expect(viewModel.isRunningEnvironmentGate == false)
+        #expect(try await waitUntil {
+            player.playedRequests.count == 1
+                && viewModel.isRunningEnvironmentGate == false
+        })
+        #expect(viewModel.isPlaying)
         #expect(viewModel.environmentGateResult?.passed == true)
         #expect(viewModel.preflightReady)
+
+        viewModel.stopTone()
+        #expect(try await waitUntil {
+            viewModel.isRunningEnvironmentGate
+                && viewModel.environmentGateResult == nil
+        })
+
+        #expect(player.stopCallCount == 1)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted)
+
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44, 50])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .tooLoud
+        })
+
+        #expect(viewModel.environmentGateResult == nil)
+        #expect(viewModel.preflightReady == false)
+        #expect(viewModel.canPlayTone == false)
+        viewModel.cancelEnvironmentGate()
     }
 
     @Test
@@ -1083,6 +1104,33 @@ private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
                 task.cancel()
             }
         }
+    }
+}
+
+private final class ControllableEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    private var continuation: AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error>.Continuation?
+    private var configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
+
+    func monitorGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+        self.configuration = configuration
+        return AsyncThrowingStream { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func yield(samplesDBA: [Double]) {
+        continuation?.yield(
+            TinnitusEnvironmentSPLGateEvaluator().update(
+                samplesDBA: samplesDBA,
+                configuration: configuration
+            )
+        )
+    }
+
+    func finish() {
+        continuation?.finish()
     }
 }
 
