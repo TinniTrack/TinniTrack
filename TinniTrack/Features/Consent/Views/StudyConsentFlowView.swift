@@ -94,7 +94,11 @@ struct StudyConsentFlowView: View {
         }
         hasHandledCompletion = true
         isCompletionHandlingRequested = false
-        isReviewPresented = false
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            isReviewPresented = false
+        }
         await Task.yield()
 
         let didRouteAfterCompletion = await onCompleted()
@@ -266,9 +270,7 @@ private struct StudyConsentReaderView: View {
         }
         .onChange(of: viewModel.state) { _, state in
             guard state == .completed else { return }
-            isSignaturePresented = false
             isCompletionHandlingRequested = true
-            dismiss()
         }
     }
 
@@ -433,7 +435,6 @@ private struct StudyConsentSignatureView: View {
             }
             if state == .completed {
                 isCompletionHandlingRequested = true
-                dismiss()
             }
         }
         .accessibilityIdentifier("study_consent_signature")

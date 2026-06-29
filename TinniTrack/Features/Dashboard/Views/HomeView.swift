@@ -9,14 +9,30 @@ struct HomeView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @StateObject private var dashboardViewModel: HomeDashboardViewModel
     @State private var selectedTab: Tab = .dashboard
+    private let studyService: StudyServiceProtocol
     private let consentService: ConsentServiceProtocol
 
     init(
         studyService: StudyServiceProtocol? = nil,
-        consentService: ConsentServiceProtocol? = nil
+        consentService: ConsentServiceProtocol? = nil,
+        processInfo: ProcessInfo = .processInfo
     ) {
-        _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: studyService ?? SupabaseStudyService()))
+        #if DEBUG
+        if studyService == nil,
+           consentService == nil,
+           processInfo.environment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] == "1" {
+            let uiTestServices = UITestEnrollmentServices()
+            self.studyService = uiTestServices
+            self.consentService = uiTestServices
+            _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: uiTestServices))
+            return
+        }
+        #endif
+
+        let resolvedStudyService = studyService ?? SupabaseStudyService()
+        self.studyService = resolvedStudyService
         self.consentService = consentService ?? SupabaseConsentService()
+        _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: resolvedStudyService))
     }
 
     var body: some View {
@@ -26,6 +42,7 @@ struct HomeView: View {
                     firstName: displayFirstName,
                     profileTimezone: sessionStore.state.profile?.timezone,
                     viewModel: dashboardViewModel,
+                    studyService: studyService,
                     consentService: consentService
                 )
             }
@@ -60,6 +77,7 @@ private struct DashboardTabView: View {
     let firstName: String
     let profileTimezone: String?
     @ObservedObject var viewModel: HomeDashboardViewModel
+    let studyService: StudyServiceProtocol
     let consentService: ConsentServiceProtocol
 
     var body: some View {
@@ -156,12 +174,14 @@ private struct DashboardTabView: View {
             StudyTaskDashboardView(
                 study: studyCard.study,
                 enrollment: enrollment,
-                profileTimezone: profileTimezone
+                profileTimezone: profileTimezone,
+                studyService: studyService
             )
         } else {
             StudyDetailView(
                 studyCard: studyCard,
                 profileTimezone: profileTimezone,
+                studyService: studyService,
                 consentService: consentService
             ) {
                 await viewModel.refreshAfterEnrollment()
@@ -251,6 +271,7 @@ private struct StudyCardView: View {
 private struct StudyDetailView: View {
     let studyCard: DashboardStudyCard
     let profileTimezone: String?
+    let studyService: StudyServiceProtocol
     let consentService: ConsentServiceProtocol
     let onEnrollmentCompleted: @MainActor () async -> DashboardStudyCard?
 
@@ -265,7 +286,8 @@ private struct StudyDetailView: View {
                 StudyTaskDashboardView(
                     study: completedStudyCard.study,
                     enrollment: enrollment,
-                    profileTimezone: profileTimezone
+                    profileTimezone: profileTimezone,
+                    studyService: studyService
                 )
             } else if canEnroll, let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) {
                 StudyConsentFlowView(
@@ -278,7 +300,11 @@ private struct StudyDetailView: View {
                           refreshedStudyCard.isEnrolledActive else {
                         return false
                     }
-                    completedStudyCard = refreshedStudyCard
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        completedStudyCard = refreshedStudyCard
+                    }
                     return true
                 }
             } else {
@@ -361,6 +387,77 @@ private struct EnrollmentUnavailableView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
+
+#if DEBUG
+private actor UITestEnrollmentServices: StudyServiceProtocol, ConsentServiceProtocol {
+    private let studyID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+    private let enrollmentID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+    private let userID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+    private var isEnrolled = false
+
+    func fetchStudies() async throws -> [Study] {
+        [
+            Study(
+                id: studyID,
+                slug: StudyPrerequisiteRules.studyNo1Slug,
+                title: "Loudness Matching Study",
+                description: "Help us understand how tinnitus loudness changes throughout the day.",
+                status: .recruiting,
+                createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        ]
+    }
+
+    func fetchMyEnrollments() async throws -> [StudyEnrollment] {
+        guard isEnrolled else { return [] }
+        return [
+            StudyEnrollment(
+                id: enrollmentID,
+                userID: userID,
+                studyID: studyID,
+                status: .enrolled,
+                enrolledAt: Date(timeIntervalSince1970: 1_700_000_100),
+                createdAt: Date(timeIntervalSince1970: 1_700_000_100),
+                onboardingCompletedAt: nil
+            )
+        ]
+    }
+
+    func finalizeConsentAndEnroll(study: Study, consent: StudyConsentCompletion) async throws {
+        isEnrolled = true
+    }
+
+    func enroll(studyID: UUID) async throws {
+        isEnrolled = true
+    }
+
+    func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
+        []
+    }
+
+    func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
+        throw NSError(
+            domain: "UITestEnrollmentServices",
+            code: 404,
+            userInfo: [NSLocalizedDescriptionKey: "No orientation threshold task configured for UI tests."]
+        )
+    }
+
+    func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
+
+    func submitStudyNo1OrientationThreshold(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: StudyNo1OrientationThresholdSubmission
+    ) async throws {}
+
+    func submitLoudnessMatch(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: LoudnessMatchSubmission
+    ) async throws {}
+}
+#endif
 
 private struct ShimmerStudyCardView: View {
     @State private var shimmerOffset: CGFloat = -260
