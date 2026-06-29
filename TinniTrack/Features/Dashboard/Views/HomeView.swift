@@ -71,7 +71,7 @@ private struct DashboardTabView: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                     .tracking(0.8)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DashboardColors.brandBlue)
 
                 content
             }
@@ -93,13 +93,13 @@ private struct DashboardTabView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Hello, \(firstName)")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hi, \(firstName)")
                 .font(.system(.largeTitle, weight: .bold))
                 .foregroundStyle(.primary)
-            Text("Welcome to TinniTrack.")
+            Text("Track your tinnitus and participate in active studies.")
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -179,45 +179,65 @@ private struct StudyCardView: View {
     let studyCard: DashboardStudyCard
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(studyCard.study.title)
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 16) {
+                Image("TinnitusStudyIcon")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .accessibilityHidden(true)
+                    .frame(width: 64, height: 64)
 
-                Spacer(minLength: 12)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(studyCard.study.title)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                Text(studyCard.badgeText)
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .tracking(0.8)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(studyCard.badgeColor)
-                    .clipShape(Capsule())
+                    Text(studyCard.study.description)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text(studyCard.study.description)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            Rectangle()
+                .fill(DashboardColors.cardDivider)
+                .frame(height: 1)
 
-            HStack(spacing: 6) {
-                Text(studyCard.callToActionText)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DashboardColors.brandBlue)
+            HStack(alignment: .center) {
+                Spacer(minLength: 0)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DashboardColors.brandBlue)
+                HStack(spacing: 20) {
+                    Text(studyCard.displayBadgeText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(studyCard.badgeColor)
+                        .clipShape(Capsule())
+
+                    HStack(spacing: 5) {
+                        Text(studyCard.callToActionText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DashboardColors.brandBlue)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DashboardColors.brandBlue)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(18)
+        .padding(20)
         .background(DashboardColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
@@ -426,10 +446,15 @@ private enum DashboardColors {
     static let brandBlue = Color(red: 0.23, green: 0.43, blue: 0.73)
     static let cardBackground = Color(uiColor: .secondarySystemGroupedBackground)
     static let cardStroke = Color(uiColor: .separator).opacity(0.35)
+    static let cardDivider = Color(uiColor: .separator).opacity(0.22)
     static let cardShadow = Color.black.opacity(0.08)
 }
 
 private extension DashboardStudyCard {
+    var displayBadgeText: String {
+        badgeText
+    }
+
     var badgeColor: Color {
         if isEnrolledActive {
             return DashboardColors.brandBlue
