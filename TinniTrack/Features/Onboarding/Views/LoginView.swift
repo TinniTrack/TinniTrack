@@ -76,6 +76,8 @@ struct LoginView: View {
                             borderColor: fieldBorderColor,
                             focusedBorderColor: focusColor,
                             accessibilityIdentifier: "login_email_field",
+                            submitLabel: .next,
+                            onSubmit: { focusedField = .password },
                             clearAction: { email = "" }
                         )
                         .focused($focusedField, equals: .email)
@@ -87,13 +89,16 @@ struct LoginView: View {
                             isFocused: focusedField == .password,
                             borderColor: fieldBorderColor,
                             focusedBorderColor: focusColor,
-                            accessibilityIdentifier: "login_password_field"
+                            accessibilityIdentifier: "login_password_field",
+                            submitLabel: .go,
+                            onSubmit: submitLogin
                         )
                         .focused($focusedField, equals: .password)
 
                         HStack {
                             Spacer()
                             Button("Forgot Password?") {
+                                dismissKeyboard()
                                 Task {
                                     await sessionStore.requestPasswordReset(email: normalizedEmail)
                                 }
@@ -107,13 +112,7 @@ struct LoginView: View {
                     }
 
                     Button("Log In") {
-                        guard canSubmit else { return }
-                        Task {
-                            await sessionStore.signIn(
-                                email: normalizedEmail,
-                                password: password
-                            )
-                        }
+                        submitLogin()
                     }
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
@@ -122,12 +121,18 @@ struct LoginView: View {
                     .background(actionColor)
                     .clipShape(Capsule())
                     .padding(.horizontal, 12)
+                    .buttonStyle(AppCapsuleButtonStyle())
                     .disabled(sessionStore.state.isBusy || !canSubmit)
                     .accessibilityIdentifier("login_button")
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 26)
-                .background(Color.white.opacity(0.96))
+                .background {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Color.white.opacity(0.96))
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: dismissKeyboard)
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -135,10 +140,6 @@ struct LoginView: View {
                 )
                 .shadow(color: Color.black.opacity(0.05), radius: 18, x: 0, y: 10)
                 .padding(.horizontal, 20)
-                .gesture(
-                    TapGesture().onEnded(dismissKeyboard),
-                    including: .gesture
-                )
 
                 Spacer(minLength: 16)
                     .frame(maxWidth: .infinity)
@@ -154,8 +155,6 @@ struct LoginView: View {
                 }
                 .font(.system(size: 15, weight: .regular))
                 .padding(.bottom, 24)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: dismissKeyboard)
             }
             .allowsHitTesting(!sessionStore.state.isBusy)
 
@@ -164,6 +163,17 @@ struct LoginView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
+    }
+
+    private func submitLogin() {
+        dismissKeyboard()
+        guard canSubmit else { return }
+        Task {
+            await sessionStore.signIn(
+                email: normalizedEmail,
+                password: password
+            )
+        }
     }
 
     private func dismissKeyboard() {
@@ -179,6 +189,8 @@ private struct FloatingInputField: View {
     let borderColor: Color
     let focusedBorderColor: Color
     var accessibilityIdentifier: String? = nil
+    var submitLabel: SubmitLabel = .done
+    var onSubmit: () -> Void = {}
     var clearAction: (() -> Void)? = nil
     private let floatingLabelColor = Color(red: 0.24, green: 0.24, blue: 0.28)
 
@@ -209,6 +221,8 @@ private struct FloatingInputField: View {
                         .textContentType(.password)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .submitLabel(submitLabel)
+                        .onSubmit(onSubmit)
                         .accessibilityIdentifier(accessibilityIdentifier ?? "")
                 } else {
                     TextField("", text: $text)
@@ -216,6 +230,8 @@ private struct FloatingInputField: View {
                         .textContentType(.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .submitLabel(submitLabel)
+                        .onSubmit(onSubmit)
                         .accessibilityIdentifier(accessibilityIdentifier ?? "")
                 }
             }
@@ -233,7 +249,7 @@ private struct FloatingInputField: View {
                             .font(.system(size: 18))
                             .foregroundStyle(Color.gray.opacity(0.65))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(AppCircleButtonStyle())
                     .padding(.trailing, 12)
                 }
             }
@@ -271,9 +287,11 @@ private struct LogoView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     NavigationStack {
         LoginView()
     }
     .environmentObject(SessionStoreFactory.makePreviewStore())
 }
+#endif

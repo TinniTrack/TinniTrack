@@ -1,0 +1,49 @@
+import Foundation
+import Testing
+@testable import TinniTrack
+
+struct StudyNo1ConfigurationTests {
+    @Test
+    func firstScheduleLocalDateUsesSameDayAtEightAM() {
+        let tz = TimeZone(identifier: "America/Los_Angeles")!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tz
+
+        let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 8, minute: 0))!
+        let startDate = StudyNo1Configuration.firstScheduleLocalDate(now: now, timeZone: tz, calendar: calendar)
+
+        let expected = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 0, minute: 0))!
+        #expect(startDate == expected)
+    }
+
+    @Test
+    func firstScheduleLocalDateUsesNextDayAfterEightAM() {
+        let tz = TimeZone(identifier: "America/Los_Angeles")!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tz
+
+        let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 8, minute: 1))!
+        let startDate = StudyNo1Configuration.firstScheduleLocalDate(now: now, timeZone: tz, calendar: calendar)
+
+        let expected = calendar.date(from: DateComponents(year: 2026, month: 3, day: 12, hour: 0, minute: 0))!
+        #expect(startDate == expected)
+    }
+
+    @Test
+    func taskConstantsMatchStudyNo1Protocol() {
+        #expect(StudyNo1Configuration.slotHours == [8, 12, 16, 20])
+        #expect(StudyNo1Configuration.windowMinutes == 60)
+        #expect(StudyNo1Configuration.ambientThresholdDB == 45)
+    }
+
+    @Test
+    func protocolMetadataDoesNotAdvertisePrototypeNormalizedOutput() {
+        let protocolDefinition = StudyProtocolCatalog.studyNo1
+
+        #expect(protocolDefinition.version == "lm_v1")
+        #expect(protocolDefinition.tasks.first?.measurementUnit == .dBHL)
+        #expect(protocolDefinition.tasks.first?.requiresCalibratedOutput == true)
+        #expect(protocolDefinition.calibrationProfile.validationStatus == .researchKitReferenceAvailable)
+        #expect(protocolDefinition.resultPayload.resultUnits == [.dBHL, .dBSPL, .dBSL])
+    }
+}

@@ -37,7 +37,9 @@ struct ResetPasswordView: View {
     }
 }
 
+#if DEBUG
 #Preview {
     ResetPasswordView()
         .environmentObject(SessionStoreFactory.makePreviewStore())
 }
+#endif

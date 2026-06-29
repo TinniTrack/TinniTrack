@@ -10,6 +10,13 @@ struct AppRootView: View {
 
     var body: some View {
         rootContent
+        #if DEBUG
+        .overlay(alignment: .bottomTrailing) {
+            DeveloperEnvironmentBadge(environment: supabaseEnvironment)
+                .padding(12)
+                .allowsHitTesting(false)
+        }
+        #endif
         .alert(sessionStore.state.banner?.title ?? "Info", isPresented: Binding(
             get: { sessionStore.state.banner != nil },
             set: { shouldPresent in
@@ -55,11 +62,29 @@ struct AppRootView: View {
                     EmptyView()
                 }
             }
+            .id(onboardingNavigationStackID)
+        }
+    }
+
+    private var onboardingNavigationStackID: String {
+        switch sessionStore.state.route {
+        case .bootstrapping:
+            return "bootstrapping"
+        case .unauthenticated:
+            return "unauthenticated"
+        case .awaitingEmailVerification:
+            return "awaitingEmailVerification"
+        case .needsOnboarding:
+            return "needsOnboarding"
+        case .ready:
+            return "ready"
         }
     }
 }
 
+#if DEBUG
 #Preview {
     AppRootView()
         .environmentObject(SessionStoreFactory.makePreviewStore())
 }
+#endif

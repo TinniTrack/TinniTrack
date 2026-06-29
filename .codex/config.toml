@@ -1,0 +1,4 @@
+[features]
+# Experimental OpenAI Codex feature: enables Codex-generated git commits and
+# commit attribution trailers when the local Codex version supports it.
+codex_git_commit = true

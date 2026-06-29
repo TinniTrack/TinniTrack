@@ -13,6 +13,12 @@ xcuserdata/
 *.dSYM.zip
 *.dSYM
 
+## Signing/provisioning
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.developerprofile
+
 ## Playgrounds
 timeline.xctimeline
 playground.xcworkspace
@@ -64,6 +70,9 @@ fastlane/test_output
 # Build generated
 build/
 DerivedData/
+
+# Codex local environment
+.codex/environments/environment.toml
 
 # macOS
 .DS_Store

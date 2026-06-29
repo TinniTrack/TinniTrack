@@ -9,9 +9,30 @@ struct HomeView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @StateObject private var dashboardViewModel: HomeDashboardViewModel
     @State private var selectedTab: Tab = .dashboard
+    private let studyService: StudyServiceProtocol
+    private let consentService: ConsentServiceProtocol
 
-    init(studyService: StudyServiceProtocol = SupabaseStudyService()) {
-        _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: studyService))
+    init(
+        studyService: StudyServiceProtocol? = nil,
+        consentService: ConsentServiceProtocol? = nil,
+        processInfo: ProcessInfo = .processInfo
+    ) {
+        #if DEBUG
+        if studyService == nil,
+           consentService == nil,
+           processInfo.environment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] == "1" {
+            let uiTestServices = UITestEnrollmentServices()
+            self.studyService = uiTestServices
+            self.consentService = uiTestServices
+            _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: uiTestServices))
+            return
+        }
+        #endif
+
+        let resolvedStudyService = studyService ?? SupabaseStudyService()
+        self.studyService = resolvedStudyService
+        self.consentService = consentService ?? SupabaseConsentService()
+        _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: resolvedStudyService))
     }
 
     var body: some View {
@@ -19,7 +40,10 @@ struct HomeView: View {
             NavigationStack {
                 DashboardTabView(
                     firstName: displayFirstName,
-                    viewModel: dashboardViewModel
+                    profileTimezone: sessionStore.state.profile?.timezone,
+                    viewModel: dashboardViewModel,
+                    studyService: studyService,
+                    consentService: consentService
                 )
             }
             .tabItem {
@@ -28,7 +52,7 @@ struct HomeView: View {
             .tag(Tab.dashboard)
 
             NavigationStack {
-                ProfileTabView()
+                ProfileView()
             }
             .tabItem {
                 Label("Profile", systemImage: "person.circle")
@@ -51,7 +75,10 @@ private enum Tab {
 private struct DashboardTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     let firstName: String
+    let profileTimezone: String?
     @ObservedObject var viewModel: HomeDashboardViewModel
+    let studyService: StudyServiceProtocol
+    let consentService: ConsentServiceProtocol
 
     var body: some View {
         ScrollView {
@@ -62,7 +89,7 @@ private struct DashboardTabView: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                     .tracking(0.8)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DashboardColors.brandBlue)
 
                 content
             }
@@ -75,7 +102,7 @@ private struct DashboardTabView: View {
         .task {
             await viewModel.loadIfNeeded()
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
                 await viewModel.refreshForLifecycleEvent()
@@ -84,13 +111,13 @@ private struct DashboardTabView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Hello, \(firstName)")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hi, \(firstName)")
                 .font(.system(.largeTitle, weight: .bold))
                 .foregroundStyle(.primary)
-            Text("Welcome to TinniTrack.")
+            Text("Track your tinnitus and participate in active studies.")
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -135,6 +162,7 @@ private struct DashboardTabView: View {
                         StudyCardView(studyCard: studyCard)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("study_card_\(studyCard.study.slug)")
                 }
             }
         }
@@ -142,11 +170,26 @@ private struct DashboardTabView: View {
 
     @ViewBuilder
     private func destination(for studyCard: DashboardStudyCard) -> some View {
-        if studyCard.isEnrolledActive {
-            StudyTaskDashboardView(study: studyCard.study)
+        if studyCard.isEnrolledActive, let enrollment = studyCard.enrollment {
+            StudyTaskDashboardView(
+                study: studyCard.study,
+                enrollment: enrollment,
+                profileTimezone: profileTimezone,
+                studyService: studyService
+            )
         } else {
-            StudyDetailView(studyCard: studyCard) {
-                try await viewModel.enroll(studyID: studyCard.study.id)
+            StudyDetailView(
+                studyCard: studyCard,
+                profileTimezone: profileTimezone,
+                studyService: studyService,
+                consentService: consentService
+            ) {
+                await viewModel.refreshAfterEnrollment()
+                guard let refreshedStudyCard = viewModel.studies.first(where: { $0.study.id == studyCard.study.id }),
+                      refreshedStudyCard.isEnrolledActive else {
+                    return nil
+                }
+                return refreshedStudyCard
             }
         }
     }
@@ -156,105 +199,125 @@ private struct StudyCardView: View {
     let studyCard: DashboardStudyCard
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(studyCard.study.title)
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 16) {
+                Image("TinnitusStudyIcon")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .accessibilityHidden(true)
+                    .frame(width: 64, height: 64)
 
-                Spacer(minLength: 12)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(studyCard.study.title)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                Text(studyCard.badgeText)
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .tracking(0.8)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(studyCard.badgeColor)
-                    .clipShape(Capsule())
+                    Text(studyCard.study.description)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text(studyCard.study.description)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            Rectangle()
+                .fill(DashboardColors.cardDivider)
+                .frame(height: 1)
 
-            HStack(spacing: 6) {
-                Text(studyCard.callToActionText)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DashboardColors.brandBlue)
+            HStack(alignment: .center) {
+                Spacer(minLength: 0)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DashboardColors.brandBlue)
+                HStack(spacing: 20) {
+                    Text(studyCard.displayBadgeText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(studyCard.badgeColor)
+                        .clipShape(Capsule())
+
+                    HStack(spacing: 5) {
+                        Text(studyCard.callToActionText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(DashboardColors.brandBlue)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DashboardColors.brandBlue)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(18)
-        .background(Color.white)
+        .padding(20)
+        .background(DashboardColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(DashboardColors.cardStroke, lineWidth: 1)
+        }
+        .shadow(color: DashboardColors.cardShadow, radius: 4, x: 0, y: 2)
     }
 }
 
 private struct StudyDetailView: View {
     let studyCard: DashboardStudyCard
-    let onEnroll: () async throws -> Void
+    let profileTimezone: String?
+    let studyService: StudyServiceProtocol
+    let consentService: ConsentServiceProtocol
+    let onEnrollmentCompleted: @MainActor () async -> DashboardStudyCard?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var isEnrolling = false
-    @State private var enrollmentErrorMessage: String?
+    @State private var completedStudyCard: DashboardStudyCard?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                detailCard(title: "Description", body: studyCard.study.description)
-                criteriaCard(title: "Inclusion Criteria", items: Self.inclusionCriteria)
-                criteriaCard(title: "Exclusion Criteria", items: Self.exclusionCriteria)
-
-                Button {
-                    Task { await handleEnrollTapped() }
-                } label: {
-                    HStack {
-                        if isEnrolling {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text(canEnroll ? "Begin eConsent & Enroll" : "Enrollment Unavailable")
-                                .fontWeight(.semibold)
-                        }
+        Group {
+            if let completedStudyCard,
+               completedStudyCard.isEnrolledActive,
+               let enrollment = completedStudyCard.enrollment {
+                StudyTaskDashboardView(
+                    study: completedStudyCard.study,
+                    enrollment: enrollment,
+                    profileTimezone: profileTimezone,
+                    studyService: studyService
+                )
+            } else if canEnroll, let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) {
+                StudyConsentFlowView(
+                    study: studyCard.study,
+                    definition: definition,
+                    consentService: consentService
+                ) {
+                    let refreshedStudyCard = await onEnrollmentCompleted()
+                    guard let refreshedStudyCard,
+                          refreshedStudyCard.isEnrolledActive else {
+                        return false
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        completedStudyCard = refreshedStudyCard
+                    }
+                    return true
                 }
-                .buttonStyle(.plain)
-                .background(canEnroll ? DashboardColors.brandBlue : Color(uiColor: .systemGray3))
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .disabled(!canEnroll || isEnrolling)
+            } else {
+                EnrollmentUnavailableView(
+                    title: unavailableTitle,
+                    message: unavailableMessage
+                )
             }
-            .padding(20)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(studyCard.study.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .alert("Unable to Enroll", isPresented: Binding(
-            get: { enrollmentErrorMessage != nil },
-            set: { shouldShow in
-                if !shouldShow {
-                    enrollmentErrorMessage = nil
-                }
-            }
-        )) {
-            Button("OK", role: .cancel) {
-                enrollmentErrorMessage = nil
-            }
-        } message: {
-            Text(enrollmentErrorMessage ?? "")
+        .interactivePopGestureEnabled()
+        .onChange(of: studyCard.enrollment?.status) { _, status in
+            guard status == .enrolled else { return }
+            dismiss()
         }
     }
 
@@ -265,119 +328,143 @@ private struct StudyDetailView: View {
         return false
     }
 
-    private func detailCard(title: String, body: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-            Text(body)
-                .font(.body)
-                .foregroundStyle(.secondary)
+    private var unavailableTitle: String {
+        if canEnroll {
+            return "Enrollment Unavailable"
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        return "Study Not Recruiting"
     }
 
-    private func criteriaCard(title: String, items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 8) {
-                    Text("•")
-                    Text(item)
-                }
-                .foregroundStyle(.secondary)
-                .font(.subheadline)
-            }
+    private var unavailableMessage: String {
+        if canEnroll {
+            return "This study does not have an eConsent definition."
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        return "Enrollment is not open for this study right now."
     }
-
-    @MainActor
-    private func handleEnrollTapped() async {
-        guard canEnroll else { return }
-        isEnrolling = true
-        defer { isEnrolling = false }
-
-        do {
-            try await onEnroll()
-            dismiss()
-        } catch {
-            enrollmentErrorMessage = error.localizedDescription
-        }
-    }
-
-    private static let inclusionCriteria = [
-        "Adults (18+) with self-reported tinnitus.",
-        "Access to an iPhone and AirPods Pro (2nd generation).",
-        "Able to complete scheduled loudness-matching tasks."
-    ]
-
-    private static let exclusionCriteria = [
-        "Unable to provide informed consent.",
-        "No compatible headphones for calibration workflows.",
-        "Medical conditions that make headphone listening unsafe."
-    ]
 }
 
-private struct ProfileTabView: View {
-    @EnvironmentObject private var sessionStore: SessionStore
-    @State private var isSigningOut = false
+private struct EnrollmentUnavailableView: View {
+    let title: String
+    let message: String
+
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        Form {
-            Section("Profile") {
-                LabeledContent("First Name", value: sessionStore.state.profile?.firstName ?? "Not set")
-                LabeledContent("Last Name", value: sessionStore.state.profile?.lastName ?? "Not set")
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "lock.circle")
+                .font(.system(size: 54, weight: .semibold))
+                .foregroundStyle(DashboardColors.brandBlue)
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title2.weight(.bold))
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
 
-            Section("Research") {
-                LabeledContent("Participant ID", value: participantIDText)
+            Button {
+                dismiss()
+            } label: {
+                Label("Back to Dashboard", systemImage: "chevron.left")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 8)
 
-            Section {
-                Button(role: .destructive) {
-                    Task { await signOut() }
-                } label: {
-                    if isSigningOut {
-                        ProgressView()
-                    } else {
-                        Text("Log Out")
-                    }
-                }
-                .disabled(isSigningOut)
-            }
+            Spacer()
         }
-        .navigationTitle("Profile")
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
     }
-
-    private var participantIDText: String {
-        guard let participantID = sessionStore.state.profile?.participantID else { return "Unavailable" }
-        return String(participantID)
-    }
-
-    @MainActor
-    private func signOut() async {
-        isSigningOut = true
-        defer { isSigningOut = false }
-        await sessionStore.signOut()
-    }
 }
+
+#if DEBUG
+private actor UITestEnrollmentServices: StudyServiceProtocol, ConsentServiceProtocol {
+    private let studyID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+    private let enrollmentID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+    private let userID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+    private var isEnrolled = false
+
+    func fetchStudies() async throws -> [Study] {
+        [
+            Study(
+                id: studyID,
+                slug: StudyPrerequisiteRules.studyNo1Slug,
+                title: "Loudness Matching Study",
+                description: "Help us understand how tinnitus loudness changes throughout the day.",
+                status: .recruiting,
+                createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        ]
+    }
+
+    func fetchMyEnrollments() async throws -> [StudyEnrollment] {
+        guard isEnrolled else { return [] }
+        return [
+            StudyEnrollment(
+                id: enrollmentID,
+                userID: userID,
+                studyID: studyID,
+                status: .enrolled,
+                enrolledAt: Date(timeIntervalSince1970: 1_700_000_100),
+                createdAt: Date(timeIntervalSince1970: 1_700_000_100),
+                onboardingCompletedAt: nil
+            )
+        ]
+    }
+
+    func finalizeConsentAndEnroll(study: Study, consent: StudyConsentCompletion) async throws {
+        isEnrolled = true
+    }
+
+    func enroll(studyID: UUID) async throws {
+        isEnrolled = true
+    }
+
+    func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
+        []
+    }
+
+    func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
+        throw NSError(
+            domain: "UITestEnrollmentServices",
+            code: 404,
+            userInfo: [NSLocalizedDescriptionKey: "No orientation threshold task configured for UI tests."]
+        )
+    }
+
+    func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
+
+    func submitStudyNo1OrientationThreshold(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: StudyNo1OrientationThresholdSubmission
+    ) async throws {}
+
+    func submitLoudnessMatch(
+        scheduledTaskID: UUID,
+        enrollmentID: UUID,
+        submission: LoudnessMatchSubmission
+    ) async throws {}
+}
+#endif
 
 private struct ShimmerStudyCardView: View {
     @State private var shimmerOffset: CGFloat = -260
 
     var body: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color.white)
+            .fill(DashboardColors.cardBackground)
             .frame(height: 170)
             .overlay {
                 VStack(alignment: .leading, spacing: 14) {
@@ -419,7 +506,11 @@ private struct ShimmerStudyCardView: View {
                 .clipped()
             }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(DashboardColors.cardStroke, lineWidth: 1)
+            }
+            .shadow(color: DashboardColors.cardShadow, radius: 4, x: 0, y: 2)
             .onAppear {
                 shimmerOffset = -260
                 withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
@@ -431,9 +522,17 @@ private struct ShimmerStudyCardView: View {
 
 private enum DashboardColors {
     static let brandBlue = Color(red: 0.23, green: 0.43, blue: 0.73)
+    static let cardBackground = Color(uiColor: .secondarySystemGroupedBackground)
+    static let cardStroke = Color(uiColor: .separator).opacity(0.35)
+    static let cardDivider = Color(uiColor: .separator).opacity(0.22)
+    static let cardShadow = Color.black.opacity(0.08)
 }
 
 private extension DashboardStudyCard {
+    var displayBadgeText: String {
+        badgeText
+    }
+
     var badgeColor: Color {
         if isEnrolledActive {
             return DashboardColors.brandBlue

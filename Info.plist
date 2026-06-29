@@ -33,10 +33,16 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>We need access to your hearing test data from Apple Health to import and analyze your hearing health information for this research study.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We use the microphone to verify ambient noise is quiet enough during loudness-matching tasks.</string>
 	<key>SUPABASE_ANON_KEY</key>
-	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4c2txeW9oY2ViaXhoamd6YWRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMDIyNjIsImV4cCI6MjA3Nzc3ODI2Mn0.QuAG8_ebHWVEuXzXDhUcH7xZbj5Y0Kp9oC0F-athaQM</string>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SUPABASE_ENVIRONMENT</key>
+	<string>$(SUPABASE_ENVIRONMENT)</string>
 	<key>SUPABASE_URL</key>
-	<string>https://kxskqyohcebixhjgzadp.supabase.co</string>
+	<string>$(SUPABASE_URL)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -49,17 +55,6 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>NSHealthShareUsageDescription</key>
-	<string>We need access to your hearing test data from Apple Health to import and analyze your hearing health information for this research study.</string>
 </dict>
 </plist>

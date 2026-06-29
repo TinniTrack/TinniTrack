@@ -17,6 +17,22 @@ struct SessionStoreTests {
     }
 
     @Test
+    func startSuppressesInitialBackendFailureBanner() async {
+        let auth = MockAuthService(
+            currentSession: nil,
+            currentSessionError: AuthServiceError.transport("A server with the specified hostname could not be found.")
+        )
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+
+        #expect(store.state.route == .unauthenticated)
+        #expect(store.state.banner == nil)
+    }
+
+    @Test
     func startMovesToAwaitingVerificationWhenPendingEmailExists() async {
         let auth = MockAuthService(currentSession: nil)
         let profile = MockProfileService(profile: nil)
@@ -185,6 +201,64 @@ struct SessionStoreTests {
     }
 
     @Test
+    func resendVerificationEmailUsesVisibleRouteEmailWhenPendingStoreMissing() async {
+        let auth = MockAuthService(currentSession: nil)
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(
+            authService: auth,
+            profileService: profile,
+            emailVerificationPendingStore: pending,
+            initialState: SessionStore.SessionState(
+                route: .awaitingEmailVerification(email: " pending@example.com "),
+                activity: .idle,
+                banner: nil,
+                passwordResetPresented: false
+            ),
+            hasStarted: true
+        )
+
+        await store.resendVerificationEmail()
+
+        #expect(auth.resentVerificationEmail == "pending@example.com")
+        #expect(auth.resentVerificationRedirectURL == URL(string: "tinnitrack://auth/confirm")!)
+        #expect(pending.pending?.email == "pending@example.com")
+        #expect(pending.pending?.lastResendAt != nil)
+        #expect(store.state.banner == .info("Verification email sent."))
+    }
+
+    @Test
+    func resendVerificationEmailPrefersVisibleRouteEmailOverStalePendingStore() async {
+        let auth = MockAuthService(currentSession: nil)
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(
+            pending: PendingEmailVerification(
+                email: "stale@example.com",
+                createdAt: Date(),
+                lastResendAt: nil
+            )
+        )
+        let store = SessionStore(
+            authService: auth,
+            profileService: profile,
+            emailVerificationPendingStore: pending,
+            initialState: SessionStore.SessionState(
+                route: .awaitingEmailVerification(email: "current@example.com"),
+                activity: .idle,
+                banner: nil,
+                passwordResetPresented: false
+            ),
+            hasStarted: true
+        )
+
+        await store.resendVerificationEmail()
+
+        #expect(auth.resentVerificationEmail == "current@example.com")
+        #expect(pending.pending?.email == "current@example.com")
+        #expect(pending.pending?.lastResendAt != nil)
+    }
+
+    @Test
     func refreshFailurePreservesExistingRouteAndShowsError() async {
         let userID = UUID()
         let profile = Profile(
@@ -214,8 +288,9 @@ struct SessionStoreTests {
             #expect(Bool(false), "Expected existing .ready route to be preserved")
         }
 
-        if case .error(let message)? = store.state.banner {
-            #expect(message == "Network unavailable")
+        if case .titledError(let title, let message)? = store.state.banner {
+            #expect(title == "Unable to Connect")
+            #expect(message == AuthServiceError.serviceUnavailableMessage)
         } else {
             #expect(Bool(false), "Expected error banner after refresh failure")
         }
@@ -240,10 +315,33 @@ struct SessionStoreTests {
         await store.checkEmailVerificationStatus()
 
         #expect(store.state.route == .awaitingEmailVerification(email: "pending@example.com"))
-        if case .error(let message)? = store.state.banner {
-            #expect(message == "Network unavailable")
+        if case .titledError(let title, let message)? = store.state.banner {
+            #expect(title == "Unable to Connect")
+            #expect(message == AuthServiceError.serviceUnavailableMessage)
         } else {
             #expect(Bool(false), "Expected refresh error banner to remain visible")
+        }
+    }
+
+    @Test
+    func signInTransportFailureShowsUnableToConnectMessage() async {
+        let auth = MockAuthService(
+            currentSession: nil,
+            signInError: AuthServiceError.transport("A server with the specified hostname could not be found.")
+        )
+        let profile = MockProfileService(profile: nil)
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+        await store.signIn(email: "person@example.com", password: "password123")
+
+        #expect(store.state.route == .unauthenticated)
+        if case .titledError(let title, let message)? = store.state.banner {
+            #expect(title == "Unable to Connect")
+            #expect(message == AuthServiceError.serviceUnavailableMessage)
+        } else {
+            #expect(Bool(false), "Expected unable-to-connect banner after sign-in transport failure")
         }
     }
 
@@ -312,6 +410,120 @@ struct SessionStoreTests {
         }
         #expect(store.state.route != .bootstrapping)
     }
+
+    @Test
+    func updateProfilePersistsChangesAndRefreshesReadyRoute() async {
+        let userID = UUID()
+        let originalDateOfBirth = Calendar(identifier: .gregorian).date(from: DateComponents(year: 1990, month: 1, day: 15))!
+        let updatedDateOfBirth = Calendar(identifier: .gregorian).date(from: DateComponents(year: 1991, month: 2, day: 20))!
+        let auth = MockAuthService(currentSession: AuthSession(userID: userID, email: "person@example.com"))
+        let profile = MockProfileService(
+            profile: Profile(
+                id: userID,
+                participantID: 1001,
+                firstName: "Jane",
+                lastName: "Doe",
+                dateOfBirth: originalDateOfBirth,
+                timezone: "America/Chicago",
+                createdAt: Date(),
+                onboardingCompletedAt: Date()
+            )
+        )
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+        await store.updateProfile(firstName: " Janet ", lastName: " Doe-Smith ", dateOfBirth: updatedDateOfBirth)
+
+        if case .ready(let loadedProfile) = store.state.route {
+            #expect(loadedProfile.firstName == "Janet")
+            #expect(loadedProfile.lastName == "Doe-Smith")
+            #expect(loadedProfile.dateOfBirth == updatedDateOfBirth)
+            #expect(loadedProfile.participantID == 1001)
+        } else {
+            #expect(Bool(false), "Expected ready route after profile update")
+        }
+        #expect(profile.updatedFirstName == "Janet")
+        #expect(profile.updatedLastName == "Doe-Smith")
+        #expect(store.state.banner == .info("Profile updated."))
+    }
+
+    @Test
+    func updateLoginEmailUsesVerifiedChangeFlowAndShowsConfirmationMessage() async {
+        let userID = UUID()
+        let auth = MockAuthService(currentSession: AuthSession(userID: userID, email: "old@example.com"))
+        let profile = MockProfileService(profile: completedProfile(id: userID))
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+        await store.updateLoginEmail(" new@example.com ")
+
+        #expect(auth.updatedEmail == "new@example.com")
+        #expect(auth.updatedEmailRedirectURL == URL(string: "tinnitrack://auth/confirm")!)
+        #expect(store.state.loginEmail == "old@example.com")
+        #expect(store.state.banner == .info("Check your current and new inboxes to confirm this email change."))
+    }
+
+    @Test
+    func deleteAccountSuccessRoutesToUnauthenticatedAndClearsSessionState() async {
+        let userID = UUID()
+        let auth = MockAuthService(currentSession: AuthSession(userID: userID, email: "person@example.com"))
+        let profile = MockProfileService(profile: completedProfile(id: userID))
+        let pending = MockEmailVerificationPendingStore(
+            pending: PendingEmailVerification(email: "pending@example.com", createdAt: Date(), lastResendAt: nil)
+        )
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+        await store.deleteAccount()
+
+        #expect(auth.deleteCurrentUserCallCount == 1)
+        #expect(store.state.route == .unauthenticated)
+        #expect(store.state.loginEmail == nil)
+        #expect(pending.pending == nil)
+        #expect(store.state.banner == nil)
+    }
+
+    @Test
+    func deleteAccountFailurePreservesReadyRouteAndShowsError() async {
+        let userID = UUID()
+        let auth = MockAuthService(
+            currentSession: AuthSession(userID: userID, email: "person@example.com"),
+            deleteCurrentUserError: AuthServiceError.transport("Network unavailable")
+        )
+        let profile = MockProfileService(profile: completedProfile(id: userID))
+        let pending = MockEmailVerificationPendingStore(pending: nil)
+        let store = SessionStore(authService: auth, profileService: profile, emailVerificationPendingStore: pending)
+
+        await store.start()
+        await store.deleteAccount()
+
+        if case .ready(let loadedProfile) = store.state.route {
+            #expect(loadedProfile.id == userID)
+        } else {
+            #expect(Bool(false), "Expected ready route to be preserved")
+        }
+        if case .titledError(let title, let message)? = store.state.banner {
+            #expect(title == "Unable to Connect")
+            #expect(message == AuthServiceError.serviceUnavailableMessage)
+        } else {
+            #expect(Bool(false), "Expected delete failure banner")
+        }
+    }
+
+    private func completedProfile(id: UUID) -> Profile {
+        Profile(
+            id: id,
+            participantID: 1001,
+            firstName: "Jane",
+            lastName: "Doe",
+            dateOfBirth: Date(),
+            timezone: "America/Chicago",
+            createdAt: Date(),
+            onboardingCompletedAt: Date()
+        )
+    }
 }
 
 private final class MockAuthService: AuthServiceProtocol {
@@ -325,6 +537,12 @@ private final class MockAuthService: AuthServiceProtocol {
     var currentSessionError: Error?
     private let currentSessionDelayNanoseconds: UInt64
     private let currentSessionRecorder: CurrentSessionConcurrencyRecorder?
+    private let deleteCurrentUserError: Error?
+    private(set) var updatedEmail: String?
+    private(set) var updatedEmailRedirectURL: URL?
+    private(set) var deleteCurrentUserCallCount = 0
+    private(set) var resentVerificationEmail: String?
+    private(set) var resentVerificationRedirectURL: URL?
 
     init(
         currentSession: AuthSession?,
@@ -336,7 +554,8 @@ private final class MockAuthService: AuthServiceProtocol {
         signInDelayNanoseconds: UInt64 = 0,
         currentSessionError: Error? = nil,
         currentSessionDelayNanoseconds: UInt64 = 0,
-        currentSessionRecorder: CurrentSessionConcurrencyRecorder? = nil
+        currentSessionRecorder: CurrentSessionConcurrencyRecorder? = nil,
+        deleteCurrentUserError: Error? = nil
     ) {
         self.storedSession = currentSession
         self.signUpResult = signUpResult
@@ -348,6 +567,7 @@ private final class MockAuthService: AuthServiceProtocol {
         self.currentSessionError = currentSessionError
         self.currentSessionDelayNanoseconds = currentSessionDelayNanoseconds
         self.currentSessionRecorder = currentSessionRecorder
+        self.deleteCurrentUserError = deleteCurrentUserError
     }
 
     func signUp(email: String, password: String, metadata: SignUpMetadata) async throws -> SignUpResult {
@@ -389,7 +609,10 @@ private final class MockAuthService: AuthServiceProtocol {
         }
     }
 
-    func resendSignUpVerification(email: String, redirectURL: URL) async throws {}
+    func resendSignUpVerification(email: String, redirectURL: URL) async throws {
+        resentVerificationEmail = email
+        resentVerificationRedirectURL = redirectURL
+    }
 
     func requestPasswordReset(email: String, redirectURL: URL) async throws {}
 
@@ -401,10 +624,26 @@ private final class MockAuthService: AuthServiceProtocol {
     }
 
     func updatePassword(newPassword: String) async throws {}
+
+    func updateEmail(_ email: String, redirectURL: URL) async throws {
+        updatedEmail = email
+        updatedEmailRedirectURL = redirectURL
+    }
+
+    func deleteCurrentUser() async throws {
+        deleteCurrentUserCallCount += 1
+        if let deleteCurrentUserError {
+            throw deleteCurrentUserError
+        }
+        storedSession = nil
+    }
 }
 
 private final class MockProfileService: ProfileServiceProtocol {
     private(set) var profile: Profile?
+    private(set) var updatedFirstName: String?
+    private(set) var updatedLastName: String?
+    private(set) var updatedDateOfBirth: Date?
 
     init(profile: Profile?) {
         self.profile = profile
@@ -425,6 +664,25 @@ private final class MockProfileService: ProfileServiceProtocol {
             createdAt: profile?.createdAt,
             onboardingCompletedAt: Date()
         )
+    }
+
+    func updateMyProfile(firstName: String, lastName: String, dateOfBirth: Date) async throws -> Profile {
+        updatedFirstName = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedLastName = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        updatedDateOfBirth = dateOfBirth
+
+        let updated = Profile(
+            id: profile?.id ?? UUID(),
+            participantID: profile?.participantID,
+            firstName: updatedFirstName,
+            lastName: updatedLastName,
+            dateOfBirth: dateOfBirth,
+            timezone: profile?.timezone,
+            createdAt: profile?.createdAt,
+            onboardingCompletedAt: profile?.onboardingCompletedAt ?? Date()
+        )
+        profile = updated
+        return updated
     }
 }
 
