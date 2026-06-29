@@ -147,6 +147,7 @@ struct StudyTaskOrientationSheet: View {
             LoudnessMatchPreparationStepView(
                 step: .maxVolume,
                 viewModel: loudnessViewModel,
+                maxVolumeActionTitle: "Start Test",
                 showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
             )
         case .activeTest:

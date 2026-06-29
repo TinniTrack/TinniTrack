@@ -9,6 +9,7 @@ struct LoudnessMatchTaskModalFlowView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: LoudnessMatchTaskFlowViewModel
     @State private var step: LoudnessMatchModalStep = .intro
+    @State private var selectedLaterality: TinnitusLaterality?
     @State private var isCloseConfirmationPresented = false
     @State private var isNoiseSuggestionsPresented = false
 
@@ -45,8 +46,11 @@ struct LoudnessMatchTaskModalFlowView: View {
                     LoudnessMatchPreparationStepView(
                         step: step,
                         viewModel: viewModel,
+                        selectedLaterality: selectedLaterality,
                         showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
-                    )
+                    ) { laterality in
+                        selectedLaterality = laterality
+                    }
                 } footer: {
                     LoudnessMatchModalPrimaryButton(
                         title: primaryButtonTitle,
@@ -262,6 +266,8 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .quietRoom, .correctEar, .fit:
             return "Next"
         case .maxVolume:
+            return "Continue"
+        case .tinnitusLocation:
             return "Start Test"
         case .activeTest:
             return ""
@@ -278,6 +284,8 @@ struct LoudnessMatchTaskModalFlowView: View {
             return viewModel.environmentGateResult?.passed == true
         case .maxVolume:
             return viewModel.currentGuardrailValidation.state == .passed
+        case .tinnitusLocation:
+            return selectedLaterality != nil && !viewModel.isResolvingAudiogramThreshold
         case .activeTest:
             return false
         }
@@ -322,7 +330,18 @@ struct LoudnessMatchTaskModalFlowView: View {
                 return
             }
             viewModel.stopVolumeGateMonitoring()
-            step = .activeTest
+            selectedLaterality = viewModel.selectedLaterality ?? selectedLaterality
+            step = .tinnitusLocation
+        case .tinnitusLocation:
+            guard let selectedLaterality else {
+                return
+            }
+            Task {
+                let didStart = await viewModel.startLoudnessMatch(laterality: selectedLaterality)
+                if didStart {
+                    step = .activeTest
+                }
+            }
         case .activeTest:
             break
         }
@@ -348,8 +367,11 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .maxVolume:
             viewModel.stopVolumeGateMonitoring()
             step = .fit
-        case .activeTest:
+        case .tinnitusLocation:
             step = .maxVolume
+        case .activeTest:
+            selectedLaterality = viewModel.selectedLaterality ?? selectedLaterality
+            step = .tinnitusLocation
         }
     }
 

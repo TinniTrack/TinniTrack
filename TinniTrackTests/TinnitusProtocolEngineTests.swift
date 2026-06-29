@@ -13,21 +13,21 @@ struct TinnitusProtocolEngineTests {
         engine.recordThreshold(levelDBHL: 10)
 
         #expect(engine.frequencyHz == 1_000)
-        #expect(engine.currentCandidateLevelDBHL == 15)
+        #expect(engine.currentCandidateLevelDBHL == 45)
 
         let attempt = engine.playCurrentTone(guardrailValidation: passedGuardrails())
 
         #expect(attempt.refusalReason == nil)
         #expect(attempt.request?.frequencyHz == 1_000)
-        #expect(attempt.request?.levelDBHL == 15)
+        #expect(attempt.request?.levelDBHL == 45)
         #expect(attempt.request?.channel == .both)
         #expect(attempt.request?.stopsAfterDuration == false)
-        #expect(attempt.plan?.metadata.requestedDBHL == 15)
-        #expect(abs((attempt.plan?.metadata.targetDBSPL ?? 0) - 24.27) < 0.000_001)
+        #expect(attempt.plan?.metadata.requestedDBHL == 45)
+        #expect(abs((attempt.plan?.metadata.targetDBSPL ?? 0) - 54.27) < 0.000_001)
 
         let planned = try #require(engine.events.last { $0.kind == .playbackPlanned })
-        #expect(planned.presentedLevelDBHL == 15)
-        #expect(planned.dbSL == 5)
+        #expect(planned.presentedLevelDBHL == 45)
+        #expect(planned.dbSL == 35)
         #expect(planned.guardrailMetadata?.validationState == .passed)
         #expect(planned.playbackMetadata?.channel == .both)
     }
@@ -49,7 +49,7 @@ struct TinnitusProtocolEngineTests {
     }
 
     @Test
-    func repeatedTrialsComputeMedianSpreadDBSLAndConfidenceQuality() {
+    func repeatedTrialsComputeMedianSpreadDBSLAndConfidenceQuality() throws {
         var engine = makeEngine()
         engine.selectLaterality(.left)
         engine.recordThreshold(levelDBHL: 10)
@@ -63,22 +63,23 @@ struct TinnitusProtocolEngineTests {
             return
         }
 
-        #expect(summary.trials.map(\.acceptedLevelDBHL) == [20, 17, 14])
-        #expect(summary.medianMatchedDBHL == 17)
-        #expect(summary.medianEstimatedDBSPL == 26.27)
-        #expect(summary.medianDBSL == 7)
+        #expect(summary.trials.map(\.acceptedLevelDBHL) == [50, 47, 44])
+        #expect(summary.medianMatchedDBHL == 47)
+        let medianEstimatedDBSPL = try #require(summary.medianEstimatedDBSPL)
+        #expect(abs(medianEstimatedDBSPL - 56.27) < 0.000_001)
+        #expect(summary.medianDBSL == 37)
         #expect(summary.withinSessionSpreadDB == 6)
         #expect(summary.qualityFlags.contains(.lowConfidence))
         #expect(!summary.qualityFlags.contains(.highWithinSessionSpread))
     }
 
     @Test
-    func unavailableThresholdKeepsDBSLInvalidAndUsesDocumentedFallbackStart() {
+    func unavailableThresholdKeepsDBSLInvalidAndUsesDefaultStart() {
         var engine = makeEngine()
         engine.selectLaterality(.left)
         engine.markThresholdUnavailable(reason: "No threshold estimator is enabled in this build.")
 
-        #expect(engine.currentCandidateLevelDBHL == 10)
+        #expect(engine.currentCandidateLevelDBHL == 45)
 
         acceptCurrentTrial(&engine, adjustments: [], confidence: .high)
         acceptCurrentTrial(&engine, adjustments: [], confidence: .high)
@@ -113,7 +114,7 @@ struct TinnitusProtocolEngineTests {
             return
         }
 
-        #expect(summary.trials.map(\.acceptedLevelDBHL) == [15, 30, 10])
+        #expect(summary.trials.map(\.acceptedLevelDBHL) == [45, 60, 40])
         #expect(summary.withinSessionSpreadDB == 20)
         #expect(summary.qualityFlags.contains(.highWithinSessionSpread))
     }
@@ -162,7 +163,10 @@ struct TinnitusProtocolEngineTests {
 
     @Test
     func safetyAndUnsupportedFrequencyRefusalsAreLogged() {
-        var clippingEngine = makeEngine(configuration: clippingConfiguration())
+        var clippingEngine = makeEngine(
+            configuration: clippingConfiguration(),
+            playbackPlanner: unsafeAmplitudePlaybackPlanner()
+        )
         clippingEngine.selectLaterality(.left)
         clippingEngine.recordThreshold(levelDBHL: 100)
         clippingEngine.adjustLevel(.muchLouder)
@@ -222,11 +226,30 @@ struct TinnitusProtocolEngineTests {
     }
 
     private func makeEngine(
-        configuration: TinnitusProtocolConfiguration = .studyNo1FixedOneKilohertz
+        configuration: TinnitusProtocolConfiguration = .studyNo1FixedOneKilohertz,
+        playbackPlanner: CalibratedTonePlaybackPlanner? = nil
     ) -> TinnitusProtocolEngine {
         TinnitusProtocolEngine(
             configuration: configuration,
-            playbackPlanner: CalibratedTonePlaybackPlanner(dateProvider: { timestamp }),
+            playbackPlanner: playbackPlanner ?? CalibratedTonePlaybackPlanner(dateProvider: { timestamp }),
+            dateProvider: { timestamp }
+        )
+    }
+
+    private func unsafeAmplitudePlaybackPlanner() -> CalibratedTonePlaybackPlanner {
+        var profile = CalibratedHeadphoneProfile.airPodsPro2
+        profile = CalibratedHeadphoneProfile(
+            headphoneIdentifier: profile.headphoneIdentifier,
+            metadata: profile.metadata,
+            frequencySensitivityDBSPL: profile.frequencySensitivityDBSPL,
+            retsplDBSPL: profile.retsplDBSPL,
+            volumeCurveDB: profile.volumeCurveDB,
+            retsplDBFSReference: profile.retsplDBFSReference,
+            dBFSCalibrationOffsetDB: profile.dBFSCalibrationOffsetDB,
+            maximumSafeAttenuationDB: -80.0
+        )
+        return CalibratedTonePlaybackPlanner(
+            converter: CalibratedAudioConverter(profiles: [profile]),
             dateProvider: { timestamp }
         )
     }
@@ -260,8 +283,7 @@ struct TinnitusProtocolEngineTests {
             requiredTrialCount: 3,
             toneDuration: 1.0,
             rampDuration: CalibratedTonePlaybackDefaults.rampDuration,
-            thresholdStartOffsetDBSL: 5.0,
-            conservativeFallbackStartDBHL: 10.0,
+            initialLoudnessMatchLevelDBHL: 110.0,
             minimumLevelDBHL: -10.0,
             maximumLevelDBHL: 110.0,
             highSpreadThresholdDB: 10.0,
@@ -277,8 +299,7 @@ struct TinnitusProtocolEngineTests {
             requiredTrialCount: 3,
             toneDuration: 1.0,
             rampDuration: CalibratedTonePlaybackDefaults.rampDuration,
-            thresholdStartOffsetDBSL: 5.0,
-            conservativeFallbackStartDBHL: 10.0,
+            initialLoudnessMatchLevelDBHL: 45.0,
             minimumLevelDBHL: -10.0,
             maximumLevelDBHL: 100.0,
             highSpreadThresholdDB: 10.0,

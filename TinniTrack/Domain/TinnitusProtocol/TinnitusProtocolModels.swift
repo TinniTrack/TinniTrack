@@ -93,8 +93,7 @@ struct TinnitusProtocolConfiguration: Equatable {
     let requiredTrialCount: Int
     let toneDuration: TimeInterval
     let rampDuration: TimeInterval
-    let thresholdStartOffsetDBSL: Double
-    let conservativeFallbackStartDBHL: Double
+    let initialLoudnessMatchLevelDBHL: Double
     let minimumLevelDBHL: Double
     let maximumLevelDBHL: Double
     let highSpreadThresholdDB: Double
@@ -107,8 +106,7 @@ struct TinnitusProtocolConfiguration: Equatable {
         requiredTrialCount: 3,
         toneDuration: 2.0,
         rampDuration: CalibratedTonePlaybackDefaults.rampDuration,
-        thresholdStartOffsetDBSL: 5.0,
-        conservativeFallbackStartDBHL: 10.0,
+        initialLoudnessMatchLevelDBHL: 45.0,
         minimumLevelDBHL: -10.0,
         maximumLevelDBHL: 100.0,
         highSpreadThresholdDB: 10.0,

@@ -379,6 +379,21 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
     }
 
+    func startLoudnessMatch(laterality: TinnitusLaterality) async -> Bool {
+        if selectedLaterality == laterality, isReadyForLoudnessTrial {
+            message = nil
+            return true
+        }
+
+        guard case .collectingLaterality = protocolState else {
+            message = .missingPreflight("Restart this loudness-match task to change tinnitus location after the test has started.")
+            return false
+        }
+
+        await selectLaterality(laterality)
+        return isReadyForLoudnessTrial
+    }
+
     func runEnvironmentGate() async {
         guard !isRunningEnvironmentGate else {
             return
@@ -869,6 +884,13 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 || event.kind == .playRequested
                 || event.kind == .playbackPlanned
         }
+    }
+
+    private var isReadyForLoudnessTrial: Bool {
+        if case .readyForTrial = protocolState {
+            return true
+        }
+        return false
     }
 }
 

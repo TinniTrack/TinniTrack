@@ -7,6 +7,7 @@ enum LoudnessMatchModalStep: Equatable {
     case correctEar
     case fit
     case maxVolume
+    case tinnitusLocation
     case activeTest
 }
 

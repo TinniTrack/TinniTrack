@@ -459,12 +459,7 @@ struct TinnitusProtocolEngine {
     }
 
     private func initialLevelDBHL() -> Double {
-        switch thresholdStatus {
-        case .measured(let levelDBHL):
-            return levelDBHL + configuration.thresholdStartOffsetDBSL
-        case .pending, .unavailable:
-            return configuration.conservativeFallbackStartDBHL
-        }
+        configuration.initialLoudnessMatchLevelDBHL
     }
 
     private func clampedLevel(_ level: Double) -> Double {
