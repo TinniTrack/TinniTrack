@@ -283,6 +283,7 @@ final class TinniTrackUITests: XCTestCase {
         saveSignatureButton.tap()
         XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Sign and Enroll"].isEnabled)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Signed today,")).firstMatch.exists)
         XCTAssertTrue(app.staticTexts["A signed consent copy will be saved securely."].exists)
 

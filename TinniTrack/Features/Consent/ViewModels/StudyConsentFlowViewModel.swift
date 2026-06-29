@@ -61,11 +61,17 @@ final class StudyConsentFlowViewModel: ObservableObject {
         lastName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    var canSignAndEnroll: Bool {
-        state == .signing
-            && !trimmedFirstName.isEmpty
+    var isSignatureFormComplete: Bool {
+        !trimmedFirstName.isEmpty
             && !trimmedLastName.isEmpty
             && signatureImageData?.isEmpty == false
+    }
+
+    var canSignAndEnroll: Bool {
+        isSignatureFormComplete
+            && state != .finalizing
+            && state != .completed
+            && state != .dismissed
     }
 
     func reviewConsent() {

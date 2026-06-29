@@ -85,6 +85,15 @@ final class HomeDashboardViewModel: ObservableObject {
         }
     }
 
+    func refreshAfterEnrollment() async {
+        while isRefreshing && !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        guard !Task.isCancelled else { return }
+        await refresh(retainingCurrentContent: true)
+    }
+
     func enroll(studyID: UUID) async throws {
         enrollingStudyID = studyID
         defer { enrollingStudyID = nil }

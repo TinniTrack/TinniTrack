@@ -164,7 +164,7 @@ private struct DashboardTabView: View {
                 profileTimezone: profileTimezone,
                 consentService: consentService
             ) {
-                await viewModel.refresh()
+                await viewModel.refreshAfterEnrollment()
                 guard let refreshedStudyCard = viewModel.studies.first(where: { $0.study.id == studyCard.study.id }),
                       refreshedStudyCard.isEnrolledActive else {
                     return nil
@@ -289,25 +289,6 @@ private struct StudyDetailView: View {
             }
         }
         .interactivePopGestureEnabled()
-        .fullScreenCover(isPresented: Binding(
-            get: { completedStudyCard?.isEnrolledActive == true },
-            set: { isPresented in
-                if !isPresented {
-                    completedStudyCard = nil
-                }
-            }
-        )) {
-            if let completedStudyCard,
-               let enrollment = completedStudyCard.enrollment {
-                NavigationStack {
-                    StudyTaskDashboardView(
-                        study: completedStudyCard.study,
-                        enrollment: enrollment,
-                        profileTimezone: profileTimezone
-                    )
-                }
-            }
-        }
         .onChange(of: studyCard.enrollment?.status) { _, status in
             guard status == .enrolled else { return }
             dismiss()

@@ -75,6 +75,38 @@ struct HomeDashboardViewModelTests {
         #expect(viewModel.studies.isEmpty)
     }
 
+    @Test
+    func enrollmentRefreshWaitsForInFlightRefreshThenReloadsLatestEnrollment() async {
+        let study = Self.sampleStudy()
+        let enrollment = Self.sampleEnrollment(studyID: study.id)
+        let service = MockStudyService(
+            studies: [study],
+            enrollments: [],
+            enrollmentResponses: [
+                [],
+                [],
+                [enrollment]
+            ]
+        )
+        let viewModel = HomeDashboardViewModel(studyService: service)
+
+        await viewModel.loadIfNeeded()
+        #expect(viewModel.studies.first?.isEnrolledActive == false)
+
+        await service.setFetchDelay(nanoseconds: 200_000_000)
+        let inFlightRefresh = Task {
+            await viewModel.refresh(retainingCurrentContent: true)
+        }
+        await service.waitForFetchMyEnrollmentsCallCount(2)
+
+        await service.setFetchDelay(nanoseconds: nil)
+        await viewModel.refreshAfterEnrollment()
+        await inFlightRefresh.value
+
+        #expect(viewModel.studies.first?.isEnrolledActive == true)
+        #expect(await service.fetchMyEnrollmentsCallCount() == 3)
+    }
+
     private static func sampleStudy() -> Study {
         Study(
             id: UUID(),
@@ -85,33 +117,53 @@ struct HomeDashboardViewModelTests {
             createdAt: Date()
         )
     }
+
+    private static func sampleEnrollment(studyID: UUID) -> StudyEnrollment {
+        StudyEnrollment(
+            id: UUID(),
+            userID: UUID(),
+            studyID: studyID,
+            status: .enrolled,
+            enrolledAt: Date(),
+            createdAt: Date()
+        )
+    }
 }
 
 private actor MockStudyService: StudyServiceProtocol {
     private var studies: [Study]
     private var enrollments: [StudyEnrollment]
+    private var enrollmentResponses: [[StudyEnrollment]]
     private var studiesError: Error?
     private var enrollmentsError: Error?
     private var enrollError: Error?
+    private var fetchDelayNanoseconds: UInt64?
     private var fetchStudiesCount = 0
     private var fetchEnrollmentsCount = 0
 
     init(
         studies: [Study],
         enrollments: [StudyEnrollment],
+        enrollmentResponses: [[StudyEnrollment]] = [],
         studiesError: Error? = nil,
         enrollmentsError: Error? = nil,
-        enrollError: Error? = nil
+        enrollError: Error? = nil,
+        fetchDelayNanoseconds: UInt64? = nil
     ) {
         self.studies = studies
         self.enrollments = enrollments
+        self.enrollmentResponses = enrollmentResponses
         self.studiesError = studiesError
         self.enrollmentsError = enrollmentsError
         self.enrollError = enrollError
+        self.fetchDelayNanoseconds = fetchDelayNanoseconds
     }
 
     func fetchStudies() async throws -> [Study] {
         fetchStudiesCount += 1
+        if let fetchDelayNanoseconds {
+            try? await Task.sleep(nanoseconds: fetchDelayNanoseconds)
+        }
         if let studiesError {
             throw studiesError
         }
@@ -120,10 +172,14 @@ private actor MockStudyService: StudyServiceProtocol {
 
     func fetchMyEnrollments() async throws -> [StudyEnrollment] {
         fetchEnrollmentsCount += 1
+        let response = enrollmentResponses.isEmpty ? enrollments : enrollmentResponses.removeFirst()
+        if let fetchDelayNanoseconds {
+            try? await Task.sleep(nanoseconds: fetchDelayNanoseconds)
+        }
         if let enrollmentsError {
             throw enrollmentsError
         }
-        return enrollments
+        return response
     }
 
     func enroll(studyID: UUID) async throws {
@@ -162,12 +218,22 @@ private actor MockStudyService: StudyServiceProtocol {
         studiesError = error
     }
 
+    func setFetchDelay(nanoseconds: UInt64?) {
+        fetchDelayNanoseconds = nanoseconds
+    }
+
     func fetchStudiesCallCount() -> Int {
         fetchStudiesCount
     }
 
     func fetchMyEnrollmentsCallCount() -> Int {
         fetchEnrollmentsCount
+    }
+
+    func waitForFetchMyEnrollmentsCallCount(_ count: Int) async {
+        while fetchEnrollmentsCount < count {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 }
 
