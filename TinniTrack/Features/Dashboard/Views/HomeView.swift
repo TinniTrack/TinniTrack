@@ -203,47 +203,31 @@ private struct StudyCardView: View {
                 .fill(DashboardColors.cardDivider)
                 .frame(height: 1)
 
-            HStack(alignment: .center, spacing: 10) {
-                Text(studyCard.timeCommitmentText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+            HStack(alignment: .center) {
+                Spacer(minLength: 0)
 
-                Text(studyCard.durationText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-
-                Spacer(minLength: 6)
-
-                HStack(spacing: 12) {
-                    Text(studyCard.badgeText)
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .tracking(0.8)
+                HStack(spacing: 20) {
+                    Text(studyCard.displayBadgeText)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
                         .background(studyCard.badgeColor)
                         .clipShape(Capsule())
 
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Text(studyCard.callToActionText)
-                            .font(.footnote)
-                            .fontWeight(.semibold)
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(DashboardColors.brandBlue)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.78)
+                            .fixedSize(horizontal: true, vertical: false)
 
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(DashboardColors.brandBlue)
                     }
-                    .layoutPriority(1)
                 }
             }
         }
@@ -426,12 +410,8 @@ private enum DashboardColors {
 }
 
 private extension DashboardStudyCard {
-    var timeCommitmentText: String {
-        "~5 min / day"
-    }
-
-    var durationText: String {
-        "14 days"
+    var displayBadgeText: String {
+        badgeText.capitalized
     }
 
     var badgeColor: Color {
