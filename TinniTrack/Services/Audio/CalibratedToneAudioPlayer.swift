@@ -150,9 +150,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
     }
 
     private func configureAudioSession() throws {
-        if audioSession.category != .playAndRecord {
-            try audioSession.setCategory(.playback, mode: .default, options: [])
-        }
+        try audioSession.setCategory(.playback, mode: .default, options: [])
         try audioSession.setPreferredSampleRate(preferredSampleRate)
         try audioSession.setPreferredIOBufferDuration(
             Double(preferredBufferFrameCount) / preferredSampleRate

@@ -381,7 +381,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func continuousEnvironmentGateKeepsMonitoringDuringPlaybackAndInterruptsWhenRoomGetsLoud() async throws {
+    func playbackSuspendsEnvironmentGateAndResumesMonitoringAfterStop() async throws {
         let player = MockCalibratedTonePlayer()
         let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
         let viewModel = LoudnessMatchTaskFlowViewModel(
@@ -408,19 +408,28 @@ struct LoudnessMatchTaskFlowViewModelTests {
         await completeAudiogramThreshold(viewModel, laterality: .left)
         viewModel.playTone()
 
-        #expect(player.playedRequests.count == 1)
+        #expect(try await waitUntil {
+            player.playedRequests.count == 1
+                && viewModel.isRunningEnvironmentGate == false
+        })
         #expect(viewModel.isPlaying)
-        #expect(viewModel.isRunningEnvironmentGate)
         #expect(viewModel.environmentGateResult?.passed == true)
         #expect(viewModel.preflightReady)
 
-        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44, 50])
+        viewModel.stopTone()
         #expect(try await waitUntil {
-            viewModel.isEnvironmentQuietnessInterrupted
-                && viewModel.isPlaying == false
+            viewModel.isRunningEnvironmentGate
+                && viewModel.environmentGateResult == nil
         })
 
         #expect(player.stopCallCount == 1)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted)
+
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44, 50])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .tooLoud
+        })
+
         #expect(viewModel.environmentGateResult == nil)
         #expect(viewModel.preflightReady == false)
         #expect(viewModel.canPlayTone == false)

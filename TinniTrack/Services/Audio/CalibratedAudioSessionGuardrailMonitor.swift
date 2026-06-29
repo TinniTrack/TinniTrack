@@ -158,9 +158,7 @@ final class AVAudioSessionRouteVolumeProvider: AudioSessionRouteVolumeProviding 
 
     func refreshRouteAndVolume() {
         do {
-            if audioSession.category != .playAndRecord {
-                try audioSession.setCategory(.playback, mode: .default, options: [])
-            }
+            try audioSession.setCategory(.playback, mode: .default, options: [])
             try audioSession.setActive(true)
         } catch {
             // Guardrail validation will fail safely if route or volume remains unavailable.
