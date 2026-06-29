@@ -173,9 +173,19 @@ private struct StudyCardView: View {
     let studyCard: DashboardStudyCard
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(DashboardColors.iconBackground)
+
+                    Image(systemName: "waveform")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(DashboardColors.brandBlue)
+                }
+                .frame(width: 64, height: 64)
+
+                VStack(alignment: .leading, spacing: 8) {
                     Text(studyCard.study.title)
                         .font(.headline)
                         .fontWeight(.bold)
@@ -189,35 +199,57 @@ private struct StudyCardView: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
-                Spacer(minLength: 12)
-
-                Text(studyCard.badgeText)
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .tracking(0.8)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(studyCard.badgeColor)
-                    .clipShape(Capsule())
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Spacer(minLength: 2)
+            Rectangle()
+                .fill(DashboardColors.cardDivider)
+                .frame(height: 1)
 
-            HStack(spacing: 6) {
-                Text(studyCard.callToActionText)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DashboardColors.brandBlue)
+            HStack(alignment: .center, spacing: 10) {
+                Text(studyCard.timeCommitmentText)
+                    .font(.caption)
+                    .foregroundStyle(DashboardColors.metadataText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(DashboardColors.brandBlue)
+                Text(studyCard.durationText)
+                    .font(.caption)
+                    .foregroundStyle(DashboardColors.metadataText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+
+                Spacer(minLength: 6)
+
+                HStack(spacing: 8) {
+                    Text(studyCard.badgeText)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .tracking(0.8)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(studyCard.badgeColor)
+                        .clipShape(Capsule())
+
+                    HStack(spacing: 4) {
+                        Text(studyCard.callToActionText)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DashboardColors.brandBlue)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(DashboardColors.brandBlue)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(18)
+        .padding(20)
         .background(DashboardColors.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
@@ -391,10 +423,21 @@ private enum DashboardColors {
     static let brandBlue = Color(red: 0.23, green: 0.43, blue: 0.73)
     static let cardBackground = Color(uiColor: .secondarySystemGroupedBackground)
     static let cardStroke = Color(uiColor: .separator).opacity(0.35)
+    static let cardDivider = Color(uiColor: .separator).opacity(0.22)
     static let cardShadow = Color.black.opacity(0.08)
+    static let iconBackground = brandBlue.opacity(0.12)
+    static let metadataText = Color(uiColor: .label).opacity(0.72)
 }
 
 private extension DashboardStudyCard {
+    var timeCommitmentText: String {
+        "~5 min / day"
+    }
+
+    var durationText: String {
+        "14 days"
+    }
+
     var badgeColor: Color {
         if isEnrolledActive {
             return DashboardColors.brandBlue
