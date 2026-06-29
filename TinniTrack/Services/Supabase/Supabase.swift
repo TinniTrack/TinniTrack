@@ -112,11 +112,6 @@ enum SupabaseConfiguration {
             return explicitEnvironment
         }
 
-        if let host = supabaseURL.host?.lowercased(),
-           host == "localhost" || host == "127.0.0.1" || host == "::1" {
-            return "Local"
-        }
-
         let bundled = bundledURLString?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let bundled, !bundled.isEmpty, bundled != supabaseURL.absoluteString {
             return "Development"

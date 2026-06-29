@@ -91,7 +91,8 @@ final class ResearchKitStudyTaskAdapter: NSObject, ResearchStudyTaskAdapting, OR
         let task = makeTask(for: request)
         let viewController = ORKTaskViewController(task: task, taskRun: nil)
         viewController.delegate = self
-        completions[ObjectIdentifier(viewController)] = completion
+        let key = ObjectIdentifier(viewController)
+        completions[key] = completion
         return viewController
     }
 
@@ -112,9 +113,12 @@ final class ResearchKitStudyTaskAdapter: NSObject, ResearchStudyTaskAdapting, OR
         error: Error?
     ) {
         let identifier = taskViewController.task?.identifier ?? ""
+        let finishState = ResearchTaskFinishState(reason)
+        let key = ObjectIdentifier(taskViewController)
+
         let summary = ResearchKitTaskResultSummary(
             taskIdentifier: identifier,
-            finishState: ResearchTaskFinishState(reason),
+            finishState: finishState,
             errorDescription: error?.localizedDescription,
             studyNo1OrientationThreshold: Self.extractStudyNo1OrientationThresholdResult(
                 from: taskViewController.result,
@@ -122,7 +126,6 @@ final class ResearchKitStudyTaskAdapter: NSObject, ResearchStudyTaskAdapting, OR
             )
         )
 
-        let key = ObjectIdentifier(taskViewController)
         completions.removeValue(forKey: key)?(summary)
     }
 
@@ -219,6 +222,7 @@ final class ResearchKitStudyTaskAdapter: NSObject, ResearchStudyTaskAdapting, OR
         step.earPreference = channel
         return step
     }
+
 }
 
 private extension ResearchTaskFinishState {

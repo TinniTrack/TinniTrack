@@ -12,6 +12,7 @@ final class DeveloperToolsViewModel: ObservableObject {
     enum Action: Equatable {
         case resetProfileOnboarding
         case resetStudyNo1Orientation
+        case unenrollFromStudyNo1AndDeleteData
         case makeNextLoudnessMatchAvailableNow
         case reopenLastCompletedLoudnessMatch
 
@@ -21,6 +22,8 @@ final class DeveloperToolsViewModel: ObservableObject {
                 return "Reset App Onboarding"
             case .resetStudyNo1Orientation:
                 return "Reset Study No. 1 Orientation"
+            case .unenrollFromStudyNo1AndDeleteData:
+                return "Unenroll from Study No. 1"
             case .makeNextLoudnessMatchAvailableNow:
                 return "Make Next Loudness Match Available"
             case .reopenLastCompletedLoudnessMatch:
@@ -34,6 +37,8 @@ final class DeveloperToolsViewModel: ObservableObject {
                 return "App onboarding reset."
             case .resetStudyNo1Orientation:
                 return "Study No. 1 orientation reset."
+            case .unenrollFromStudyNo1AndDeleteData:
+                return "Study No. 1 enrollment and study data deleted."
             case .makeNextLoudnessMatchAvailableNow:
                 return "Next loudness-match task is available now."
             case .reopenLastCompletedLoudnessMatch:
@@ -70,6 +75,8 @@ final class DeveloperToolsViewModel: ObservableObject {
                 try await service.resetProfileOnboarding()
             case .resetStudyNo1Orientation:
                 try await service.resetStudyNo1Orientation()
+            case .unenrollFromStudyNo1AndDeleteData:
+                try await service.unenrollFromStudyNo1AndDeleteData()
             case .makeNextLoudnessMatchAvailableNow:
                 try await service.makeNextLoudnessMatchAvailableNow()
             case .reopenLastCompletedLoudnessMatch:

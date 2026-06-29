@@ -1,7 +1,7 @@
 import Foundation
 
 enum StudyNo1Configuration {
-    static let slotHours: [Int] = [9, 13, 17, 21]
+    static let slotHours: [Int] = [8, 12, 16, 20]
     static let windowMinutes: Int = 60
     static let ambientThresholdDB: Double = 45
 
@@ -15,7 +15,8 @@ enum StudyNo1Configuration {
 
         let localHour = localizedCalendar.component(.hour, from: now)
         let localMinute = localizedCalendar.component(.minute, from: now)
-        let startDayOffset = (localHour > 9 || (localHour == 9 && localMinute > 0)) ? 1 : 0
+        let firstSlotHour = slotHours.first ?? 8
+        let startDayOffset = (localHour > firstSlotHour || (localHour == firstSlotHour && localMinute > 0)) ? 1 : 0
 
         let localStartOfDay = localizedCalendar.startOfDay(for: now)
         return localizedCalendar.date(byAdding: .day, value: startDayOffset, to: localStartOfDay) ?? localStartOfDay

@@ -15,6 +15,15 @@ struct SignUpView: View {
         case birthMonth
         case birthDay
         case birthYear
+
+        var isDateOfBirthField: Bool {
+            switch self {
+            case .birthMonth, .birthDay, .birthYear:
+                return true
+            case .firstName, .lastName, .email, .password:
+                return false
+            }
+        }
     }
 
     @EnvironmentObject private var sessionStore: SessionStore
@@ -125,7 +134,11 @@ struct SignUpView: View {
                                 borderColor: fieldBorderColor,
                                 focusedBorderColor: focusColor,
                                 keyboardType: .emailAddress,
+                                textContentType: .username,
+                                textInputAutocapitalization: .never,
                                 accessibilityIdentifier: "signup_email_field",
+                                submitLabel: .next,
+                                onSubmit: { focusedField = .password },
                                 clearAction: { email = "" }
                             )
                             .focused($focusedField, equals: .email)
@@ -137,14 +150,17 @@ struct SignUpView: View {
                                 isFocused: focusedField == .password,
                                 borderColor: fieldBorderColor,
                                 focusedBorderColor: focusColor,
-                                accessibilityIdentifier: "signup_password_field"
+                                textContentType: .newPassword,
+                                textInputAutocapitalization: .never,
+                                accessibilityIdentifier: "signup_password_field",
+                                submitLabel: .continue,
+                                onSubmit: continueToProfileStep
                             )
                             .focused($focusedField, equals: .password)
                         }
 
                         Button("Continue") {
-                            currentStep = 2
-                            persistDraft()
+                            continueToProfileStep()
                         }
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
@@ -165,7 +181,11 @@ struct SignUpView: View {
                                 isFocused: focusedField == .firstName,
                                 borderColor: fieldBorderColor,
                                 focusedBorderColor: focusColor,
-                                accessibilityIdentifier: "signup_first_name_field"
+                                textContentType: .givenName,
+                                textInputAutocapitalization: .words,
+                                accessibilityIdentifier: "signup_first_name_field",
+                                submitLabel: .next,
+                                onSubmit: { focusedField = .lastName }
                             )
                             .focused($focusedField, equals: .firstName)
                             
@@ -176,7 +196,11 @@ struct SignUpView: View {
                                 isFocused: focusedField == .lastName,
                                 borderColor: fieldBorderColor,
                                 focusedBorderColor: focusColor,
-                                accessibilityIdentifier: "signup_last_name_field"
+                                textContentType: .familyName,
+                                textInputAutocapitalization: .words,
+                                accessibilityIdentifier: "signup_last_name_field",
+                                submitLabel: .next,
+                                onSubmit: { focusedField = .birthMonth }
                             )
                             .focused($focusedField, equals: .lastName)
                             
@@ -194,6 +218,8 @@ struct SignUpView: View {
                                         borderColor: fieldBorderColor,
                                         focusedBorderColor: focusColor,
                                         keyboardType: .numberPad,
+                                        textContentType: .birthdateMonth,
+                                        textInputAutocapitalization: .never,
                                         accessibilityIdentifier: "signup_birth_month_field"
                                     )
                                     .focused($focusedField, equals: .birthMonth)
@@ -207,6 +233,8 @@ struct SignUpView: View {
                                         borderColor: fieldBorderColor,
                                         focusedBorderColor: focusColor,
                                         keyboardType: .numberPad,
+                                        textContentType: .birthdateDay,
+                                        textInputAutocapitalization: .never,
                                         accessibilityIdentifier: "signup_birth_day_field"
                                     )
                                     .focused($focusedField, equals: .birthDay)
@@ -220,6 +248,8 @@ struct SignUpView: View {
                                         borderColor: fieldBorderColor,
                                         focusedBorderColor: focusColor,
                                         keyboardType: .numberPad,
+                                        textContentType: .birthdateYear,
+                                        textInputAutocapitalization: .never,
                                         accessibilityIdentifier: "signup_birth_year_field"
                                     )
                                     .focused($focusedField, equals: .birthYear)
@@ -238,6 +268,7 @@ struct SignUpView: View {
                             
                             HStack(spacing: 10) {
                                 Button("Back") {
+                                    dismissTextFocus()
                                     currentStep = 1
                                     persistDraft()
                                 }
@@ -250,6 +281,7 @@ struct SignUpView: View {
                                 .buttonStyle(AppCapsuleButtonStyle())
                                 
                                 Button("Create Account") {
+                                    dismissTextFocus()
                                     Task {
                                         await sessionStore.signUp(
                                             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -284,7 +316,12 @@ struct SignUpView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 26)
-                .background(Color.white.opacity(0.96))
+                .background {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Color.white.opacity(0.96))
+                        .contentShape(Rectangle())
+                        .onTapGesture { dismissTextFocus() }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -299,7 +336,19 @@ struct SignUpView: View {
                 ProgressView()
             }
         }
+        .scrollDismissesKeyboard(.immediately)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if focusedField?.isDateOfBirthField == true {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        dismissTextFocus()
+                    }
+                    .accessibilityIdentifier("signup_keyboard_done_button")
+                }
+            }
+        }
         .onAppear {
             restoreDraft()
         }
@@ -310,17 +359,31 @@ struct SignUpView: View {
         .onChange(of: lastName) { _ in persistDraft() }
         .onChange(of: birthMonth) { _ in
             updateDateOfBirthFromFields()
+            advanceDateOfBirthFocusIfNeeded()
             persistDraft()
         }
         .onChange(of: birthDay) { _ in
             updateDateOfBirthFromFields()
+            advanceDateOfBirthFocusIfNeeded()
             persistDraft()
         }
         .onChange(of: birthYear) { _ in
             updateDateOfBirthFromFields()
+            advanceDateOfBirthFocusIfNeeded()
             persistDraft()
         }
         .onChange(of: dateOfBirth) { _ in persistDraft() }
+    }
+
+    private func continueToProfileStep() {
+        guard isStepOneValid, !sessionStore.state.isBusy else { return }
+        dismissTextFocus()
+        currentStep = 2
+        persistDraft()
+    }
+
+    private func dismissTextFocus() {
+        focusedField = nil
     }
 
     private func restoreDraft() {
@@ -396,6 +459,19 @@ struct SignUpView: View {
             dateOfBirth = newDate
         }
     }
+
+    private func advanceDateOfBirthFocusIfNeeded() {
+        switch focusedField {
+        case .birthMonth where birthMonth.count == 2:
+            focusedField = .birthDay
+        case .birthDay where birthDay.count == 2:
+            focusedField = .birthYear
+        case .birthYear where birthYear.count == 4:
+            dismissTextFocus()
+        case .firstName, .lastName, .email, .password, .birthMonth, .birthDay, .birthYear, nil:
+            break
+        }
+    }
 }
 
 private struct FloatingInputField: View {
@@ -406,7 +482,11 @@ private struct FloatingInputField: View {
     let borderColor: Color
     let focusedBorderColor: Color
     var keyboardType: UIKeyboardType = .default
+    var textContentType: UITextContentType? = nil
+    var textInputAutocapitalization: TextInputAutocapitalization = .never
     var accessibilityIdentifier: String? = nil
+    var submitLabel: SubmitLabel = .done
+    var onSubmit: () -> Void = {}
     var clearAction: (() -> Void)? = nil
     private let floatingLabelColor = Color(red: 0.24, green: 0.24, blue: 0.28)
 
@@ -434,15 +514,19 @@ private struct FloatingInputField: View {
             Group {
                 if isSecure {
                     SecureField("", text: $text)
+                        .textContentType(textContentType)
                         .accessibilityIdentifier(accessibilityIdentifier ?? "")
                 } else {
                     TextField("", text: $text)
                         .keyboardType(keyboardType)
+                        .textContentType(textContentType)
                         .accessibilityIdentifier(accessibilityIdentifier ?? "")
                 }
             }
-            .textInputAutocapitalization(.never)
+            .textInputAutocapitalization(textInputAutocapitalization)
             .autocorrectionDisabled()
+            .submitLabel(submitLabel)
+            .onSubmit(onSubmit)
             .font(.system(size: 17, weight: .regular))
             .foregroundStyle(.black)
             .padding(.top, shouldFloat ? 16 : 0)

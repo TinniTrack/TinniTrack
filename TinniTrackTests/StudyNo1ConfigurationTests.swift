@@ -4,12 +4,12 @@ import Testing
 
 struct StudyNo1ConfigurationTests {
     @Test
-    func firstScheduleLocalDateUsesSameDayBeforeNineAM() {
+    func firstScheduleLocalDateUsesSameDayAtEightAM() {
         let tz = TimeZone(identifier: "America/Los_Angeles")!
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = tz
 
-        let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 8, minute: 30))!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 8, minute: 0))!
         let startDate = StudyNo1Configuration.firstScheduleLocalDate(now: now, timeZone: tz, calendar: calendar)
 
         let expected = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 0, minute: 0))!
@@ -17,12 +17,12 @@ struct StudyNo1ConfigurationTests {
     }
 
     @Test
-    func firstScheduleLocalDateUsesNextDayAfterNineAM() {
+    func firstScheduleLocalDateUsesNextDayAfterEightAM() {
         let tz = TimeZone(identifier: "America/Los_Angeles")!
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = tz
 
-        let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 9, minute: 1))!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 11, hour: 8, minute: 1))!
         let startDate = StudyNo1Configuration.firstScheduleLocalDate(now: now, timeZone: tz, calendar: calendar)
 
         let expected = calendar.date(from: DateComponents(year: 2026, month: 3, day: 12, hour: 0, minute: 0))!
@@ -30,8 +30,8 @@ struct StudyNo1ConfigurationTests {
     }
 
     @Test
-    func taskConstantsMatchV1Protocol() {
-        #expect(StudyNo1Configuration.slotHours == [9, 13, 17, 21])
+    func taskConstantsMatchStudyNo1Protocol() {
+        #expect(StudyNo1Configuration.slotHours == [8, 12, 16, 20])
         #expect(StudyNo1Configuration.windowMinutes == 60)
         #expect(StudyNo1Configuration.ambientThresholdDB == 45)
     }
