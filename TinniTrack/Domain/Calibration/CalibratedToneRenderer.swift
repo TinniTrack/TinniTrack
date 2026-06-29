@@ -6,7 +6,26 @@ struct CalibratedToneRenderConfiguration: Equatable {
     let channel: CalibratedTonePlaybackChannel
     let duration: TimeInterval
     let rampDuration: TimeInterval
+    let stopsAfterDuration: Bool
     let sampleRate: Double
+
+    init(
+        frequencyHz: Double,
+        amplitude: Double,
+        channel: CalibratedTonePlaybackChannel,
+        duration: TimeInterval,
+        rampDuration: TimeInterval,
+        stopsAfterDuration: Bool = true,
+        sampleRate: Double
+    ) {
+        self.frequencyHz = frequencyHz
+        self.amplitude = amplitude
+        self.channel = channel
+        self.duration = duration
+        self.rampDuration = rampDuration
+        self.stopsAfterDuration = stopsAfterDuration
+        self.sampleRate = sampleRate
+    }
 
     var frameCount: Int {
         Int((duration * sampleRate).rounded())
@@ -47,7 +66,8 @@ struct CalibratedToneRenderer {
 
     mutating func renderNextFrames(
         _ frameCount: Int,
-        configuration: CalibratedToneRenderConfiguration
+        configuration: CalibratedToneRenderConfiguration,
+        amplitudeProvider: ((Int, Double) -> Double)? = nil
     ) throws -> CalibratedTonePCMBuffer {
         try validate(configuration)
         guard frameCount >= 0 else {
@@ -63,14 +83,20 @@ struct CalibratedToneRenderer {
             let envelope = envelopeValue(
                 absoluteFrame: absoluteFrame,
                 totalFrames: configuration.frameCount,
-                rampFrames: configuration.rampFrameCount
+                rampFrames: configuration.rampFrameCount,
+                stopsAfterDuration: configuration.stopsAfterDuration
             )
-            let sample = Float(sin(phase) * configuration.amplitude * envelope)
+            let amplitude = amplitudeProvider?(absoluteFrame, configuration.amplitude)
+                ?? configuration.amplitude
+            let sample = Float(sin(phase) * amplitude * envelope)
 
             switch configuration.channel {
             case .left:
                 left[localFrame] = sample
             case .right:
+                right[localFrame] = sample
+            case .both:
+                left[localFrame] = sample
                 right[localFrame] = sample
             }
 
@@ -115,7 +141,8 @@ struct CalibratedToneRenderer {
     private func envelopeValue(
         absoluteFrame: Int,
         totalFrames: Int,
-        rampFrames: Int
+        rampFrames: Int,
+        stopsAfterDuration: Bool
     ) -> Double {
         guard rampFrames > 0 else {
             return 1.0
@@ -123,6 +150,10 @@ struct CalibratedToneRenderer {
 
         if absoluteFrame < rampFrames {
             return Double(absoluteFrame) / Double(rampFrames)
+        }
+
+        guard stopsAfterDuration else {
+            return 1.0
         }
 
         if absoluteFrame >= totalFrames - rampFrames {

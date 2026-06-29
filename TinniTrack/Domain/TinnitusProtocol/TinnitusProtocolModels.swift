@@ -64,7 +64,6 @@ enum TinnitusLoudnessAdjustment: Equatable {
 }
 
 enum TinnitusProtocolQualityFlag: String, Equatable {
-    case ambiguousLaterality
     case thresholdUnavailable
     case dbSLInvalid
     case highWithinSessionSpread

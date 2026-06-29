@@ -6,7 +6,7 @@ struct TinnitusProtocolEngineTests {
     private let timestamp = Date(timeIntervalSince1970: 1_800_010_000)
 
     @Test
-    func studyNo1FixedFrequencySelectsUnilateralChannelAndBuildsPlaybackPlan() throws {
+    func studyNo1FixedFrequencyUsesBinauralPlaybackAndBuildsPlaybackPlan() throws {
         var engine = makeEngine()
 
         engine.selectLaterality(.left)
@@ -20,7 +20,8 @@ struct TinnitusProtocolEngineTests {
         #expect(attempt.refusalReason == nil)
         #expect(attempt.request?.frequencyHz == 1_000)
         #expect(attempt.request?.levelDBHL == 15)
-        #expect(attempt.request?.channel == .left)
+        #expect(attempt.request?.channel == .both)
+        #expect(attempt.request?.stopsAfterDuration == false)
         #expect(attempt.plan?.metadata.requestedDBHL == 15)
         #expect(abs((attempt.plan?.metadata.targetDBSPL ?? 0) - 24.27) < 0.000_001)
 
@@ -28,32 +29,23 @@ struct TinnitusProtocolEngineTests {
         #expect(planned.presentedLevelDBHL == 15)
         #expect(planned.dbSL == 5)
         #expect(planned.guardrailMetadata?.validationState == .passed)
-        #expect(planned.playbackMetadata?.channel == .left)
+        #expect(planned.playbackMetadata?.channel == .both)
     }
 
     @Test
-    func rightLateralityUsesRightChannelAndBilateralFallsBackToLeftWithQualityFlag() {
-        var rightEngine = makeEngine()
-        rightEngine.selectLaterality(.right)
-        #expect(rightEngine.channel == .right)
+    func lateralitySelectionIsRecordedWithoutChangingPlaybackChannel() {
+        for laterality in TinnitusLaterality.allCases {
+            var engine = makeEngine()
+            engine.selectLaterality(laterality)
 
-        var bilateralEngine = makeEngine()
-        bilateralEngine.selectLaterality(.bilateral)
-        bilateralEngine.recordThreshold(levelDBHL: 10)
-        bilateralEngine.acceptCurrentLevel()
-        bilateralEngine.recordConfidence(.high)
-        bilateralEngine.acceptCurrentLevel()
-        bilateralEngine.recordConfidence(.high)
-        bilateralEngine.acceptCurrentLevel()
-        bilateralEngine.recordConfidence(.high)
-
-        guard case .completed(let summary) = bilateralEngine.state else {
-            Issue.record("Expected completed state")
-            return
+            #expect(engine.channel == .both)
+            #expect(engine.events.contains {
+                $0.kind == .lateralitySelected
+                    && $0.laterality == laterality
+                    && $0.channel == .both
+                    && $0.response == nil
+            })
         }
-
-        #expect(summary.channel == .left)
-        #expect(summary.qualityFlags.contains(.ambiguousLaterality))
     }
 
     @Test

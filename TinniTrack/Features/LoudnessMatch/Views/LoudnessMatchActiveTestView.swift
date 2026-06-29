@@ -201,12 +201,9 @@ struct LoudnessMatchActiveTestView: View {
                 viewModel.adjustLevel(.louder)
             }
 
-            LoudnessMatchCycleRingPlayButton(
+            LoudnessMatchPlayButton(
                 isPlaying: viewModel.isPlaying,
-                isTonePulseActive: viewModel.isTonePulseActive,
-                isEnabled: viewModel.isPlaying || viewModel.canPlayTone,
-                pulseSequence: viewModel.playbackPulseSequence,
-                toneDuration: viewModel.playbackPulseToneDuration
+                isEnabled: viewModel.isPlaying || viewModel.canPlayTone
             ) {
                 if viewModel.isPlaying {
                     viewModel.stopTone()
@@ -502,126 +499,44 @@ private struct LoudnessMatchAdjustmentButton: View {
     }
 }
 
-private struct LoudnessMatchCycleRingPlayButton: View {
+private struct LoudnessMatchPlayButton: View {
     let isPlaying: Bool
-    let isTonePulseActive: Bool
     let isEnabled: Bool
-    let pulseSequence: Int
-    let toneDuration: TimeInterval
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var toneProgress = 0.0
-
     private let buttonDiameter: CGFloat = 92
-    private let ringDiameter: CGFloat = 114
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                if isPlaying {
-                    cycleRing
-                        .frame(width: ringDiameter, height: ringDiameter)
-                        .transition(.opacity)
+            Circle()
+                .fill(playFill)
+                .frame(width: buttonDiameter, height: buttonDiameter)
+                .overlay {
+                    Circle()
+                        .stroke(LoudnessMatchModalColors.primary.opacity(isEnabled ? 0.58 : 0.22), lineWidth: 2)
                 }
-
-                Circle()
-                    .fill(playFill)
-                    .frame(width: buttonDiameter, height: buttonDiameter)
-                    .overlay {
-                        Circle()
-                            .stroke(LoudnessMatchModalColors.primary.opacity(isEnabled ? 0.58 : 0.22), lineWidth: 2)
-                    }
-                    .shadow(color: LoudnessMatchModalColors.primary.opacity(isPlaying ? 0.10 : 0.04), radius: 16, x: 0, y: 8)
-
-                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: isPlaying ? 32 : 38, weight: .bold))
-                    .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledText)
-                    .offset(x: isPlaying ? 0 : 3)
-                    .accessibilityHidden(true)
-            }
-            .frame(width: ringDiameter, height: ringDiameter)
+                .shadow(color: LoudnessMatchModalColors.primary.opacity(isPlaying ? 0.10 : 0.04), radius: 16, x: 0, y: 8)
+                .overlay {
+                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: isPlaying ? 32 : 38, weight: .bold))
+                        .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledText)
+                        .offset(x: isPlaying ? 0 : 3)
+                        .accessibilityHidden(true)
+                }
+            .frame(width: buttonDiameter, height: buttonDiameter)
             .contentShape(Circle())
         }
         .buttonStyle(AppCircleButtonStyle())
         .disabled(!isEnabled)
         .accessibilityLabel(isPlaying ? "Stop tone playback" : "Play tone")
-        .accessibilityHint(isPlaying ? "Stops the repeated tone playback." : "Starts repeated tone playback.")
-        .accessibilityIdentifier("loudness_cycle_ring_play_button")
-        .onAppear {
-            updateToneProgress()
-        }
-        .onChange(of: isPlaying) {
-            updateToneProgress()
-        }
-        .onChange(of: isTonePulseActive) {
-            updateToneProgress()
-        }
-        .onChange(of: reduceMotion) {
-            updateToneProgress()
-        }
-        .onChange(of: pulseSequence) {
-            updateToneProgress()
-        }
-    }
-
-    @ViewBuilder
-    private var cycleRing: some View {
-        Circle()
-            .stroke(LoudnessMatchModalColors.primary.opacity(0.16), lineWidth: 5)
-            .overlay {
-                if reduceMotion && isTonePulseActive {
-                    Circle()
-                        .trim(from: 0.0, to: 1.0)
-                        .stroke(
-                            LoudnessMatchModalColors.primary.opacity(0.62),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                } else if toneProgress > 0.0 {
-                    Circle()
-                        .trim(from: 0.0, to: min(1.0, toneProgress))
-                        .stroke(
-                            LoudnessMatchModalColors.primary.opacity(0.86),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .butt)
-                        )
-                        .rotationEffect(.degrees(-90))
-                }
-            }
+        .accessibilityHint(isPlaying ? "Stops tone playback." : "Starts tone playback.")
+        .accessibilityIdentifier("loudness_play_button")
     }
 
     private var playFill: Color {
         isPlaying
-            ? LoudnessMatchModalColors.primary.opacity(reduceMotion ? 0.06 : 0.09)
+            ? LoudnessMatchModalColors.primary.opacity(0.09)
             : Color(uiColor: .systemBackground)
-    }
-
-    private func updateToneProgress() {
-        guard isPlaying else {
-            withAnimation(.none) {
-                toneProgress = 0.0
-            }
-            return
-        }
-
-        guard isTonePulseActive else {
-            withAnimation(.easeOut(duration: 0.12)) {
-                toneProgress = 0.0
-            }
-            return
-        }
-
-        guard !reduceMotion else {
-            withAnimation(.easeOut(duration: 0.12)) {
-                toneProgress = 1.0
-            }
-            return
-        }
-
-        toneProgress = 0.0
-        withAnimation(.linear(duration: max(0.2, toneDuration))) {
-            toneProgress = 1.0
-        }
     }
 }
 

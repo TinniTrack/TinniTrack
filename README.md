@@ -37,7 +37,7 @@ The currently implemented participant path is:
    - visible stop/safety acknowledgement.
 8. Complete the active tinnitus task:
    - select tinnitus laterality,
-   - resolve the selected-ear 1 kHz threshold from the imported HealthKit audiogram,
+   - resolve the 1 kHz threshold from the imported HealthKit audiogram,
    - complete three loudness-match trials,
    - record confidence for each accepted match.
 9. Submit a structured payload to Supabase.
@@ -157,7 +157,7 @@ But the Study No. 1 app flow needs behavior ResearchKit does not provide as a st
 
 - Tinnitus laterality selection.
 - A fixed Study No. 1 1 kHz protocol.
-- A HealthKit audiogram threshold at the same frequency and ear used for dB SL in recurring tasks.
+- A HealthKit audiogram threshold at the same frequency used for dB SL in recurring tasks.
 - A one-time orientation threshold validation record against that imported audiogram.
 - Repeated loudness-match trials.
 - Participant confidence per accepted match.
@@ -320,7 +320,7 @@ The active Study No. 1 protocol has these states:
 - aborted,
 - restart required.
 
-Scheduled tasks move from laterality selection directly into loudness-match trials after resolving the selected-ear 1 kHz threshold from the latest imported HealthKit audiogram. They do not launch ResearchKit threshold steps and do not ask the participant to complete threshold testing. The current UI shows the participant numerical dB HL readouts during active testing. Earlier planning suggested hiding numeric dB values to reduce anchoring; that is not the current implemented behavior. If blinding or anchoring reduction becomes important, that should be treated as a future UI change and tested against the active view.
+Scheduled tasks move from laterality selection directly into loudness-match trials after resolving the 1 kHz threshold from the latest imported HealthKit audiogram. They do not launch ResearchKit threshold steps and do not ask the participant to complete threshold testing. The current UI shows the participant numerical dB HL readouts during active testing. Earlier planning suggested hiding numeric dB values to reduce anchoring; that is not the current implemented behavior. If blinding or anchoring reduction becomes important, that should be treated as a future UI change and tested against the active view.
 
 ## Tinnitus Protocol Domain Logic
 
@@ -334,7 +334,7 @@ The current configuration is `TinnitusProtocolConfiguration.studyNo1FixedOneKilo
 - stimulus: pure tone
 - frequency: 1000 Hz
 - trial count: 3
-- tone duration: 1.0 second
+- tone duration: continuous until stopped during loudness matching
 - ramp duration: 0.2 seconds
 - threshold start offset for trials: +5 dB SL
 - conservative fallback start: 10 dB HL
@@ -355,17 +355,11 @@ Participants report tinnitus laterality as:
 - central,
 - unclear.
 
-The current channel rule is:
-
-- left tinnitus uses left channel,
-- right tinnitus uses right channel,
-- bilateral, central, or unclear tinnitus uses left channel and records `ambiguousLaterality`.
-
-The engine records this rule in the event response as `study_no_1_rule_unilateral_affected_else_left_first`.
+The answer is recorded with the protocol events and payload.
 
 ### Threshold Source
 
-Study No. 1 uses the imported HealthKit audiogram threshold at 1000 Hz for the selected playback ear before loudness matching. The threshold is needed for dB SL:
+Study No. 1 uses the imported HealthKit audiogram threshold at 1000 Hz before loudness matching. The threshold is needed for dB SL:
 
 ```text
 dB SL = matched dB HL - threshold dB HL
@@ -423,7 +417,6 @@ If the spread between accepted trial levels exceeds 10 dB, the summary records `
 
 Current quality flags include:
 
-- `ambiguousLaterality`
 - `thresholdUnavailable`
 - `dbSLInvalid`
 - `highWithinSessionSpread`
@@ -605,6 +598,7 @@ Additional safety behavior:
 - channel,
 - duration,
 - ramp duration,
+- finite-duration stop policy,
 - guardrail validation,
 - headphone identifier,
 - route metadata,
@@ -615,7 +609,7 @@ A valid plan contains:
 
 - sample rate,
 - buffer frame count,
-- selected channel,
+- playback channel,
 - requested dB HL,
 - target dB SPL,
 - attenuation dB,
@@ -627,8 +621,7 @@ A valid plan contains:
 `CalibratedToneRenderer` generates a sine wave:
 
 - stable phase,
-- selected channel only,
-- opposite channel zeroed,
+- left, right, or both-channel playback,
 - ramp in and ramp out envelope,
 - sample-rate-aware phase increment.
 
@@ -640,7 +633,8 @@ A valid plan contains:
 - preferred sample rate of 44100 Hz,
 - preferred render buffer of 512 frames,
 - main mixer output volume of 1.0,
-- natural stop after duration,
+- phase-continuous calibrated amplitude ramps when the participant adjusts the loudness level,
+- natural stop after duration for finite-duration requests,
 - explicit ramped stop for user stop.
 
 The original ResearchKit generator used Audio Unit RemoteIO and SpatialMixer. The app's implementation uses AVAudioEngine instead, while keeping the relevant math, channel isolation, ramping, and calibration metadata.
@@ -1269,13 +1263,13 @@ HealthKit audiogram points can include:
 - source app,
 - measured date.
 
-The current Study No. 1 prerequisite needs an imported audiogram, and recurring loudness-match tasks use the imported 1000 Hz threshold for the selected ear when calculating dB SL.
+The current Study No. 1 prerequisite needs an imported audiogram, and recurring loudness-match tasks use the imported 1000 Hz threshold when calculating dB SL.
 
 ### Hearing Threshold
 
 A hearing threshold is the quietest level a person detects reliably for a given frequency and ear under a specified protocol.
 
-Study No. 1 recurring tasks use the imported HealthKit audiogram 1000 Hz threshold because dB SL for the loudness match must use a threshold at the same frequency and playback ear. The one-time onboarding orientation threshold task is a validation record; it is not repeated in scheduled tasks.
+Study No. 1 recurring tasks use the imported HealthKit audiogram 1000 Hz threshold because dB SL for the loudness match must use a threshold at the same frequency. The one-time onboarding orientation threshold task is a validation record; it is not repeated in scheduled tasks.
 
 ### Tinnitus
 

@@ -119,7 +119,7 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var displayedPosition: Double = 0
-    @State private var pulsePhase: Double = 0
+    @State private var animationPhase: Double = 0
 
     var body: some View {
         VStack(spacing: isCompact ? 12 : 18) {
@@ -321,7 +321,7 @@ struct LoudnessMatchNoiseGateMeter: View {
         let target = Double(targetIndex(columnCount: columnCount))
         guard !reduceMotion else {
             displayedPosition = target
-            pulsePhase = 0
+            animationPhase = 0
             return
         }
 
@@ -341,7 +341,7 @@ struct LoudnessMatchNoiseGateMeter: View {
 
             withAnimation(.easeInOut(duration: 0.12)) {
                 displayedPosition = min(Double(columnCount - 1), max(0, nextPosition))
-                pulsePhase = (pulsePhase + 0.16).truncatingRemainder(dividingBy: .pi * 2)
+                animationPhase = (animationPhase + 0.16).truncatingRemainder(dividingBy: .pi * 2)
             }
 
             try? await Task.sleep(nanoseconds: Self.animationFrameDuration)
@@ -374,7 +374,7 @@ struct LoudnessMatchNoiseGateMeter: View {
     }
 
     private func phaseMultiplier(for index: Int) -> Double {
-        0.78 + (0.22 * ((sin(pulsePhase + (Double(index) * 0.36)) + 1) / 2))
+        0.78 + (0.22 * ((sin(animationPhase + (Double(index) * 0.36)) + 1) / 2))
     }
 }
 

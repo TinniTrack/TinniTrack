@@ -27,6 +27,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
         #expect(payload.safety.stopControlVisibleBeforePlayback)
         #expect(payload.stimulus.frequencyHz == 1_000)
         #expect(payload.stimulus.kind == "pureTone")
+        #expect(payload.stimulus.channel == "both")
         #expect(payload.threshold.levelDBHL == 10)
         #expect(payload.threshold.source == .healthKitAudiogram)
         #expect(payload.trials.map(\.acceptedLevelDBHL) == [16, 14, 20])
@@ -35,6 +36,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
         #expect(payload.protocolEvents.contains { $0.kind == "playbackPlanned" })
         #expect(payload.protocolEvents.contains { $0.guardrailState == "passed" && $0.guardrailOutputVolume == 1.0 })
         #expect(payload.playbackEvents.count == 6)
+        #expect(payload.playbackEvents.allSatisfy { $0.channel == "both" })
         #expect(payload.refusals.contains { $0.reason == "stopRequested" })
         #expect(payload.limitations.contains(StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation))
 
@@ -170,7 +172,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
     func builderRefusesNonStudyNo1Frequency() {
         var summary = TinnitusLoudnessMatchSummary(
             frequencyHz: 2_000,
-            channel: .left,
+            channel: .both,
             thresholdStatus: .measured(levelDBHL: 10),
             trials: [
                 TinnitusLoudnessMatchTrial(

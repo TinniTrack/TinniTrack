@@ -62,6 +62,29 @@ struct CalibratedTonePlaybackTests {
     }
 
     @Test
+    func rendererCanRampAmplitudeAcrossLevelAdjustmentFrames() throws {
+        let configuration = renderConfiguration(
+            frequencyHz: 1,
+            amplitude: 0.2,
+            duration: 1.0,
+            rampDuration: 0.0,
+            sampleRate: 4
+        )
+        var renderer = CalibratedToneRenderer(initialPhase: .pi / 2.0)
+
+        let buffer = try renderer.renderNextFrames(
+            4,
+            configuration: configuration,
+            amplitudeProvider: { absoluteFrame, _ in
+                0.1 + (Double(absoluteFrame) * 0.025)
+            }
+        )
+
+        #expect(abs(Double(buffer.left[0]) - 0.1) < 0.000_001)
+        #expect(abs(Double(buffer.left[2]) + 0.15) < 0.000_001)
+    }
+
+    @Test
     func rendererIsolatesRightChannel() throws {
         let configuration = renderConfiguration(
             channel: .right,
@@ -75,6 +98,39 @@ struct CalibratedTonePlaybackTests {
 
         #expect(buffer.left.allSatisfy { $0 == 0.0 })
         #expect(peak(buffer.right) > 0.39)
+    }
+
+    @Test
+    func rendererSendsBinauralPlaybackToBothChannels() throws {
+        let configuration = renderConfiguration(
+            channel: .both,
+            amplitude: 0.4,
+            duration: 0.02,
+            rampDuration: 0.0,
+            sampleRate: 48_000
+        )
+
+        let buffer = try CalibratedToneRenderer.render(configuration)
+
+        #expect(peak(buffer.left) > 0.39)
+        #expect(buffer.left == buffer.right)
+    }
+
+    @Test
+    func rendererKeepsContinuousToneOnAfterConfiguredDurationWhenRequested() throws {
+        let configuration = renderConfiguration(
+            amplitude: 0.4,
+            duration: 0.02,
+            rampDuration: 0.002,
+            stopsAfterDuration: false,
+            sampleRate: 48_000
+        )
+        var renderer = CalibratedToneRenderer()
+        _ = try renderer.renderNextFrames(configuration.frameCount, configuration: configuration)
+
+        let nextFrames = try renderer.renderNextFrames(256, configuration: configuration)
+
+        #expect(peak(nextFrames.left) > 0.39)
     }
 
     @Test
@@ -125,6 +181,7 @@ struct CalibratedTonePlaybackTests {
         #expect(plan.renderConfiguration.frequencyHz == 1_000)
         #expect(plan.renderConfiguration.amplitude == plan.conversion.linearAmplitude)
         #expect(plan.renderConfiguration.channel == .left)
+        #expect(plan.renderConfiguration.stopsAfterDuration)
         #expect(abs(plan.metadata.targetDBSPL - 39.27) < 0.000_001)
         #expect(abs(plan.metadata.attenuationDB - (-74.40)) < 0.000_001)
         #expect(abs(plan.metadata.linearAmplitude - 0.000_190_5) < 0.000_000_1)
@@ -215,6 +272,7 @@ struct CalibratedTonePlaybackTests {
         amplitude: Double = 0.25,
         duration: TimeInterval = 0.02,
         rampDuration: TimeInterval = 0.0,
+        stopsAfterDuration: Bool = true,
         sampleRate: Double = 48_000
     ) -> CalibratedToneRenderConfiguration {
         CalibratedToneRenderConfiguration(
@@ -223,6 +281,7 @@ struct CalibratedTonePlaybackTests {
             channel: channel,
             duration: duration,
             rampDuration: rampDuration,
+            stopsAfterDuration: stopsAfterDuration,
             sampleRate: sampleRate
         )
     }

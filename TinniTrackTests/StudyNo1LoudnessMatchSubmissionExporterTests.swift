@@ -160,7 +160,7 @@ struct StudyNo1LoudnessMatchSubmissionExporterTests {
             stimulus: StudyNo1StimulusContext(
                 kind: "pureTone",
                 frequencyHz: 1_000,
-                channel: "left",
+                channel: "both",
                 tinnitusLaterality: "left",
                 toneDuration: 1,
                 rampDuration: 0.2
@@ -208,7 +208,7 @@ struct StudyNo1LoudnessMatchSubmissionExporterTests {
                 StudyNo1PlaybackEventContext(
                     timestamp: timestamp,
                     frequencyHz: 1_000,
-                    channel: "left",
+                    channel: "both",
                     requestedDBHL: 15,
                     targetDBSPL: 24.27,
                     attenuationDB: -89.4,

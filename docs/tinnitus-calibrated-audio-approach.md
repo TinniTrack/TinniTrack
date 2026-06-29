@@ -173,7 +173,7 @@ ResearchKit's dB HL generator:
 - builds an Audio Unit graph with `RemoteIO` output and a `SpatialMixer`;
 - sets a 44.1 kHz non-interleaved float PCM stream;
 - renders a sine wave in a callback;
-- writes the tone into the selected channel and zeroes the opposite channel unless stereo playback is requested;
+- writes the tone into the requested output channel set;
 - fades in/out over about 0.2 seconds;
 - computes a linear amplitude from requested dB HL before playback;
 - warns the audiometry engine if the requested level would clip.
@@ -434,10 +434,7 @@ Before either study starts:
 3. Run or request a fit/seal confirmation.
 4. Run environment SPL gating.
 5. Ask tinnitus laterality: left, right, both, central, or unclear.
-6. Define playback ear based on the study rule.
-7. Display safety stop affordance before any stimulus is played.
-
-For unilateral tinnitus, play to the affected ear. For bilateral or central tinnitus, define this in the protocol before data collection. The cleanest research design is to test left and right ears separately when possible, because it avoids ambiguity in channel-specific thresholds and dB SL calculations.
+6. Display safety stop affordance before any stimulus is played.
 
 ### Study No. 1: fixed 1000 Hz loudness matching
 
@@ -517,7 +514,6 @@ Much Softer    Softer    Same Loudness    Louder    Much Louder
 Design details:
 
 - Keep the numeric dB level hidden from the participant to reduce anchoring.
-- Use pulsed tones, not a continuously running tone.
 - Use ramp-in and ramp-out to avoid clicks.
 - Make `Stop` always visible and immediate.
 - Log every button press, level change, playback event, route change, and volume change.
