@@ -197,6 +197,7 @@ private struct StudyConsentReaderView: View {
                     )
                 }
                 .onAppear {
+                    guard !isSignaturePresented else { return }
                     viewModel.reviewConsent()
                     DispatchQueue.main.async {
                         proxy.scrollTo(topAnchorID, anchor: .top)
@@ -233,7 +234,7 @@ private struct StudyConsentReaderView: View {
             .foregroundStyle(LoudnessMatchModalColors.text)
             .background(LoudnessMatchModalColors.background)
             .onAppear {
-                viewModel.continueToSignature()
+                viewModel.restoreSignatureStepAfterNavigationPresentation()
             }
         }
         .background(LoudnessMatchModalColors.background)
