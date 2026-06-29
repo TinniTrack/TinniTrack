@@ -123,7 +123,7 @@ struct DashboardStudyCard: Identifiable, Equatable {
 
     var badgeText: String {
         if isEnrolledActive {
-            return "ACTIVE"
+            return "ENROLLED"
         }
 
         switch study.status {

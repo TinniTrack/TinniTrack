@@ -411,7 +411,7 @@ private enum DashboardColors {
 
 private extension DashboardStudyCard {
     var displayBadgeText: String {
-        badgeText.capitalized
+        badgeText
     }
 
     var badgeColor: Color {
