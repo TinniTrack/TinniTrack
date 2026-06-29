@@ -43,21 +43,37 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
 
     @discardableResult
     func play(_ request: CalibratedTonePlaybackRequest) throws -> CalibratedTonePlaybackMetadata {
-        stopImmediately()
+        if let renderState, engine != nil {
+            let playbackTiming = currentPlaybackTiming()
+            let planner = makePlaybackPlanner(
+                sampleRate: playbackTiming.sampleRate,
+                bufferFrameCount: playbackTiming.bufferFrameCount
+            )
+            let plan = try planner.makePlan(for: request)
+            renderState.transition(
+                to: plan.renderConfiguration,
+                duration: CalibratedTonePlaybackDefaults.levelAdjustmentRampDuration
+            )
+            let metadata = plan.metadata.started(at: dateProvider())
+            currentMetadata = metadata
+            lastMetadata = metadata
+            startGuardrailMonitoring()
+            if plan.renderConfiguration.stopsAfterDuration {
+                scheduleNaturalStop(after: plan.renderConfiguration.duration)
+            }
+            return metadata
+        }
+
         try configureAudioSession()
 
-        let activeSampleRate = audioSession.sampleRate > 0.0 ? audioSession.sampleRate : preferredSampleRate
-        let activeBufferFrameCount = max(
-            1,
-            Int((audioSession.ioBufferDuration * activeSampleRate).rounded())
-        )
-        let planner = CalibratedTonePlaybackPlanner(
-            converter: converter,
-            sampleRate: activeSampleRate,
-            bufferFrameCount: activeBufferFrameCount,
-            dateProvider: dateProvider
+        let playbackTiming = currentPlaybackTiming()
+        let planner = makePlaybackPlanner(
+            sampleRate: playbackTiming.sampleRate,
+            bufferFrameCount: playbackTiming.bufferFrameCount
         )
         let plan = try planner.makePlan(for: request)
+
+        stopImmediately()
         let playbackEngine = AVAudioEngine()
         let state = CalibratedToneAudioRenderState(configuration: plan.renderConfiguration)
         let source = AVAudioSourceNode { _, _, frameCount, audioBufferList in
@@ -66,7 +82,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         }
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
-            sampleRate: activeSampleRate,
+            sampleRate: playbackTiming.sampleRate,
             channels: 2,
             interleaved: false
         )
@@ -86,9 +102,33 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         lastMetadata = metadata
 
         startGuardrailMonitoring()
-        scheduleNaturalStop(after: plan.renderConfiguration.duration)
+        if plan.renderConfiguration.stopsAfterDuration {
+            scheduleNaturalStop(after: plan.renderConfiguration.duration)
+        }
 
         return metadata
+    }
+
+    private func currentPlaybackTiming() -> (sampleRate: Double, bufferFrameCount: Int) {
+        let activeSampleRate = audioSession.sampleRate > 0.0 ? audioSession.sampleRate : preferredSampleRate
+        let activeBufferFrameCount = max(
+            1,
+            Int((audioSession.ioBufferDuration * activeSampleRate).rounded())
+        )
+
+        return (activeSampleRate, activeBufferFrameCount)
+    }
+
+    private func makePlaybackPlanner(
+        sampleRate: Double,
+        bufferFrameCount: Int
+    ) -> CalibratedTonePlaybackPlanner {
+        CalibratedTonePlaybackPlanner(
+            converter: converter,
+            sampleRate: sampleRate,
+            bufferFrameCount: bufferFrameCount,
+            dateProvider: dateProvider
+        )
     }
 
     @discardableResult
@@ -172,6 +212,7 @@ private final class CalibratedToneAudioRenderState: @unchecked Sendable {
     private let lock = NSLock()
     private var renderer = CalibratedToneRenderer()
     private var configuration: CalibratedToneRenderConfiguration
+    private var amplitudeTransition: CalibratedToneAmplitudeTransition?
     private var isStopping = false
 
     init(configuration: CalibratedToneRenderConfiguration) {
@@ -194,6 +235,7 @@ private final class CalibratedToneAudioRenderState: @unchecked Sendable {
             channel: configuration.channel,
             duration: Double(stopFrameCount) / configuration.sampleRate,
             rampDuration: configuration.rampDuration,
+            stopsAfterDuration: true,
             sampleRate: configuration.sampleRate
         )
         isStopping = true
@@ -201,17 +243,49 @@ private final class CalibratedToneAudioRenderState: @unchecked Sendable {
         return configuration.rampDuration
     }
 
+    func transition(
+        to newConfiguration: CalibratedToneRenderConfiguration,
+        duration: TimeInterval
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let currentFrame = renderer.renderedFrameCount
+        let currentAmplitude = amplitudeTransition?.amplitude(at: currentFrame)
+            ?? configuration.amplitude
+        let transitionFrameCount = max(1, Int((duration * configuration.sampleRate).rounded()))
+        amplitudeTransition = CalibratedToneAmplitudeTransition(
+            startAmplitude: currentAmplitude,
+            endAmplitude: newConfiguration.amplitude,
+            startFrame: currentFrame,
+            frameCount: transitionFrameCount
+        )
+        configuration = newConfiguration
+        isStopping = false
+    }
+
     func render(
         frameCount: Int,
         into audioBufferList: UnsafeMutablePointer<AudioBufferList>
     ) {
         lock.lock()
-        let buffer = (try? renderer.renderNextFrames(frameCount, configuration: configuration))
+        let transition = amplitudeTransition
+        let buffer = (try? renderer.renderNextFrames(
+            frameCount,
+            configuration: configuration,
+            amplitudeProvider: { absoluteFrame, configuredAmplitude in
+                transition?.amplitude(at: absoluteFrame) ?? configuredAmplitude
+            }
+        ))
             ?? CalibratedTonePCMBuffer(
                 left: Array(repeating: .zero, count: frameCount),
                 right: Array(repeating: .zero, count: frameCount),
                 sampleRate: configuration.sampleRate
             )
+        if let transition,
+           renderer.renderedFrameCount >= transition.endFrame {
+            amplitudeTransition = nil
+        }
         lock.unlock()
 
         let audioBuffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
@@ -225,5 +299,28 @@ private final class CalibratedToneAudioRenderState: @unchecked Sendable {
                 data[frame] = frame < samples.count ? samples[frame] : 0.0
             }
         }
+    }
+}
+
+private struct CalibratedToneAmplitudeTransition {
+    let startAmplitude: Double
+    let endAmplitude: Double
+    let startFrame: Int
+    let frameCount: Int
+
+    var endFrame: Int {
+        startFrame + frameCount
+    }
+
+    func amplitude(at absoluteFrame: Int) -> Double {
+        guard absoluteFrame >= startFrame else {
+            return startAmplitude
+        }
+        guard absoluteFrame < endFrame else {
+            return endAmplitude
+        }
+
+        let progress = Double(absoluteFrame - startFrame) / Double(frameCount)
+        return startAmplitude + ((endAmplitude - startAmplitude) * progress)
     }
 }

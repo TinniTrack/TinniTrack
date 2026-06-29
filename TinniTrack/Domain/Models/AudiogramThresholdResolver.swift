@@ -4,6 +4,7 @@ enum AudiogramThresholdResolutionError: Error, Equatable, LocalizedError {
     case missingAudiogram
     case missingFrequency(Double)
     case missingEarThreshold(CalibratedTonePlaybackChannel, frequencyHz: Double)
+    case missingBinauralThreshold(frequencyHz: Double)
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum AudiogramThresholdResolutionError: Error, Equatable, LocalizedError {
             return "The imported hearing test does not include \(Int(frequencyHz)) Hz."
         case .missingEarThreshold(let channel, let frequencyHz):
             return "The imported hearing test does not include a \(channel.rawValue) ear threshold at \(Int(frequencyHz)) Hz."
+        case .missingBinauralThreshold(let frequencyHz):
+            return "The imported hearing test does not include both left and right ear thresholds at \(Int(frequencyHz)) Hz."
         }
     }
 }
@@ -36,6 +39,16 @@ struct AudiogramThresholdResolver {
 
         guard let point = audiogram.points.first(where: { abs($0.frequencyHz - targetFrequencyHz) <= toleranceHz }) else {
             throw AudiogramThresholdResolutionError.missingFrequency(targetFrequencyHz)
+        }
+
+        if channel == .both {
+            guard let leftThreshold = point.leftEarDBHL,
+                  let rightThreshold = point.rightEarDBHL
+            else {
+                throw AudiogramThresholdResolutionError.missingBinauralThreshold(frequencyHz: targetFrequencyHz)
+            }
+
+            return (leftThreshold + rightThreshold) / 2.0
         }
 
         let threshold = channel == .left ? point.leftEarDBHL : point.rightEarDBHL

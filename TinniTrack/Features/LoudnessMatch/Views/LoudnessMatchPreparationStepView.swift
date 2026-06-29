@@ -6,7 +6,10 @@ import UIKit
 struct LoudnessMatchPreparationStepView: View {
     let step: LoudnessMatchModalStep
     @ObservedObject var viewModel: LoudnessMatchTaskFlowViewModel
+    var selectedLaterality: TinnitusLaterality?
+    var maxVolumeActionTitle = "Continue"
     let showNoiseSuggestions: () -> Void
+    var selectLaterality: (TinnitusLaterality) -> Void = { _ in }
 
     var body: some View {
         switch step {
@@ -23,8 +26,19 @@ struct LoudnessMatchPreparationStepView: View {
         case .fit:
             AirPodsFitStepView()
         case .maxVolume:
-            MaxVolumeGateStepView(validation: viewModel.currentGuardrailValidation)
+            MaxVolumeGateStepView(
+                validation: viewModel.currentGuardrailValidation,
+                primaryActionTitle: maxVolumeActionTitle
+            )
                 .accessibilityIdentifier("loudness_volume_gate_step")
+        case .tinnitusLocation:
+            TinnitusLocationStepView(
+                selectedLaterality: selectedLaterality,
+                isSelectionCommitted: viewModel.selectedLaterality != nil,
+                isResolvingSelection: viewModel.isResolvingAudiogramThreshold,
+                selectLaterality: selectLaterality
+            )
+            .accessibilityIdentifier("loudness_tinnitus_location_step")
         case .activeTest:
             EmptyView()
         }
@@ -199,6 +213,7 @@ private struct AirPodsFitStepView: View {
 
 private struct MaxVolumeGateStepView: View {
     let validation: CalibratedAudioGuardrailValidation
+    let primaryActionTitle: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 30) {
@@ -223,7 +238,7 @@ private struct MaxVolumeGateStepView: View {
             VStack(alignment: .leading, spacing: 16) {
                 LoudnessMatchModalTitleBlock(
                     title: "Please use the volume buttons on your iPhone to set the volume to maximum.",
-                    bodyText: "Start Test becomes available after your AirPods route and maximum-volume guardrails pass."
+                    bodyText: "\(primaryActionTitle) becomes available after your AirPods route and maximum-volume guardrails pass."
                 )
 
                 Text(statusText)
@@ -274,5 +289,105 @@ private struct MaxVolumeGateStepView: View {
         case .missingCalibrationProfile:
             return "The required AirPods Pro 2 calibration profile is unavailable."
         }
+    }
+}
+
+private struct TinnitusLocationStepView: View {
+    let selectedLaterality: TinnitusLaterality?
+    let isSelectionCommitted: Bool
+    let isResolvingSelection: Bool
+    let selectLaterality: (TinnitusLaterality) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            Spacer(minLength: 0)
+
+            Image(systemName: "ear.badge.waveform")
+                .font(.system(size: 92, weight: .regular))
+                .foregroundStyle(LoudnessMatchModalColors.graphic, LoudnessMatchModalColors.primary)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+            LoudnessMatchModalTitleBlock(
+                title: "Where do you hear your tinnitus?",
+                bodyText: "Choose the option that best matches where the sound is most noticeable right now."
+            )
+
+            VStack(spacing: 12) {
+                ForEach(TinnitusLaterality.allCases, id: \.self) { laterality in
+                    LoudnessMatchLateralityChoiceButton(
+                        title: lateralityTitle(laterality),
+                        isSelected: selectedLaterality == laterality,
+                        isEnabled: !isSelectionCommitted && !isResolvingSelection
+                    ) {
+                        selectLaterality(laterality)
+                    }
+                }
+            }
+
+            if isResolvingSelection {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Loading hearing-test threshold...")
+                        .font(.callout)
+                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private func lateralityTitle(_ laterality: TinnitusLaterality) -> String {
+        switch laterality {
+        case .left:
+            return "Left"
+        case .right:
+            return "Right"
+        case .bilateral:
+            return "Both"
+        case .central:
+            return "Center"
+        case .unclear:
+            return "Not Sure"
+        }
+    }
+}
+
+private struct LoudnessMatchLateralityChoiceButton: View {
+    let title: String
+    let isSelected: Bool
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isSelected ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.tertiaryText)
+
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(LoudnessMatchModalColors.text)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 52)
+            .padding(.horizontal, 16)
+            .background(isSelected ? LoudnessMatchModalColors.primary.opacity(0.12) : LoudnessMatchModalColors.controlBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isSelected ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.controlStroke, lineWidth: isSelected ? 1.6 : 1)
+            }
+        }
+        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.62)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }

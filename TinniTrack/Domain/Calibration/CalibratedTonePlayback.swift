@@ -3,15 +3,7 @@ import Foundation
 enum CalibratedTonePlaybackChannel: String, Equatable {
     case left
     case right
-
-    var channelIndex: Int {
-        switch self {
-        case .left:
-            return 0
-        case .right:
-            return 1
-        }
-    }
+    case both
 }
 
 enum CalibratedTonePlaybackError: Error, Equatable {
@@ -31,6 +23,7 @@ struct CalibratedTonePlaybackRequest: Equatable {
     let channel: CalibratedTonePlaybackChannel
     let duration: TimeInterval
     let rampDuration: TimeInterval
+    let stopsAfterDuration: Bool
     let headphoneIdentifier: String
     let guardrailValidation: CalibratedAudioGuardrailValidation
 
@@ -40,6 +33,7 @@ struct CalibratedTonePlaybackRequest: Equatable {
         channel: CalibratedTonePlaybackChannel,
         duration: TimeInterval,
         rampDuration: TimeInterval = CalibratedTonePlaybackDefaults.rampDuration,
+        stopsAfterDuration: Bool = true,
         headphoneIdentifier: String = CalibratedHeadphoneIdentifier.airPodsPro2,
         guardrailValidation: CalibratedAudioGuardrailValidation
     ) {
@@ -48,6 +42,7 @@ struct CalibratedTonePlaybackRequest: Equatable {
         self.channel = channel
         self.duration = duration
         self.rampDuration = rampDuration
+        self.stopsAfterDuration = stopsAfterDuration
         self.headphoneIdentifier = headphoneIdentifier
         self.guardrailValidation = guardrailValidation
     }
@@ -56,6 +51,7 @@ struct CalibratedTonePlaybackRequest: Equatable {
 enum CalibratedTonePlaybackDefaults {
     static let sampleRate = 44_100.0
     static let rampDuration: TimeInterval = 0.2
+    static let levelAdjustmentRampDuration: TimeInterval = 0.05
     static let renderBufferFrameCount = 512
     static let mixerGainPolicy = "AVAudioEngine mainMixerNode.outputVolume fixed at 1.0; no app-level EQ, limiter, compressor, or extra gain is applied by the calibrated player."
 }
@@ -183,6 +179,7 @@ struct CalibratedTonePlaybackPlanner {
             channel: request.channel,
             duration: request.duration,
             rampDuration: request.rampDuration,
+            stopsAfterDuration: request.stopsAfterDuration,
             sampleRate: sampleRate
         )
         let metadata = CalibratedTonePlaybackMetadata(

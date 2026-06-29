@@ -23,32 +23,10 @@ struct LoudnessMatchActiveTestView: View {
     private var activeStateView: some View {
         switch viewModel.protocolState {
         case .collectingLaterality:
-            VStack(alignment: .leading, spacing: 22) {
-                LoudnessMatchModalTitleBlock(
-                    title: "Where do you hear your tinnitus?",
-                    bodyText: "Choose the option that best matches where the sound is most noticeable right now."
-                )
-
-                VStack(spacing: 12) {
-                    ForEach(TinnitusLaterality.allCases, id: \.self) { laterality in
-                        modalChoiceButton(lateralityTitle(laterality)) {
-                            Task {
-                                await viewModel.selectLaterality(laterality)
-                            }
-                        }
-                        .disabled(viewModel.isResolvingAudiogramThreshold)
-                    }
-                }
-
-                if viewModel.isResolvingAudiogramThreshold {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading hearing-test threshold...")
-                            .font(.callout)
-                            .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                    }
-                }
-            }
+            LoudnessMatchModalTitleBlock(
+                title: "Tinnitus Location Needed",
+                bodyText: "Go back and choose where you hear your tinnitus before starting the loudness match."
+            )
 
         case .awaitingThreshold:
             LoudnessMatchModalTitleBlock(
@@ -63,7 +41,7 @@ struct LoudnessMatchActiveTestView: View {
             VStack(alignment: .leading, spacing: 22) {
                 LoudnessMatchModalTitleBlock(
                     title: "How confident are you in that match?",
-                    bodyText: "Trial \(trial.trialIndex) is set to \(String(format: "%.0f dB HL", trial.acceptedLevelDBHL))."
+                    bodyText: "Trial \(trial.trialIndex) match saved."
                 )
 
                 VStack(spacing: 12) {
@@ -84,8 +62,6 @@ struct LoudnessMatchActiveTestView: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     summaryRow("Trials", "\(summary.trials.count)")
-                    summaryRow("Matched level", String(format: "%.0f dB HL", summary.medianMatchedDBHL))
-                    summaryRow("Spread", String(format: "%.1f dB", summary.withinSessionSpreadDB))
                 }
 
                 LoudnessMatchModalPrimaryButton(
@@ -133,21 +109,15 @@ struct LoudnessMatchActiveTestView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.82)
 
-                Text("Adjust the tone until it sounds as loud\nas your tinnitus, then accept the match.")
-                    .font(.title3)
+                Text("Adjust the tone until it sounds as loud as your tinnitus, then accept the match.")
+                    .font(.system(size: 19, weight: .regular))
                     .lineSpacing(4)
                     .foregroundStyle(LoudnessMatchModalColors.secondaryText)
                     .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .accessibilityElement(children: .combine)
             .padding(.bottom, 24)
-
-            if let level = viewModel.currentCandidateLevelDBHL {
-                centeredLevelReadout(value: String(format: "%.0f dB HL", level))
-                    .padding(.bottom, 22)
-            }
 
             adjustmentStack
 
@@ -201,12 +171,9 @@ struct LoudnessMatchActiveTestView: View {
                 viewModel.adjustLevel(.louder)
             }
 
-            LoudnessMatchCycleRingPlayButton(
+            LoudnessMatchPlayButton(
                 isPlaying: viewModel.isPlaying,
-                isTonePulseActive: viewModel.isTonePulseActive,
-                isEnabled: viewModel.isPlaying || viewModel.canPlayTone,
-                pulseSequence: viewModel.playbackPulseSequence,
-                toneDuration: viewModel.playbackPulseToneDuration
+                isEnabled: viewModel.isPlaying || viewModel.canPlayTone
             ) {
                 if viewModel.isPlaying {
                     viewModel.stopTone()
@@ -242,23 +209,6 @@ struct LoudnessMatchActiveTestView: View {
         }
     }
 
-    private func centeredLevelReadout(value: String) -> some View {
-        VStack(spacing: 8) {
-            Text("Tone level")
-                .font(.title3)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-
-            Text(value)
-                .font(.system(size: 44, weight: .bold, design: .rounded))
-                .foregroundStyle(LoudnessMatchModalColors.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.76)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Tone level \(value)")
-    }
-
     private func summaryRow(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title)
@@ -286,21 +236,6 @@ struct LoudnessMatchActiveTestView: View {
                 }
         }
         .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
-    }
-
-    private func lateralityTitle(_ laterality: TinnitusLaterality) -> String {
-        switch laterality {
-        case .left:
-            return "Left"
-        case .right:
-            return "Right"
-        case .bilateral:
-            return "Both"
-        case .central:
-            return "Center"
-        case .unclear:
-            return "Not Sure"
-        }
     }
 
     private func confidenceTitle(_ confidence: TinnitusConfidenceRating) -> String {
@@ -502,126 +437,44 @@ private struct LoudnessMatchAdjustmentButton: View {
     }
 }
 
-private struct LoudnessMatchCycleRingPlayButton: View {
+private struct LoudnessMatchPlayButton: View {
     let isPlaying: Bool
-    let isTonePulseActive: Bool
     let isEnabled: Bool
-    let pulseSequence: Int
-    let toneDuration: TimeInterval
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var toneProgress = 0.0
-
     private let buttonDiameter: CGFloat = 92
-    private let ringDiameter: CGFloat = 114
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                if isPlaying {
-                    cycleRing
-                        .frame(width: ringDiameter, height: ringDiameter)
-                        .transition(.opacity)
+            Circle()
+                .fill(playFill)
+                .frame(width: buttonDiameter, height: buttonDiameter)
+                .overlay {
+                    Circle()
+                        .stroke(LoudnessMatchModalColors.primary.opacity(isEnabled ? 0.58 : 0.22), lineWidth: 2)
                 }
-
-                Circle()
-                    .fill(playFill)
-                    .frame(width: buttonDiameter, height: buttonDiameter)
-                    .overlay {
-                        Circle()
-                            .stroke(LoudnessMatchModalColors.primary.opacity(isEnabled ? 0.58 : 0.22), lineWidth: 2)
-                    }
-                    .shadow(color: LoudnessMatchModalColors.primary.opacity(isPlaying ? 0.10 : 0.04), radius: 16, x: 0, y: 8)
-
-                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: isPlaying ? 32 : 38, weight: .bold))
-                    .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledText)
-                    .offset(x: isPlaying ? 0 : 3)
-                    .accessibilityHidden(true)
-            }
-            .frame(width: ringDiameter, height: ringDiameter)
+                .shadow(color: LoudnessMatchModalColors.primary.opacity(isPlaying ? 0.10 : 0.04), radius: 16, x: 0, y: 8)
+                .overlay {
+                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: isPlaying ? 32 : 38, weight: .bold))
+                        .foregroundStyle(isEnabled ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledText)
+                        .offset(x: isPlaying ? 0 : 3)
+                        .accessibilityHidden(true)
+                }
+            .frame(width: buttonDiameter, height: buttonDiameter)
             .contentShape(Circle())
         }
         .buttonStyle(AppCircleButtonStyle())
         .disabled(!isEnabled)
         .accessibilityLabel(isPlaying ? "Stop tone playback" : "Play tone")
-        .accessibilityHint(isPlaying ? "Stops the repeated tone playback." : "Starts repeated tone playback.")
-        .accessibilityIdentifier("loudness_cycle_ring_play_button")
-        .onAppear {
-            updateToneProgress()
-        }
-        .onChange(of: isPlaying) {
-            updateToneProgress()
-        }
-        .onChange(of: isTonePulseActive) {
-            updateToneProgress()
-        }
-        .onChange(of: reduceMotion) {
-            updateToneProgress()
-        }
-        .onChange(of: pulseSequence) {
-            updateToneProgress()
-        }
-    }
-
-    @ViewBuilder
-    private var cycleRing: some View {
-        Circle()
-            .stroke(LoudnessMatchModalColors.primary.opacity(0.16), lineWidth: 5)
-            .overlay {
-                if reduceMotion && isTonePulseActive {
-                    Circle()
-                        .trim(from: 0.0, to: 1.0)
-                        .stroke(
-                            LoudnessMatchModalColors.primary.opacity(0.62),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                } else if toneProgress > 0.0 {
-                    Circle()
-                        .trim(from: 0.0, to: min(1.0, toneProgress))
-                        .stroke(
-                            LoudnessMatchModalColors.primary.opacity(0.86),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .butt)
-                        )
-                        .rotationEffect(.degrees(-90))
-                }
-            }
+        .accessibilityHint(isPlaying ? "Stops tone playback." : "Starts tone playback.")
+        .accessibilityIdentifier("loudness_play_button")
     }
 
     private var playFill: Color {
         isPlaying
-            ? LoudnessMatchModalColors.primary.opacity(reduceMotion ? 0.06 : 0.09)
+            ? LoudnessMatchModalColors.primary.opacity(0.09)
             : Color(uiColor: .systemBackground)
-    }
-
-    private func updateToneProgress() {
-        guard isPlaying else {
-            withAnimation(.none) {
-                toneProgress = 0.0
-            }
-            return
-        }
-
-        guard isTonePulseActive else {
-            withAnimation(.easeOut(duration: 0.12)) {
-                toneProgress = 0.0
-            }
-            return
-        }
-
-        guard !reduceMotion else {
-            withAnimation(.easeOut(duration: 0.12)) {
-                toneProgress = 1.0
-            }
-            return
-        }
-
-        toneProgress = 0.0
-        withAnimation(.linear(duration: max(0.2, toneDuration))) {
-            toneProgress = 1.0
-        }
     }
 }
 

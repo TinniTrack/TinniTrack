@@ -12,6 +12,7 @@ struct AudiogramThresholdResolverTests {
 
         #expect(try resolver.resolveThresholdDBHL(for: .left, in: audiogram) == 12)
         #expect(try resolver.resolveThresholdDBHL(for: .right, in: audiogram) == 18)
+        #expect(try resolver.resolveThresholdDBHL(for: .both, in: audiogram) == 15)
     }
 
     @Test
@@ -26,6 +27,10 @@ struct AudiogramThresholdResolverTests {
 
         #expect(throws: AudiogramThresholdResolutionError.missingEarThreshold(.right, frequencyHz: 1_000)) {
             _ = try resolver.resolveThresholdDBHL(for: .right, in: sampleAudiogram(left: 12, right: nil))
+        }
+
+        #expect(throws: AudiogramThresholdResolutionError.missingBinauralThreshold(frequencyHz: 1_000)) {
+            _ = try resolver.resolveThresholdDBHL(for: .both, in: sampleAudiogram(left: 12, right: nil))
         }
     }
 

@@ -43,25 +43,23 @@ struct TinnitusProtocolEngine {
         return candidateLevelDBHL
     }
 
+    static let loudnessMatchPlaybackChannel: CalibratedTonePlaybackChannel = .both
+
     mutating func selectLaterality(_ laterality: TinnitusLaterality) {
         guard case .collectingLaterality = state else {
             abort(.invalidState("Laterality can only be selected before threshold collection."))
             return
         }
 
-        let selectedChannel = Self.channel(for: laterality)
+        let playbackChannel = Self.loudnessMatchPlaybackChannel
         self.laterality = laterality
-        channel = selectedChannel
-        if laterality == .bilateral || laterality == .central || laterality == .unclear {
-            insertQualityFlag(.ambiguousLaterality)
-        }
+        channel = playbackChannel
 
-        state = .awaitingThreshold(laterality: laterality, channel: selectedChannel)
+        state = .awaitingThreshold(laterality: laterality, channel: playbackChannel)
         appendEvent(
             kind: .lateralitySelected,
-            channel: selectedChannel,
-            laterality: laterality,
-            response: "study_no_1_rule_unilateral_affected_else_left_first"
+            channel: playbackChannel,
+            laterality: laterality
         )
     }
 
@@ -74,18 +72,14 @@ struct TinnitusProtocolEngine {
             return
         }
 
-        let selectedChannel = Self.channel(for: laterality)
+        let playbackChannel = Self.loudnessMatchPlaybackChannel
         self.laterality = laterality
-        channel = selectedChannel
-        if laterality == .bilateral || laterality == .central || laterality == .unclear {
-            insertQualityFlag(.ambiguousLaterality)
-        }
+        channel = playbackChannel
 
         appendEvent(
             kind: .lateralitySelected,
-            channel: selectedChannel,
-            laterality: laterality,
-            response: "study_no_1_rule_unilateral_affected_else_left_first"
+            channel: playbackChannel,
+            laterality: laterality
         )
 
         thresholdStatus = .measured(levelDBHL: healthKitAudiogramThresholdDBHL)
@@ -95,7 +89,7 @@ struct TinnitusProtocolEngine {
             presentedLevelDBHL: healthKitAudiogramThresholdDBHL,
             estimatedDBSPL: estimatedDBSPL(for: healthKitAudiogramThresholdDBHL),
             dbSL: 0.0,
-            channel: selectedChannel,
+            channel: playbackChannel,
             response: "healthkit_audiogram"
         )
         startNextTrial()
@@ -277,6 +271,7 @@ struct TinnitusProtocolEngine {
             channel: channel,
             duration: configuration.toneDuration,
             rampDuration: configuration.rampDuration,
+            stopsAfterDuration: false,
             guardrailValidation: guardrailValidation
         )
 
@@ -464,12 +459,7 @@ struct TinnitusProtocolEngine {
     }
 
     private func initialLevelDBHL() -> Double {
-        switch thresholdStatus {
-        case .measured(let levelDBHL):
-            return levelDBHL + configuration.thresholdStartOffsetDBSL
-        case .pending, .unavailable:
-            return configuration.conservativeFallbackStartDBHL
-        }
+        configuration.initialLoudnessMatchLevelDBHL
     }
 
     private func clampedLevel(_ level: Double) -> Double {
@@ -572,17 +562,6 @@ struct TinnitusProtocolEngine {
             reason: reason,
             qualityFlags: qualityFlags
         ))
-    }
-
-    static func channel(for laterality: TinnitusLaterality) -> CalibratedTonePlaybackChannel {
-        switch laterality {
-        case .left:
-            return .left
-        case .right:
-            return .right
-        case .bilateral, .central, .unclear:
-            return .left
-        }
     }
 
     static func median(_ values: [Double]) -> Double? {
