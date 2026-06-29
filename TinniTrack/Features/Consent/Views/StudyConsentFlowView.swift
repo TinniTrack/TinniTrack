@@ -1072,32 +1072,44 @@ private struct StudySignatureCaptureSheet: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Button {
                     clearDrawing()
                 } label: {
                     Text("Clear")
-                        .font(.headline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LoudnessMatchModalColors.text)
+                        .frame(minWidth: 92)
+                        .frame(height: 34)
+                        .background(LoudnessMatchModalColors.controlBackground)
+                        .clipShape(Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+                        }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .tint(LoudnessMatchModalColors.primary)
+                .buttonStyle(AppCapsuleButtonStyle())
                 .accessibilityIdentifier("study_signature_clear_button")
+
+                Spacer(minLength: 0)
 
                 Button {
                     saveDrawing()
                 } label: {
                     Text("Save")
-                        .font(.headline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(canSaveDrawing ? LoudnessMatchModalColors.primaryText : LoudnessMatchModalColors.disabledText)
+                        .frame(minWidth: 92)
+                        .frame(height: 34)
+                        .background(canSaveDrawing ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.disabledFill)
+                        .clipShape(Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
+                        }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(LoudnessMatchModalColors.primary)
-                .disabled(!hasDrawableSignature || canvasSize == .zero)
+                .buttonStyle(AppCapsuleButtonStyle())
+                .disabled(!canSaveDrawing)
                 .accessibilityIdentifier("study_signature_save_button")
             }
         }
@@ -1109,6 +1121,10 @@ private struct StudySignatureCaptureSheet: View {
 
     private var hasDrawableSignature: Bool {
         strokes.contains { $0.count > 1 } || currentStroke.count > 1
+    }
+
+    private var canSaveDrawing: Bool {
+        hasDrawableSignature && canvasSize != .zero
     }
 
     private func clearDrawing() {
