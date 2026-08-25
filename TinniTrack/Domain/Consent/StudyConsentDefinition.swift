@@ -6,7 +6,7 @@
 import CryptoKit
 import Foundation
 
-struct StudyConsentDefinition: Equatable, Sendable {
+nonisolated struct StudyConsentDefinition: Equatable, Sendable {
     let studySlug: String
     let studyTitle: String
     let consentVersion: String
@@ -69,7 +69,7 @@ struct StudyConsentDefinition: Equatable, Sendable {
     }
 }
 
-struct StudyConsentLandingContent: Equatable, Sendable {
+nonisolated struct StudyConsentLandingContent: Equatable, Sendable {
     let eyebrow: String
     let title: String
     let subtitle: String
@@ -98,7 +98,7 @@ struct StudyConsentLandingContent: Equatable, Sendable {
     }
 }
 
-struct StudyConsentAtAGlanceRow: Equatable, Sendable {
+nonisolated struct StudyConsentAtAGlanceRow: Equatable, Sendable {
     let symbolName: String
     let label: String
     let value: String
@@ -108,7 +108,7 @@ struct StudyConsentAtAGlanceRow: Equatable, Sendable {
     }
 }
 
-struct StudyConsentKeyInformation: Equatable, Sendable {
+nonisolated struct StudyConsentKeyInformation: Equatable, Sendable {
     let title: String
     let bulletItems: [String]
     let checkItems: [String]
@@ -123,7 +123,7 @@ struct StudyConsentKeyInformation: Equatable, Sendable {
     }
 }
 
-struct StudyConsentSection: Identifiable, Equatable, Sendable {
+nonisolated struct StudyConsentSection: Identifiable, Equatable, Sendable {
     let id: String
     let tabTitle: String?
     let title: String
@@ -144,7 +144,7 @@ struct StudyConsentSection: Identifiable, Equatable, Sendable {
     }
 }
 
-enum StudyConsentContentBlock: Equatable, Sendable {
+nonisolated enum StudyConsentContentBlock: Equatable, Sendable {
     case paragraph(String)
     case bullets([String])
     case numberedActivities([StudyConsentNumberedActivity])
@@ -196,7 +196,7 @@ enum StudyConsentContentBlock: Equatable, Sendable {
     }
 }
 
-struct StudyConsentNumberedActivity: Equatable, Sendable {
+nonisolated struct StudyConsentNumberedActivity: Equatable, Sendable {
     let index: Int
     let title: String
     let body: String
@@ -212,7 +212,7 @@ struct StudyConsentNumberedActivity: Equatable, Sendable {
     }
 }
 
-struct StudyConsentContact: Equatable, Sendable {
+nonisolated struct StudyConsentContact: Equatable, Sendable {
     let title: String
     let name: String
     let affiliation: String?
@@ -235,7 +235,7 @@ struct StudyConsentContact: Equatable, Sendable {
     }
 }
 
-struct StudyConsentChoices: Equatable, Sendable {
+nonisolated struct StudyConsentChoices: Equatable, Sendable {
     let agreeText: String
     let declineText: String
     let finalAgreeLanguage: [String]
@@ -250,7 +250,7 @@ struct StudyConsentChoices: Equatable, Sendable {
     }
 }
 
-struct StudyConsentAttestation: Equatable, Sendable {
+nonisolated struct StudyConsentAttestation: Equatable, Sendable {
     let version: String
     let text: String
 
@@ -259,7 +259,7 @@ struct StudyConsentAttestation: Equatable, Sendable {
     }
 }
 
-struct StudyConsentSignatureRequirement: Equatable, Sendable {
+nonisolated struct StudyConsentSignatureRequirement: Equatable, Sendable {
     let requiresScrollToBottom: Bool
     let requiresName: Bool
     let requiresSignatureImage: Bool
@@ -275,14 +275,14 @@ struct StudyConsentSignatureRequirement: Equatable, Sendable {
     )
 }
 
-struct StudyConsentArtifact: Equatable, Sendable {
+nonisolated struct StudyConsentArtifact: Codable, Equatable, Sendable {
     let pdfData: Data
     let pdfSHA256Hex: String
     let storageBucket: String
     let storagePath: String
 }
 
-struct StudyConsentCompletion: Equatable, Sendable {
+nonisolated struct StudyConsentCompletion: Codable, Equatable, Sendable {
     let taskIdentifier: String
     let studySlug: String
     let consentVersion: String
@@ -313,7 +313,7 @@ struct StudyConsentCompletion: Equatable, Sendable {
     }
 }
 
-enum StudyConsentCatalog {
+nonisolated enum StudyConsentCatalog {
     static let studyNo1ConsentVersion = "study-no-1-consent-v2"
     static let consentStorageBucket = "study-consents"
     static let nativeCollectionMethod = "native_swiftui_v2"
@@ -597,7 +597,7 @@ enum StudyConsentCatalog {
     )
 }
 
-private extension String {
+nonisolated private extension String {
     var isValidSHA256Hex: Bool {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count == 64 else { return false }

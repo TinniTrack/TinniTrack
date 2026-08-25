@@ -36,7 +36,19 @@ struct StudyConsentFlowView: View {
     var body: some View {
         StudyConsentLandingView(
             definition: viewModel.definition,
-            reviewConsent: { isReviewPresented = true }
+            enrollmentRecoveryStatus: viewModel.enrollmentRecoveryStatus,
+            isResumingEnrollment: viewModel.state == .finalizing,
+            reviewConsent: { isReviewPresented = true },
+            resumeEnrollment: {
+                Task {
+                    await viewModel.resumeEnrollment()
+                }
+            },
+            retryEnrollmentRecoveryProbe: {
+                Task {
+                    await viewModel.retryEnrollmentRecoveryProbe()
+                }
+            }
         )
             .navigationTitle("Study Details")
             .navigationBarTitleDisplayMode(.inline)
@@ -57,10 +69,15 @@ struct StudyConsentFlowView: View {
                 .background(LoudnessMatchModalColors.background)
             }
             .task(id: viewModel.state) {
-                if viewModel.state == .completed {
+                switch viewModel.state {
+                case .landing:
+                    await viewModel.probeEnrollmentRecoveryIfNeeded()
+                case .completed:
                     await handleCompletedEnrollment()
-                } else if viewModel.state == .dismissed {
+                case .dismissed:
                     dismiss()
+                case .reviewingConsent, .signing, .finalizing, .failed:
+                    break
                 }
             }
             .task(id: isCompletionHandlingRequested) {
@@ -75,11 +92,22 @@ struct StudyConsentFlowView: View {
                     }
                 }
             )) {
-                Button("Try Again") {
-                    viewModel.retryAfterFailure()
-                }
-                Button("Cancel", role: .cancel) {
-                    viewModel.declineOrCancel()
+                if viewModel.shouldRetryEnrollmentRecoveryFromAlert {
+                    Button("Try Again") {
+                        Task {
+                            await viewModel.resumeEnrollment()
+                        }
+                    }
+                    Button("Not Now", role: .cancel) {
+                        viewModel.dismissEnrollmentRecoveryError()
+                    }
+                } else {
+                    Button("Try Again") {
+                        viewModel.retryAfterFailure()
+                    }
+                    Button("Cancel", role: .cancel) {
+                        viewModel.declineOrCancel()
+                    }
                 }
             } message: {
                 Text(viewModel.errorMessage ?? "")

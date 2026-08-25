@@ -4,28 +4,71 @@
 //
 
 import Foundation
-import Storage
 import Supabase
 
 final class SupabaseConsentService: ConsentServiceProtocol {
-    private let client: SupabaseClient
+    private let remote: any ConsentPersistenceRemote
     private let deviceMetadataProvider: DeviceMetadataProviding
+    private let pendingConsentStore: any PendingConsentStoring
     private let bundle: Bundle
-    private let uuidProvider: () -> UUID
     private let now: () -> Date
 
-    init(
+    convenience init(
         client: SupabaseClient = supabase,
         deviceMetadataProvider: DeviceMetadataProviding = SystemDeviceMetadataProvider(),
+        pendingConsentStore: any PendingConsentStoring = ProtectedPendingConsentStore.shared,
         bundle: Bundle = .main,
-        uuidProvider: @escaping () -> UUID = UUID.init,
         now: @escaping () -> Date = Date.init
     ) {
-        self.client = client
+        self.init(
+            remote: SupabaseConsentPersistenceRemote(client: client),
+            deviceMetadataProvider: deviceMetadataProvider,
+            pendingConsentStore: pendingConsentStore,
+            bundle: bundle,
+            now: now
+        )
+    }
+
+    init(
+        remote: any ConsentPersistenceRemote,
+        deviceMetadataProvider: DeviceMetadataProviding = SystemDeviceMetadataProvider(),
+        pendingConsentStore: any PendingConsentStoring = ProtectedPendingConsentStore.shared,
+        bundle: Bundle = .main,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.remote = remote
         self.deviceMetadataProvider = deviceMetadataProvider
+        self.pendingConsentStore = pendingConsentStore
         self.bundle = bundle
-        self.uuidProvider = uuidProvider
         self.now = now
+    }
+
+    func availableEnrollmentRecovery(
+        for study: Study
+    ) async throws -> ConsentEnrollmentRecovery? {
+        try await recoveryResolution(for: study)?.availability
+    }
+
+    func resumeEnrollment(for study: Study) async throws {
+        guard let resolution = try await recoveryResolution(for: study) else {
+            throw ConsentServiceError.noRecoverableConsent
+        }
+
+        switch resolution {
+        case let .pendingUpload(consent):
+            try await finalizeConsentAndEnroll(
+                study: study,
+                consent: consent
+            )
+        case let .pendingEnrollment(existingConsent, key, clearLocalEvidence):
+            if clearLocalEvidence {
+                try await clearPendingConsent(for: key)
+            }
+            try await enroll(
+                studyID: study.id,
+                consentID: existingConsent.id
+            )
+        }
     }
 
     func finalizeConsentAndEnroll(
@@ -36,207 +79,345 @@ final class SupabaseConsentService: ConsentServiceProtocol {
             throw ConsentServiceError.missingCatalogDefinition(studySlug: study.slug)
         }
 
-        guard consent.studySlug == definition.studySlug,
-              consent.consentVersion == definition.consentVersion,
-              study.slug == definition.studySlug else {
-            throw ConsentServiceError.studyMismatch
-        }
+        _ = try Self.validatedArtifact(
+            for: consent,
+            study: study,
+            definition: definition
+        )
 
-        guard consent.isValidSignedConsent else {
-            throw ConsentServiceError.invalidConsentCompletion
-        }
-
-        guard let artifact = consent.artifact else {
-            throw ConsentServiceError.missingSignedArtifact
-        }
-
-        let userID = try await currentUserID()
-        let consentID = uuidProvider()
+        let userID = try await remote.currentUserID()
+        let pendingKey = PendingConsentKey(
+            userID: userID,
+            studyID: study.id,
+            consentVersion: definition.consentVersion
+        )
+        let consentID = pendingKey.attemptID
         let storagePath = Self.storagePath(
             userID: userID,
             studyID: study.id,
-            consentVersion: consent.consentVersion,
+            consentVersion: definition.consentVersion,
             consentID: consentID
         )
 
-        try await client.storage
-            .from(StudyConsentCatalog.consentStorageBucket)
-            .upload(
-                storagePath,
-                data: artifact.pdfData,
-                options: FileOptions(
-                    cacheControl: "0",
-                    contentType: "application/pdf",
-                    upsert: false
+        if let existingConsent = try await existingConsent(
+            userID: userID,
+            studyID: study.id,
+            consentVersion: definition.consentVersion
+        ) {
+            if let pendingConsent = try await loadPendingConsent(for: pendingKey) {
+                _ = try Self.validatedArtifact(
+                    for: pendingConsent,
+                    study: study,
+                    definition: definition
                 )
+                guard pendingConsent == consent else {
+                    throw ConsentServiceError.conflictingPendingArtifact
+                }
+                guard existingConsent.matches(
+                    pendingConsent,
+                    key: pendingKey,
+                    storagePath: storagePath
+                ) else {
+                    throw ConsentServiceError.conflictingPendingArtifact
+                }
+                try await clearPendingConsent(for: pendingKey)
+            } else {
+                guard existingConsent.matches(
+                    consent,
+                    key: pendingKey,
+                    storagePath: storagePath
+                ) else {
+                    throw ConsentServiceError.conflictingPendingArtifact
+                }
+            }
+            try await enroll(
+                studyID: study.id,
+                consentID: existingConsent.id
             )
+            return
+        }
+
+        let pendingConsent = try await recoverOrSavePendingConsent(
+            consent,
+            for: pendingKey
+        )
+        let artifact = try Self.validatedArtifact(
+            for: pendingConsent,
+            study: study,
+            definition: definition
+        )
+        do {
+            try await remote.uploadPDF(
+                storagePath: storagePath,
+                data: artifact.pdfData
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch where Task.isCancelled {
+            throw CancellationError()
+        } catch {
+            if let recordedConsentID = try await recoverFromUploadFailure(
+                error,
+                consent: pendingConsent,
+                key: pendingKey,
+                storagePath: storagePath
+            ) {
+                try await clearPendingConsent(for: pendingKey)
+                try await enroll(
+                    studyID: study.id,
+                    consentID: recordedConsentID
+                )
+                return
+            }
+        }
 
         let payload = try Self.makeConsentInsertPayload(
             consentID: consentID,
             userID: userID,
             study: study,
-            consent: consent,
+            consent: pendingConsent,
             storagePath: storagePath,
             appVersion: Self.appVersion(bundle: bundle),
             deviceInfo: deviceMetadataProvider.currentDeviceInfo(),
             fallbackSignedAt: now()
         )
 
-        try await client
-            .from("consents")
-            .insert(payload)
-            .execute()
-
-        try await client
-            .rpc(
-                "enroll_in_study_after_consent",
-                params: EnrollAfterConsentParams(
-                    studyID: study.id,
-                    consentID: consentID
-                )
-            )
-            .execute()
-    }
-
-    private func currentUserID() async throws -> UUID {
         do {
-            return try await client.auth.session.user.id
-        } catch AuthError.sessionMissing {
-            throw ConsentServiceError.noActiveSession
+            try await remote.insertConsent(payload)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch where Task.isCancelled {
+            throw CancellationError()
+        } catch let insertError {
+            // The insert may have committed even if its response was lost. A
+            // retry should continue with that immutable consent instead of
+            // creating another artifact or leaving the participant stranded.
+            do {
+                if let recordedConsentID = try await recordedConsentID(
+                    matching: pendingConsent,
+                    key: pendingKey,
+                    storagePath: storagePath
+                ) {
+                    try await clearPendingConsent(for: pendingKey)
+                    try await enroll(
+                        studyID: study.id,
+                        consentID: recordedConsentID
+                    )
+                    return
+                }
+            } catch let recoveryError as ConsentServiceError {
+                throw recoveryError
+            } catch {
+                throw insertError
+            }
+            throw insertError
+        }
+
+        guard let confirmedConsentID = try await recordedConsentID(
+            matching: pendingConsent,
+            key: pendingKey,
+            storagePath: storagePath
+        ) else {
+            throw ConsentServiceError.consentRecordConfirmationFailed
+        }
+        try await clearPendingConsent(for: pendingKey)
+        try await enroll(studyID: study.id, consentID: confirmedConsentID)
+    }
+
+    private func recoverOrSavePendingConsent(
+        _ proposedConsent: StudyConsentCompletion,
+        for key: PendingConsentKey
+    ) async throws -> StudyConsentCompletion {
+        do {
+            return try await pendingConsentStore.recoverOrSave(
+                proposedConsent,
+                for: key
+            )
+        } catch PendingConsentStoreError.conflictingRecord {
+            throw ConsentServiceError.conflictingPendingArtifact
+        } catch {
+            throw ConsentServiceError.pendingArtifactPersistenceFailed
         }
     }
-}
 
-extension SupabaseConsentService {
-    static func storagePath(
-        userID: UUID,
-        studyID: UUID,
-        consentVersion: String,
-        consentID: UUID
-    ) -> String {
-        [
-            userID.uuidString.lowercased(),
-            studyID.uuidString.lowercased(),
-            consentVersion,
-            "\(consentID.uuidString.lowercased()).pdf"
-        ].joined(separator: "/")
-    }
-
-    static func makeConsentInsertPayload(
-        consentID: UUID,
-        userID: UUID,
-        study: Study,
-        consent: StudyConsentCompletion,
-        storagePath: String,
-        appVersion: String?,
-        deviceInfo: [String: JSONValue],
-        fallbackSignedAt: Date
-    ) throws -> ConsentInsertPayload {
-        guard consent.isValidSignedConsent else {
-            throw ConsentServiceError.invalidConsentCompletion
-        }
-        guard let artifact = consent.artifact else {
-            throw ConsentServiceError.missingSignedArtifact
+    private func recoveryResolution(
+        for study: Study
+    ) async throws -> ConsentRecoveryResolution? {
+        guard let definition = StudyConsentCatalog.definition(for: study.slug) else {
+            throw ConsentServiceError.missingCatalogDefinition(studySlug: study.slug)
         }
 
-        return ConsentInsertPayload(
-            id: consentID,
+        let userID = try await remote.currentUserID()
+        let key = PendingConsentKey(
             userID: userID,
             studyID: study.id,
-            consentVersion: consent.consentVersion,
-            signedAt: iso8601Formatter.string(from: consent.signedAt ?? fallbackSignedAt),
-            signerGivenName: consent.signerGivenName?.trimmingCharacters(in: .whitespacesAndNewlines),
-            signerFamilyName: consent.signerFamilyName?.trimmingCharacters(in: .whitespacesAndNewlines),
-            consentPDFBucket: StudyConsentCatalog.consentStorageBucket,
-            consentPDFPath: storagePath,
-            consentPDFSHA256: artifact.pdfSHA256Hex,
-            consentContentSHA256: consent.consentContentSHA256Hex,
-            signatureImageSHA256: consent.signatureImageSHA256Hex,
-            collectionMethod: consent.collectionMethod,
-            attestationText: consent.attestationText,
-            attestationVersion: consent.attestationVersion,
-            researchKitTaskIdentifier: consent.researchKitFinishState == nil ? nil : consent.taskIdentifier,
-            researchKitFinishState: consent.researchKitFinishState,
-            appVersion: appVersion,
-            deviceInfo: deviceInfo.isEmpty ? nil : deviceInfo
+            consentVersion: definition.consentVersion
         )
-    }
+        let storagePath = Self.storagePath(
+            userID: userID,
+            studyID: study.id,
+            consentVersion: definition.consentVersion,
+            consentID: key.attemptID
+        )
+        let pendingConsent = try await loadPendingConsent(for: key)
+        if let pendingConsent {
+            _ = try Self.validatedArtifact(
+                for: pendingConsent,
+                study: study,
+                definition: definition
+            )
+        }
+        let existingConsent = try await existingConsent(
+            userID: userID,
+            studyID: study.id,
+            consentVersion: definition.consentVersion
+        )
 
-    static func appVersion(bundle: Bundle) -> String? {
-        let version = (bundle.infoDictionary?["CFBundleShortVersionString"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let build = (bundle.infoDictionary?["CFBundleVersion"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        switch (version?.isEmpty == false ? version : nil, build?.isEmpty == false ? build : nil) {
-        case let (version?, build?):
-            return "\(version) (\(build))"
-        case let (version?, nil):
-            return version
-        case let (nil, build?):
-            return build
+        switch (pendingConsent, existingConsent) {
+        case let (pendingConsent?, existingConsent?):
+            guard existingConsent.matches(
+                pendingConsent,
+                key: key,
+                storagePath: storagePath
+            ) else {
+                throw ConsentServiceError.conflictingPendingArtifact
+            }
+            return .pendingEnrollment(
+                existingConsent: existingConsent,
+                key: key,
+                clearLocalEvidence: true
+            )
+        case let (pendingConsent?, nil):
+            return .pendingUpload(consent: pendingConsent)
+        case let (nil, existingConsent?):
+            guard existingConsent.matchesCatalog(
+                key: key,
+                storagePath: storagePath,
+                definition: definition
+            ) else {
+                throw ConsentServiceError.conflictingPendingArtifact
+            }
+            return .pendingEnrollment(
+                existingConsent: existingConsent,
+                key: key,
+                clearLocalEvidence: false
+            )
         case (nil, nil):
             return nil
         }
     }
 
-    static let iso8601Formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-}
+    private func loadPendingConsent(
+        for key: PendingConsentKey
+    ) async throws -> StudyConsentCompletion? {
+        do {
+            return try await pendingConsentStore.load(for: key)
+        } catch {
+            throw ConsentServiceError.pendingArtifactPersistenceFailed
+        }
+    }
 
-struct ConsentInsertPayload: Encodable, Equatable {
-    let id: UUID
-    let userID: UUID
-    let studyID: UUID
-    let consentVersion: String
-    let signedAt: String
-    let signerGivenName: String?
-    let signerFamilyName: String?
-    let consentPDFBucket: String
-    let consentPDFPath: String
-    let consentPDFSHA256: String
-    let consentContentSHA256: String
-    let signatureImageSHA256: String?
-    let collectionMethod: String
-    let attestationText: String
-    let attestationVersion: String
-    let researchKitTaskIdentifier: String?
-    let researchKitFinishState: String?
-    let appVersion: String?
-    let deviceInfo: [String: JSONValue]?
+    private func clearPendingConsent(for key: PendingConsentKey) async throws {
+        do {
+            try await pendingConsentStore.clear(for: key)
+        } catch {
+            throw ConsentServiceError.pendingArtifactPersistenceFailed
+        }
+    }
 
-    enum CodingKeys: String, CodingKey {
-        case id
-        case userID = "user_id"
-        case studyID = "study_id"
-        case consentVersion = "consent_version"
-        case signedAt = "signed_at"
-        case signerGivenName = "signer_given_name"
-        case signerFamilyName = "signer_family_name"
-        case consentPDFBucket = "consent_pdf_bucket"
-        case consentPDFPath = "consent_pdf_path"
-        case consentPDFSHA256 = "consent_pdf_sha256"
-        case consentContentSHA256 = "consent_content_sha256"
-        case signatureImageSHA256 = "signature_image_sha256"
-        case collectionMethod = "collection_method"
-        case attestationText = "attestation_text"
-        case attestationVersion = "attestation_version"
-        case researchKitTaskIdentifier = "researchkit_task_identifier"
-        case researchKitFinishState = "researchkit_finish_state"
-        case appVersion = "app_version"
-        case deviceInfo = "device_info"
+    private func existingConsent(
+        userID: UUID,
+        studyID: UUID,
+        consentVersion: String
+    ) async throws -> ExistingConsentRow? {
+        try await remote.existingConsent(
+            userID: userID,
+            studyID: studyID,
+            consentVersion: consentVersion
+        )
+    }
+
+    private func recordedConsentID(
+        matching consent: StudyConsentCompletion,
+        key: PendingConsentKey,
+        storagePath: String
+    ) async throws -> UUID? {
+        guard let recordedConsent = try await existingConsent(
+            userID: key.userID,
+            studyID: key.studyID,
+            consentVersion: key.consentVersion
+        ) else {
+            return nil
+        }
+        guard recordedConsent.matches(
+            consent,
+            key: key,
+            storagePath: storagePath
+        ) else {
+            throw ConsentServiceError.conflictingPendingArtifact
+        }
+        return recordedConsent.id
+    }
+
+    /// Recovers a committed-but-lost upload without overwriting or deleting
+    /// consent evidence. A nil result means the stable path already contains
+    /// this exact PDF and the caller can continue with the consent insert.
+    private func recoverFromUploadFailure(
+        _ uploadError: Error,
+        consent: StudyConsentCompletion,
+        key: PendingConsentKey,
+        storagePath: String
+    ) async throws -> UUID? {
+        if let recordedConsentID = try await recordedConsentID(
+            matching: consent,
+            key: key,
+            storagePath: storagePath
+        ) {
+            return recordedConsentID
+        }
+
+        let storedPDF: Data
+        do {
+            storedPDF = try await remote.downloadPDF(storagePath: storagePath)
+        } catch {
+            throw uploadError
+        }
+
+        guard let artifact = consent.artifact,
+              Self.sha256Hex(for: storedPDF) == artifact.pdfSHA256Hex else {
+            // The insert may have won concurrently between the first query and
+            // the Storage download. Re-query before reporting a true conflict.
+            if let recordedConsentID = try await recordedConsentID(
+                matching: consent,
+                key: key,
+                storagePath: storagePath
+            ) {
+                return recordedConsentID
+            }
+            throw ConsentServiceError.conflictingPendingArtifact
+        }
+        return nil
+    }
+
+    private func enroll(studyID: UUID, consentID: UUID) async throws {
+        try await remote.enroll(studyID: studyID, consentID: consentID)
     }
 }
 
-nonisolated private struct EnrollAfterConsentParams: Encodable, Sendable {
-    let studyID: UUID
-    let consentID: UUID
+nonisolated private enum ConsentRecoveryResolution: Sendable {
+    case pendingUpload(consent: StudyConsentCompletion)
+    case pendingEnrollment(
+        existingConsent: ExistingConsentRow,
+        key: PendingConsentKey,
+        clearLocalEvidence: Bool
+    )
 
-    enum CodingKeys: String, CodingKey {
-        case studyID = "p_study_id"
-        case consentID = "p_consent_id"
+    var availability: ConsentEnrollmentRecovery {
+        switch self {
+        case .pendingUpload:
+            return .pendingUpload
+        case .pendingEnrollment:
+            return .pendingEnrollment
+        }
     }
 }

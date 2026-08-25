@@ -3,7 +3,11 @@ import UIKit
 
 struct StudyConsentLandingView: View {
     let definition: StudyConsentDefinition
+    let enrollmentRecoveryStatus: StudyConsentFlowViewModel.EnrollmentRecoveryStatus
+    let isResumingEnrollment: Bool
     let reviewConsent: () -> Void
+    let resumeEnrollment: () -> Void
+    let retryEnrollmentRecoveryProbe: () -> Void
 
     var body: some View {
         ScrollView {
@@ -52,12 +56,8 @@ struct StudyConsentLandingView: View {
                     bodyText: definition.landing.beforeEnrollBody
                 )
 
-                Button(action: reviewConsent) {
-                    StudyConsentPrimaryNavigationLabel(title: definition.landing.primaryActionTitle)
-                }
-                .buttonStyle(AppCapsuleButtonStyle())
-                .accessibilityIdentifier("study_consent_review_button")
-                .padding(.top, 2)
+                enrollmentAction
+                    .padding(.top, 2)
 
                 Text(definition.landing.footerNote)
                     .font(.footnote)
@@ -69,6 +69,126 @@ struct StudyConsentLandingView: View {
         }
         .background(LoudnessMatchModalColors.background)
         .accessibilityIdentifier("study_consent_landing")
+    }
+
+    @ViewBuilder
+    private var enrollmentAction: some View {
+        switch enrollmentRecoveryStatus {
+        case .notChecked, .checking:
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("Checking for an enrollment already in progress…")
+                    .font(.subheadline)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
+            }
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("study_consent_recovery_checking")
+
+        case .unavailable:
+            Button(action: reviewConsent) {
+                StudyConsentPrimaryNavigationLabel(title: definition.landing.primaryActionTitle)
+            }
+            .buttonStyle(AppCapsuleButtonStyle())
+            .accessibilityIdentifier("study_consent_review_button")
+
+        case .available(let recovery):
+            StudyConsentRecoveryCard(
+                recovery: recovery,
+                isResuming: isResumingEnrollment,
+                resumeEnrollment: resumeEnrollment
+            )
+
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Enrollment status unavailable", systemImage: "exclamationmark.triangle")
+                    .font(.headline)
+
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(StudyConsentReadableColors.bodyText)
+
+                Button(action: retryEnrollmentRecoveryProbe) {
+                    StudyConsentPrimaryNavigationLabel(title: "Try Status Check Again")
+                }
+                .buttonStyle(AppCapsuleButtonStyle())
+                .accessibilityIdentifier("study_consent_recovery_probe_retry_button")
+            }
+            .padding(16)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("study_consent_recovery_probe_error")
+        }
+    }
+}
+
+private struct StudyConsentRecoveryCard: View {
+    let recovery: ConsentEnrollmentRecovery
+    let isResuming: Bool
+    let resumeEnrollment: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: "arrow.clockwise.circle.fill")
+                .font(.headline)
+                .foregroundStyle(LoudnessMatchModalColors.primary)
+
+            Text(message)
+                .font(.subheadline)
+                .lineSpacing(2)
+                .foregroundStyle(StudyConsentReadableColors.bodyText)
+
+            Button(action: resumeEnrollment) {
+                HStack(spacing: 10) {
+                    if isResuming {
+                        ProgressView()
+                            .tint(LoudnessMatchModalColors.primaryText)
+                    }
+                    Text(isResuming ? "Resuming Enrollment…" : "Resume Enrollment")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 58)
+                .padding(.horizontal, 18)
+                .background(LoudnessMatchModalColors.primary)
+                .foregroundStyle(LoudnessMatchModalColors.primaryText)
+                .clipShape(Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(LoudnessMatchModalColors.buttonStroke, lineWidth: 1)
+                }
+            }
+            .buttonStyle(AppCapsuleButtonStyle())
+            .disabled(isResuming)
+            .accessibilityIdentifier("study_consent_resume_enrollment_button")
+        }
+        .padding(16)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
+        }
+        .accessibilityIdentifier("study_consent_recovery_card")
+    }
+
+    private var title: String {
+        switch recovery {
+        case .pendingUpload:
+            return "Your signed consent is ready to resume"
+        case .pendingEnrollment:
+            return "Your enrollment is ready to finish"
+        }
+    }
+
+    private var message: String {
+        switch recovery {
+        case .pendingUpload:
+            return "Your signed consent is saved securely on this device. Resume enrollment to upload it without signing again."
+        case .pendingEnrollment:
+            return "Your signed consent is already recorded. Resume enrollment to finish joining the study without signing again."
+        }
     }
 }
 

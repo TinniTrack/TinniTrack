@@ -10,6 +10,7 @@ struct StudyConsentFlowViewModelTests {
         let generator = MockConsentArtifactGenerator()
         let viewModel = Self.viewModel(service: service, generator: generator)
 
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.declineOrCancel()
 
@@ -19,9 +20,10 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func consentReaderRequiresScrollBeforeSignatureStep() {
+    func consentReaderRequiresScrollBeforeSignatureStep() async {
         let viewModel = Self.viewModel()
 
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.continueToSignature()
         #expect(viewModel.state == .reviewingConsent)
@@ -32,9 +34,10 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func reviewingConsentResetsPreviousScrollProgress() {
+    func reviewingConsentResetsPreviousScrollProgress() async {
         let viewModel = Self.viewModel()
 
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         #expect(viewModel.canContinueToSignature)
@@ -45,9 +48,10 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func exitConsentFlowReturnsToLandingWithoutDismissingStudyDetails() {
+    func exitConsentFlowReturnsToLandingWithoutDismissingStudyDetails() async {
         let viewModel = Self.viewModel()
 
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         viewModel.continueToSignature()
@@ -59,13 +63,14 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func chromeBackDismissesLandingAndNavigatesWithinConsentFlow() {
+    func chromeBackDismissesLandingAndNavigatesWithinConsentFlow() async {
         let viewModel = Self.viewModel()
 
         viewModel.navigateBackOrDismiss()
         #expect(viewModel.state == .dismissed)
 
         let secondViewModel = Self.viewModel()
+        await secondViewModel.probeEnrollmentRecovery()
         secondViewModel.reviewConsent()
         secondViewModel.navigateBackOrDismiss()
         #expect(secondViewModel.state == .landing)
@@ -79,8 +84,9 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func signatureStepRequiresNamesAndSignature() {
+    func signatureStepRequiresNamesAndSignature() async {
         let viewModel = Self.viewModel()
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         viewModel.continueToSignature()
@@ -96,8 +102,9 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func signatureDestinationRestoresSigningStateAfterReaderRefresh() {
+    func signatureDestinationRestoresSigningStateAfterReaderRefresh() async {
         let viewModel = Self.viewModel()
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         viewModel.continueToSignature()
@@ -119,6 +126,7 @@ struct StudyConsentFlowViewModelTests {
         let generator = MockConsentArtifactGenerator()
         let viewModel = Self.viewModel(service: service, generator: generator)
 
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         viewModel.continueToSignature()
@@ -147,6 +155,7 @@ struct StudyConsentFlowViewModelTests {
         let generator = MockConsentArtifactGenerator()
         let viewModel = Self.viewModel(service: service, generator: generator)
 
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         viewModel.continueToSignature()
@@ -166,6 +175,120 @@ struct StudyConsentFlowViewModelTests {
         #expect(consent?.consentContentSHA256Hex == StudyConsentCatalog.studyNo1.contentSHA256Hex)
         #expect(consent?.collectionMethod == StudyConsentCatalog.nativeCollectionMethod)
         #expect(consent?.researchKitFinishState == nil)
+    }
+
+    @Test
+    func unavailableRecoveryEnablesStartingNewConsent() async {
+        let service = RecoveryUnavailableConsentService()
+        let viewModel = Self.viewModel(service: service)
+
+        #expect(viewModel.canReviewConsent == false)
+        viewModel.reviewConsent()
+        #expect(viewModel.state == .landing)
+
+        await viewModel.probeEnrollmentRecovery()
+
+        #expect(viewModel.canReviewConsent)
+        viewModel.reviewConsent()
+        #expect(viewModel.state == .reviewingConsent)
+    }
+
+    @Test
+    func availableRecoveryBlocksNewConsentAndResumesWithoutGeneratingPdf() async {
+        let service = BlockingEnrollmentRecoveryConsentService()
+        let generator = MockConsentArtifactGenerator()
+        let viewModel = Self.viewModel(service: service, generator: generator)
+
+        await viewModel.probeEnrollmentRecovery()
+
+        #expect(viewModel.hasAvailableEnrollmentRecovery)
+        #expect(viewModel.canReviewConsent == false)
+        viewModel.reviewConsent()
+        #expect(viewModel.state == .landing)
+
+        let resumeTask = Task {
+            await viewModel.resumeEnrollment()
+        }
+        while await service.resumeCallCount() == 0 {
+            await Task.yield()
+        }
+
+        #expect(viewModel.state == .finalizing)
+        #expect(generator.generateCallCount == 0)
+
+        await service.unblockResume()
+        await resumeTask.value
+
+        #expect(viewModel.state == .completed)
+        #expect(generator.generateCallCount == 0)
+        #expect(await service.finalizeCallCount() == 0)
+    }
+
+    @Test
+    func recoveryProbeFailureBlocksReviewUntilRetrySucceeds() async {
+        let service = FailOnceRecoveryProbeConsentService()
+        let viewModel = Self.viewModel(service: service)
+
+        await viewModel.probeEnrollmentRecovery()
+
+        guard case .failed(let message) = viewModel.enrollmentRecoveryStatus else {
+            Issue.record("Expected a failed recovery probe")
+            return
+        }
+        #expect(message.isEmpty == false)
+        #expect(viewModel.canReviewConsent == false)
+        viewModel.reviewConsent()
+        #expect(viewModel.state == .landing)
+
+        await viewModel.retryEnrollmentRecoveryProbe()
+
+        #expect(viewModel.canReviewConsent)
+        #expect(await service.probeCallCount() == 2)
+    }
+
+    @Test
+    func resumeFailureReturnsToLandingWithRecoveryAndAlert() async {
+        let service = ResumeFailingRecoveryConsentService()
+        let generator = MockConsentArtifactGenerator()
+        let viewModel = Self.viewModel(service: service, generator: generator)
+
+        await viewModel.probeEnrollmentRecovery()
+        await viewModel.resumeEnrollment()
+
+        #expect(viewModel.state == .landing)
+        #expect(viewModel.hasAvailableEnrollmentRecovery)
+        #expect(viewModel.errorMessage?.isEmpty == false)
+        #expect(viewModel.shouldRetryEnrollmentRecoveryFromAlert)
+        #expect(generator.generateCallCount == 0)
+    }
+
+    @Test
+    func retryReusesExactSignedArtifactAfterFinalizationFailure() async throws {
+        let service = FailOnceConsentService()
+        let generator = MockConsentArtifactGenerator()
+        let viewModel = Self.viewModel(service: service, generator: generator)
+
+        await viewModel.probeEnrollmentRecovery()
+        viewModel.reviewConsent()
+        viewModel.markConsentScrolledToEnd()
+        viewModel.continueToSignature()
+        viewModel.firstName = "Taylor"
+        viewModel.lastName = "Rivers"
+        viewModel.signatureImageData = Data([9, 8, 7])
+
+        await viewModel.signAndEnroll()
+        #expect(viewModel.state == .failed)
+
+        viewModel.retryAfterFailure()
+        await viewModel.signAndEnroll()
+
+        let attempts = await service.capturedConsents()
+        #expect(viewModel.state == .completed)
+        #expect(generator.generateCallCount == 1)
+        #expect(attempts.count == 2)
+        let firstAttempt = try #require(attempts.first)
+        let retryAttempt = try #require(attempts.last)
+        #expect(firstAttempt == retryAttempt)
     }
 
     private static func viewModel(
@@ -233,6 +356,124 @@ private actor BlockingConsentService: ConsentServiceProtocol {
     func unblock() {
         continuation?.resume()
         continuation = nil
+    }
+}
+
+private actor FailOnceConsentService: ConsentServiceProtocol {
+    private var attempts: [StudyConsentCompletion] = []
+
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws {
+        attempts.append(consent)
+        if attempts.count == 1 {
+            throw Failure.unavailable
+        }
+    }
+
+    func capturedConsents() -> [StudyConsentCompletion] {
+        attempts
+    }
+
+    private enum Failure: Error {
+        case unavailable
+    }
+}
+
+private actor RecoveryUnavailableConsentService: ConsentServiceProtocol {
+    func availableEnrollmentRecovery(for study: Study) async throws -> ConsentEnrollmentRecovery? {
+        nil
+    }
+
+    func resumeEnrollment(for study: Study) async throws {}
+
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws {}
+}
+
+private actor BlockingEnrollmentRecoveryConsentService: ConsentServiceProtocol {
+    private var resumeCount = 0
+    private var finalizeCount = 0
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
+
+    func availableEnrollmentRecovery(for study: Study) async throws -> ConsentEnrollmentRecovery? {
+        .pendingUpload
+    }
+
+    func resumeEnrollment(for study: Study) async throws {
+        resumeCount += 1
+        await withCheckedContinuation { continuation in
+            resumeContinuation = continuation
+        }
+    }
+
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws {
+        finalizeCount += 1
+    }
+
+    func resumeCallCount() -> Int {
+        resumeCount
+    }
+
+    func finalizeCallCount() -> Int {
+        finalizeCount
+    }
+
+    func unblockResume() {
+        resumeContinuation?.resume()
+        resumeContinuation = nil
+    }
+}
+
+private actor FailOnceRecoveryProbeConsentService: ConsentServiceProtocol {
+    private var probeCount = 0
+
+    func availableEnrollmentRecovery(for study: Study) async throws -> ConsentEnrollmentRecovery? {
+        probeCount += 1
+        if probeCount == 1 {
+            throw Failure.unavailable
+        }
+        return nil
+    }
+
+    func resumeEnrollment(for study: Study) async throws {}
+
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws {}
+
+    func probeCallCount() -> Int {
+        probeCount
+    }
+
+    private enum Failure: Error {
+        case unavailable
+    }
+}
+
+private actor ResumeFailingRecoveryConsentService: ConsentServiceProtocol {
+    func availableEnrollmentRecovery(for study: Study) async throws -> ConsentEnrollmentRecovery? {
+        .pendingEnrollment
+    }
+
+    func resumeEnrollment(for study: Study) async throws {
+        throw Failure.unavailable
+    }
+
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws {}
+
+    private enum Failure: Error {
+        case unavailable
     }
 }
 
