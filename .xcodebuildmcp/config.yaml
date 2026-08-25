@@ -8,7 +8,7 @@ enabledWorkflows:
 sessionDefaults:
   projectPath: "./TinniTrack.xcodeproj"
   scheme: "TinniTrack Development"
-  configuration: "Debug"
+  configuration: "Debug Development"
   simulatorName: "iPhone 17"
   platform: "iOS"
   useLatestOS: true
