@@ -76,11 +76,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         player: CalibratedTonePlaying? = nil,
         guardrailProvider: (() -> CalibratedAudioGuardrailValidation)? = nil,
         headphoneRouteProvider: AudioSessionRouteVolumeProviding? = nil,
-        headphoneRouteAssessor: HeadphoneRouteAssessor = HeadphoneRouteAssessor(),
+        headphoneRouteAssessor: HeadphoneRouteAssessor? = nil,
         environmentMeter: EnvironmentSPLMeasuring? = nil,
         environmentGateMonitor: EnvironmentSPLGateMonitoring? = nil,
         audiogramRepository: AudiogramRepositoryProtocol? = nil,
-        audiogramThresholdResolver: AudiogramThresholdResolver = AudiogramThresholdResolver(),
+        audiogramThresholdResolver: AudiogramThresholdResolver? = nil,
         allowsCalibratedPlayback: Bool = true,
         runtimeContextProvider: StudyNo1RuntimeContextProviding? = nil,
         submissionExporter: StudyNo1LoudnessMatchSubmissionExporter? = nil,
@@ -118,6 +118,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         self.guardrailProvider = resolvedGuardrailProvider
         self.headphoneRouteProvider = resolvedHeadphoneRouteProvider
         self.headphoneRouteAssessor = headphoneRouteAssessor
+            ?? HeadphoneRouteAssessor()
         let resolvedEnvironmentMeter = environmentMeter ?? AVAudioEnvironmentSPLMeter()
         self.environmentMeter = resolvedEnvironmentMeter
         self.environmentGateMonitor = environmentGateMonitor
@@ -125,6 +126,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             ?? OneShotEnvironmentSPLGateMonitor(meter: resolvedEnvironmentMeter)
         self.audiogramRepository = audiogramRepository ?? SupabaseAudiogramRepository()
         self.audiogramThresholdResolver = audiogramThresholdResolver
+            ?? AudiogramThresholdResolver()
         self.allowsCalibratedPlayback = allowsCalibratedPlayback
         self.runtimeContextProvider = runtimeContextProvider ?? SystemStudyNo1RuntimeContextProvider()
         self.submissionExporter = submissionExporter ?? StudyNo1LoudnessMatchSubmissionExporter()
