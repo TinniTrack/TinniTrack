@@ -45,7 +45,7 @@ struct StudyNo1OrientationThresholdEnvironmentResult: Equatable {
     let requiredContiguousSamples: Int
 }
 
-struct StudyNo1OrientationThresholdEarResult: Equatable {
+nonisolated struct StudyNo1OrientationThresholdEarResult: Equatable {
     let channel: CalibratedTonePlaybackChannel
     let thresholdDBHL: Double?
     let outputVolume: Double
@@ -55,14 +55,14 @@ struct StudyNo1OrientationThresholdEarResult: Equatable {
     let samples: [StudyNo1OrientationThresholdFrequencySample]
 }
 
-struct StudyNo1OrientationThresholdFrequencySample: Equatable {
+nonisolated struct StudyNo1OrientationThresholdFrequencySample: Equatable {
     let frequencyHz: Double
     let calculatedThresholdDBHL: Double?
     let channel: CalibratedTonePlaybackChannel
     let units: [StudyNo1OrientationThresholdUnit]
 }
 
-struct StudyNo1OrientationThresholdUnit: Equatable {
+nonisolated struct StudyNo1OrientationThresholdUnit: Equatable {
     let levelDBHL: Double
     let startOfUnitTimeStamp: TimeInterval
     let preStimulusDelay: TimeInterval
