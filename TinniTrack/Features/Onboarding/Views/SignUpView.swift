@@ -352,9 +352,7 @@ struct SignUpView: View {
         .onAppear {
             restoreDraft()
         }
-        .onChange(of: currentStep) { _ in persistDraft() }
         .onChange(of: email) { _ in persistDraft() }
-        .onChange(of: password) { _ in persistDraft() }
         .onChange(of: firstName) { _ in persistDraft() }
         .onChange(of: lastName) { _ in persistDraft() }
         .onChange(of: birthMonth) { _ in
@@ -390,16 +388,14 @@ struct SignUpView: View {
         let defaultDOB = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
         let draft = draftStore.load(defaultDateOfBirth: defaultDOB)
 
-        currentStep = min(max(draft.currentStep, 1), 2)
+        currentStep = 1
         email = draft.email
-        password = draft.password
         firstName = draft.firstName
         lastName = draft.lastName
         dateOfBirth = draft.dateOfBirth
 
         let hasSavedDraftContent =
             !draft.email.isEmpty ||
-            !draft.password.isEmpty ||
             !draft.firstName.isEmpty ||
             !draft.lastName.isEmpty
 
@@ -414,9 +410,7 @@ struct SignUpView: View {
 
     private func persistDraft() {
         let draft = SignupDraft(
-            currentStep: currentStep,
             email: email,
-            password: password,
             firstName: firstName,
             lastName: lastName,
             dateOfBirth: dateOfBirth,

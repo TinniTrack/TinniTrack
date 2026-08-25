@@ -6,9 +6,7 @@
 import Foundation
 
 struct SignupDraft: Codable, Equatable {
-    var currentStep: Int
     var email: String
-    var password: String
     var firstName: String
     var lastName: String
     var dateOfBirth: Date
@@ -16,9 +14,7 @@ struct SignupDraft: Codable, Equatable {
 
     static func empty(defaultDateOfBirth: Date) -> SignupDraft {
         SignupDraft(
-            currentStep: 1,
             email: "",
-            password: "",
             firstName: "",
             lastName: "",
             dateOfBirth: defaultDateOfBirth,
