@@ -448,8 +448,6 @@ private actor MockTaskStudyService: StudyServiceProtocol {
         scheduledTasksByEnrollment[enrollmentID] ?? []
     }
 
-    func enroll(studyID: UUID) async throws {}
-
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
         beginOnboardingTaskCalls.append(enrollmentID)
         if let onboardingThresholdTask {

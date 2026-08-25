@@ -51,46 +51,6 @@ final class SupabaseStudyService: StudyServiceProtocol {
         return rows.map { $0.toDomain() }
     }
 
-    func enroll(studyID: UUID) async throws {
-        guard let userID = try await currentUserID() else {
-            throw NSError(
-                domain: "StudyService",
-                code: 401,
-                userInfo: [NSLocalizedDescriptionKey: "No active session."]
-            )
-        }
-
-        let existing: [EnrollmentLookupRow] = try await client
-            .from("study_enrollments")
-            .select("id")
-            .eq("user_id", value: userID.uuidString)
-            .eq("study_id", value: studyID.uuidString)
-            .limit(1)
-            .execute()
-            .value
-
-        if let enrollmentID = existing.first?.id {
-            try await client
-                .from("study_enrollments")
-                .update(EnrollmentStatusPayload(
-                    status: "enrolled",
-                    enrolledAt: Self.iso8601Formatter.string(from: Date())
-                ))
-                .eq("id", value: enrollmentID.uuidString)
-                .execute()
-        } else {
-            try await client
-                .from("study_enrollments")
-                .insert(NewEnrollmentPayload(
-                    userID: userID,
-                    studyID: studyID,
-                    status: "enrolled",
-                    enrolledAt: Self.iso8601Formatter.string(from: Date())
-                ))
-                .execute()
-        }
-    }
-
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
         let params: [String: String] = [
             "p_enrollment_id": enrollmentID.uuidString
@@ -328,33 +288,5 @@ private struct ScheduledTaskRow: Decodable {
         let fallback = ISO8601DateFormatter()
         fallback.formatOptions = [.withInternetDateTime]
         return fallback.date(from: value)
-    }
-}
-
-private struct EnrollmentLookupRow: Decodable {
-    let id: UUID
-}
-
-private struct EnrollmentStatusPayload: Encodable {
-    let status: String
-    let enrolledAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case enrolledAt = "enrolled_at"
-    }
-}
-
-private struct NewEnrollmentPayload: Encodable {
-    let userID: UUID
-    let studyID: UUID
-    let status: String
-    let enrolledAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case userID = "user_id"
-        case studyID = "study_id"
-        case status
-        case enrolledAt = "enrolled_at"
     }
 }

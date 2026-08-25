@@ -427,10 +427,6 @@ private actor UITestEnrollmentServices: StudyServiceProtocol, ConsentServiceProt
         isEnrolled = true
     }
 
-    func enroll(studyID: UUID) async throws {
-        isEnrolled = true
-    }
-
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
         []
     }
