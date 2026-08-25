@@ -48,7 +48,7 @@ final class SupabaseStudyService: StudyServiceProtocol {
             .execute()
             .value
 
-        return rows.map { $0.toDomain() }
+        return try rows.map { try $0.toDomain() }
     }
 
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
@@ -72,7 +72,7 @@ final class SupabaseStudyService: StudyServiceProtocol {
             )
         }
 
-        return row.toDomain()
+        return try row.toDomain()
     }
 
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {
@@ -237,7 +237,7 @@ private struct StudyEnrollmentRow: Decodable {
     }
 }
 
-private struct ScheduledTaskRow: Decodable {
+struct ScheduledTaskRow: Decodable {
     let id: UUID
     let enrollmentID: UUID
     let taskKey: String
@@ -264,20 +264,52 @@ private struct ScheduledTaskRow: Decodable {
         case completedAt = "completed_at"
     }
 
-    func toDomain() -> ScheduledTask {
+    func toDomain() throws -> ScheduledTask {
         ScheduledTask(
             id: id,
             enrollmentID: enrollmentID,
             taskKey: taskKey,
             taskVersion: taskVersion,
-            scheduledFor: Self.parseTimestamp(scheduledFor) ?? Date.distantPast,
-            windowStart: Self.parseTimestamp(windowStart) ?? Date.distantPast,
-            windowEnd: Self.parseTimestamp(windowEnd) ?? Date.distantFuture,
+            scheduledFor: try Self.parseRequiredTimestamp(
+                scheduledFor,
+                field: "scheduled_for"
+            ),
+            windowStart: try Self.parseRequiredTimestamp(
+                windowStart,
+                field: "window_start"
+            ),
+            windowEnd: try Self.parseRequiredTimestamp(
+                windowEnd,
+                field: "window_end"
+            ),
             status: ScheduledTaskStatus(rawValue: status),
             dayIndex: dayIndex,
             slotIndex: slotIndex,
-            completedAt: Self.parseTimestamp(completedAt)
+            completedAt: try Self.parseOptionalTimestamp(
+                completedAt,
+                field: "completed_at"
+            )
         )
+    }
+
+    private static func parseRequiredTimestamp(
+        _ value: String,
+        field: String
+    ) throws -> Date {
+        guard let date = parseTimestamp(value) else {
+            throw SupabaseStudyDataError.invalidTimestamp(field: field, value: value)
+        }
+        return date
+    }
+
+    private static func parseOptionalTimestamp(
+        _ value: String?,
+        field: String
+    ) throws -> Date? {
+        guard let value else {
+            return nil
+        }
+        return try parseRequiredTimestamp(value, field: field)
     }
 
     private static func parseTimestamp(_ value: String?) -> Date? {
@@ -288,5 +320,16 @@ private struct ScheduledTaskRow: Decodable {
         let fallback = ISO8601DateFormatter()
         fallback.formatOptions = [.withInternetDateTime]
         return fallback.date(from: value)
+    }
+}
+
+enum SupabaseStudyDataError: LocalizedError, Equatable {
+    case invalidTimestamp(field: String, value: String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .invalidTimestamp(field, value):
+            return "The scheduled task contains an invalid \(field) timestamp: \(value)"
+        }
     }
 }
