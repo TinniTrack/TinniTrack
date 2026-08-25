@@ -66,6 +66,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         category: "LoudnessAirPodsGate"
     )
     private var environmentGateTask: Task<Void, Never>?
+    private var environmentGateTaskGeneration = EnvironmentGateTaskGeneration()
     private var headphoneRouteObservation: AudioSessionObservation?
     private var airPodsContinuityObservation: AudioSessionObservation?
     private var shouldResumeEnvironmentGateAfterPlayback = false
@@ -437,10 +438,13 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         message = nil
 
         let stream = environmentGateMonitor.monitorGate(configuration: .studyNo1)
+        let taskGeneration = environmentGateTaskGeneration.begin()
         environmentGateTask = Task { [weak self] in
             do {
                 for try await update in stream {
-                    guard let self else {
+                    guard let self,
+                          self.environmentGateTaskGeneration.isCurrent(taskGeneration)
+                    else {
                         return
                     }
 
@@ -450,20 +454,21 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 guard let self else {
                     return
                 }
-                self.isRunningEnvironmentGate = false
-                self.environmentGateTask = nil
+                self.finishContinuousEnvironmentGateTask(generation: taskGeneration)
             } catch {
                 guard let self else {
                     return
                 }
-                self.isRunningEnvironmentGate = false
-                self.environmentGateTask = nil
-                self.message = .environmentGateUnavailable(error.localizedDescription)
+                self.finishContinuousEnvironmentGateTask(
+                    generation: taskGeneration,
+                    error: error
+                )
             }
         }
     }
 
     func prepareEnvironmentGateForQuietRoomStep() {
+        environmentGateTaskGeneration.invalidate()
         environmentGateTask?.cancel()
         environmentGateTask = nil
         isRunningEnvironmentGate = false
@@ -492,11 +497,27 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func cancelEnvironmentGate() {
+        environmentGateTaskGeneration.invalidate()
         environmentGateTask?.cancel()
         environmentGateTask = nil
         isRunningEnvironmentGate = false
         if environmentGateResult?.passed != true {
             environmentGateResult = nil
+        }
+    }
+
+    private func finishContinuousEnvironmentGateTask(
+        generation: EnvironmentGateTaskGeneration.Token,
+        error: Error? = nil
+    ) {
+        guard environmentGateTaskGeneration.isCurrent(generation) else {
+            return
+        }
+
+        environmentGateTask = nil
+        isRunningEnvironmentGate = false
+        if let error {
+            message = .environmentGateUnavailable(error.localizedDescription)
         }
     }
 
@@ -594,9 +615,15 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             return false
         }
 
+        let cancellationGeneration = environmentGateTaskGeneration.invalidate()
+        environmentGateTask = nil
         task.cancel()
         await task.value
-        environmentGateTask = nil
+
+        guard environmentGateTaskGeneration.isCurrent(cancellationGeneration) else {
+            return false
+        }
+
         isRunningEnvironmentGate = false
         return true
     }
@@ -968,6 +995,31 @@ private extension StudyNo1OrientationThresholdUnit {
             userTapTimeStamp: userTapTimeStamp,
             timeoutTimeStamp: timeoutTimeStamp
         )
+    }
+}
+
+struct EnvironmentGateTaskGeneration {
+    typealias Token = UInt64
+
+    private var currentToken: Token = 0
+
+    @discardableResult
+    mutating func begin() -> Token {
+        advance()
+    }
+
+    @discardableResult
+    mutating func invalidate() -> Token {
+        advance()
+    }
+
+    func isCurrent(_ token: Token) -> Bool {
+        token == currentToken
+    }
+
+    private mutating func advance() -> Token {
+        currentToken &+= 1
+        return currentToken
     }
 }
 

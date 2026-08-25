@@ -381,6 +381,54 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func immediateEnvironmentGateRestartKeepsNewMonitorRunningAfterOldTaskTerminates() async throws {
+        let environmentGateMonitor = RestartTrackingEnvironmentSPLGateMonitor()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: environmentGateMonitor
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        await Task.yield()
+
+        viewModel.cancelEnvironmentGate()
+        viewModel.startContinuousEnvironmentGate()
+
+        #expect(viewModel.isRunningEnvironmentGate)
+        #expect(environmentGateMonitor.monitorCallCount == 2)
+        #expect(try await waitUntil {
+            environmentGateMonitor.hasTerminated(streamID: 0)
+        })
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        #expect(viewModel.isRunningEnvironmentGate)
+        #expect(environmentGateMonitor.monitorCallCount == 2)
+
+        environmentGateMonitor.yieldToLatest(samplesDBA: [40, 41, 42, 43, 44])
+        #expect(try await waitUntil {
+            viewModel.environmentGateResult?.passed == true
+        })
+        #expect(viewModel.isRunningEnvironmentGate)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func environmentGateTaskGenerationRejectsCompletionFromMonitorBeforeImmediateRestart() {
+        var generation = EnvironmentGateTaskGeneration()
+        let cancelledMonitor = generation.begin()
+
+        generation.invalidate()
+        let restartedMonitor = generation.begin()
+
+        #expect(generation.isCurrent(cancelledMonitor) == false)
+        #expect(generation.isCurrent(restartedMonitor))
+    }
+
+    @Test
     func playbackSuspendsEnvironmentGateAndResumesMonitoringAfterStop() async throws {
         let player = MockCalibratedTonePlayer()
         let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
@@ -1131,6 +1179,71 @@ private final class ControllableEnvironmentSPLGateMonitor: EnvironmentSPLGateMon
 
     func finish() {
         continuation?.finish()
+    }
+}
+
+private final class RestartTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring, @unchecked Sendable {
+    private typealias Continuation = AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error>.Continuation
+
+    private let lock = NSLock()
+    private var nextStreamID = 0
+    private var continuations: [Int: Continuation] = [:]
+    private var configurations: [Int: TinnitusEnvironmentSPLGateConfiguration] = [:]
+    private var terminatedStreamIDs: Set<Int> = []
+
+    var monitorCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return nextStreamID
+    }
+
+    func monitorGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+        lock.lock()
+        let streamID = nextStreamID
+        nextStreamID += 1
+        configurations[streamID] = configuration
+        lock.unlock()
+
+        return AsyncThrowingStream { continuation in
+            lock.lock()
+            continuations[streamID] = continuation
+            lock.unlock()
+
+            continuation.onTermination = { [weak self] _ in
+                self?.recordTermination(streamID: streamID)
+            }
+        }
+    }
+
+    func hasTerminated(streamID: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return terminatedStreamIDs.contains(streamID)
+    }
+
+    func yieldToLatest(samplesDBA: [Double]) {
+        lock.lock()
+        let streamID = nextStreamID - 1
+        let continuation = continuations[streamID]
+        let configuration = configurations[streamID] ?? .studyNo1
+        lock.unlock()
+
+        continuation?.yield(
+            TinnitusEnvironmentSPLGateEvaluator().update(
+                samplesDBA: samplesDBA,
+                configuration: configuration
+            )
+        )
+    }
+
+    private func recordTermination(streamID: Int) {
+        lock.lock()
+        terminatedStreamIDs.insert(streamID)
+        continuations[streamID] = nil
+        configurations[streamID] = nil
+        lock.unlock()
     }
 }
 
