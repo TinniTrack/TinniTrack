@@ -12,8 +12,13 @@ struct SignupDraftStoreTests {
         }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let store = SignupDraftStore(defaults: defaults, key: "draft", legacyKey: nil)
         let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let store = SignupDraftStore(
+            defaults: defaults,
+            key: "draft",
+            legacyKey: nil,
+            now: { date }
+        )
         let draft = SignupDraft(
             email: "user@example.com",
             firstName: "Jane",
@@ -63,7 +68,8 @@ struct SignupDraftStoreTests {
         let store = SignupDraftStore(
             defaults: defaults,
             key: "draft_v2",
-            legacyKey: "draft_v1"
+            legacyKey: "draft_v1",
+            now: { date.addingTimeInterval(1) }
         )
         let migrated = store.load(defaultDateOfBirth: Date())
 
@@ -77,5 +83,32 @@ struct SignupDraftStoreTests {
         )
         #expect(payload["password"] == nil)
         #expect(payload["currentStep"] == nil)
+    }
+
+    @Test
+    func expiredDraftIsPurgedAtStoreInitialization() throws {
+        let suiteName = "SignupDraftStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let expiredDraft = SignupDraft(
+            email: "user@example.com",
+            firstName: "Jane",
+            lastName: "Doe",
+            dateOfBirth: now,
+            updatedAt: now.addingTimeInterval(-(24 * 60 * 60) - 1)
+        )
+        defaults.set(try JSONEncoder().encode(expiredDraft), forKey: "draft")
+
+        let store = SignupDraftStore(
+            defaults: defaults,
+            key: "draft",
+            legacyKey: nil,
+            now: { now }
+        )
+
+        #expect(defaults.data(forKey: "draft") == nil)
+        #expect(store.load(defaultDateOfBirth: now).email.isEmpty)
     }
 }

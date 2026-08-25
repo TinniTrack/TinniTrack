@@ -77,6 +77,9 @@ enum SessionStoreFactory {
         }
         #endif
 
+        // Store initialization removes expired drafts and scrubs the legacy password payload.
+        _ = signupDraftStore
+
         return SessionStore(
             authService: SupabaseAuthService(),
             profileService: SupabaseProfileService(),
