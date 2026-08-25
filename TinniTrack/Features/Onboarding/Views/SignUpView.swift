@@ -352,25 +352,25 @@ struct SignUpView: View {
         .onAppear {
             restoreDraft()
         }
-        .onChange(of: email) { _ in persistDraft() }
-        .onChange(of: firstName) { _ in persistDraft() }
-        .onChange(of: lastName) { _ in persistDraft() }
-        .onChange(of: birthMonth) { _ in
+        .onChange(of: email) { persistDraft() }
+        .onChange(of: firstName) { persistDraft() }
+        .onChange(of: lastName) { persistDraft() }
+        .onChange(of: birthMonth) {
             updateDateOfBirthFromFields()
             advanceDateOfBirthFocusIfNeeded()
             persistDraft()
         }
-        .onChange(of: birthDay) { _ in
+        .onChange(of: birthDay) {
             updateDateOfBirthFromFields()
             advanceDateOfBirthFocusIfNeeded()
             persistDraft()
         }
-        .onChange(of: birthYear) { _ in
+        .onChange(of: birthYear) {
             updateDateOfBirthFromFields()
             advanceDateOfBirthFocusIfNeeded()
             persistDraft()
         }
-        .onChange(of: dateOfBirth) { _ in persistDraft() }
+        .onChange(of: dateOfBirth) { persistDraft() }
     }
 
     private func continueToProfileStep() {

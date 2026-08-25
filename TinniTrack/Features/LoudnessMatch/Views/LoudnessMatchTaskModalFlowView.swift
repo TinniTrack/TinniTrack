@@ -79,10 +79,10 @@ struct LoudnessMatchTaskModalFlowView: View {
         .onAppear {
             handleStepEntered(step)
         }
-        .onChange(of: step) { newStep in
+        .onChange(of: step) { _, newStep in
             handleStepEntered(newStep)
         }
-        .onChange(of: viewModel.isAirPodsRouteInterrupted) { isInterrupted in
+        .onChange(of: viewModel.isAirPodsRouteInterrupted) { _, isInterrupted in
             if !isInterrupted {
                 resumeCurrentStepAfterAirPodsReconnect()
             }
