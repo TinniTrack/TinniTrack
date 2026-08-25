@@ -125,7 +125,7 @@ struct LoudnessMatchTaskModalFlowView: View {
 
     private var topControls: some View {
         HStack {
-            if step != .intro {
+            if step != .intro, step != .activeTest {
                 LoudnessMatchModalIconButton(
                     systemName: "chevron.left",
                     accessibilityLabel: "Back",
@@ -347,6 +347,10 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     private func goBack() {
+        guard step != .activeTest else {
+            return
+        }
+
         if viewModel.isPlaying {
             viewModel.stopTone()
         }
@@ -369,8 +373,7 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .tinnitusLocation:
             step = .maxVolume
         case .activeTest:
-            selectedLaterality = viewModel.selectedLaterality ?? selectedLaterality
-            step = .tinnitusLocation
+            break
         }
     }
 
