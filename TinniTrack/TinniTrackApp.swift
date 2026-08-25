@@ -35,6 +35,7 @@ enum SessionStoreFactory {
         let pendingStore = EmailVerificationPendingStore()
         let signupDraftStore = SignupDraftStore()
 
+        #if DEBUG
         let isUITestLaunch = processInfo.environment["XCTestConfigurationFilePath"] != nil
             || processInfo.environment.keys.contains { $0.hasPrefix("UITEST_") }
 
@@ -74,6 +75,7 @@ enum SessionStoreFactory {
                 emailVerificationPendingStore: pendingStore
             )
         }
+        #endif
 
         return SessionStore(
             authService: SupabaseAuthService(),
@@ -159,6 +161,7 @@ enum SessionStoreFactory {
     #endif
 }
 
+#if DEBUG
 private final class NoopAuthService: AuthServiceProtocol {
     private var currentSessionCallCount = 0
     private let verifyAfterSessionChecks: Int?
@@ -283,7 +286,6 @@ private final class NoopProfileService: ProfileServiceProtocol {
     }
 }
 
-#if DEBUG
 private final class PreviewAuthService: AuthServiceProtocol {
     private var session: AuthSession?
 
