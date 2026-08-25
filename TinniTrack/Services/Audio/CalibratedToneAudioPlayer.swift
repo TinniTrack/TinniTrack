@@ -12,6 +12,46 @@ protocol CalibratedTonePlaying: AnyObject {
 }
 
 @MainActor
+final class CalibratedToneScheduledStopCoordinator {
+    typealias Scheduler = @MainActor (
+        _ delay: TimeInterval,
+        _ action: @escaping @MainActor @Sendable () -> Void
+    ) -> Void
+
+    private let scheduler: Scheduler
+    private var playbackGeneration: UInt64 = 0
+
+    init(
+        scheduler: @escaping Scheduler = { delay, action in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+        }
+    ) {
+        self.scheduler = scheduler
+    }
+
+    func beginPlayback() {
+        playbackGeneration &+= 1
+    }
+
+    func invalidatePlayback() {
+        playbackGeneration &+= 1
+    }
+
+    func scheduleStop(
+        after delay: TimeInterval,
+        action: @escaping @MainActor @Sendable () -> Void
+    ) {
+        let scheduledGeneration = playbackGeneration
+        scheduler(delay) { [weak self] in
+            guard let self, self.playbackGeneration == scheduledGeneration else {
+                return
+            }
+            action()
+        }
+    }
+}
+
+@MainActor
 final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
     private let audioSession: AVAudioSession
     private let guardrailMonitor: CalibratedAudioSessionGuardrailMonitor?
@@ -19,6 +59,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
     private let dateProvider: () -> Date
     private let preferredSampleRate: Double
     private let preferredBufferFrameCount: Int
+    private let scheduledStopCoordinator: CalibratedToneScheduledStopCoordinator
     private var engine: AVAudioEngine?
     private var sourceNode: AVAudioSourceNode?
     private var renderState: CalibratedToneAudioRenderState?
@@ -31,6 +72,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         converter: CalibratedAudioConverter = CalibratedAudioConverter(),
         preferredSampleRate: Double = CalibratedTonePlaybackDefaults.sampleRate,
         preferredBufferFrameCount: Int = CalibratedTonePlaybackDefaults.renderBufferFrameCount,
+        scheduledStopCoordinator: CalibratedToneScheduledStopCoordinator = CalibratedToneScheduledStopCoordinator(),
         dateProvider: @escaping () -> Date = Date.init
     ) {
         self.audioSession = audioSession
@@ -38,6 +80,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         self.converter = converter
         self.preferredSampleRate = preferredSampleRate
         self.preferredBufferFrameCount = preferredBufferFrameCount
+        self.scheduledStopCoordinator = scheduledStopCoordinator
         self.dateProvider = dateProvider
     }
 
@@ -50,6 +93,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
                 bufferFrameCount: playbackTiming.bufferFrameCount
             )
             let plan = try planner.makePlan(for: request)
+            scheduledStopCoordinator.beginPlayback()
             renderState.transition(
                 to: plan.renderConfiguration,
                 duration: CalibratedTonePlaybackDefaults.levelAdjustmentRampDuration
@@ -96,6 +140,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         engine = playbackEngine
         sourceNode = source
         renderState = state
+        scheduledStopCoordinator.beginPlayback()
 
         let metadata = plan.metadata.started(at: dateProvider())
         currentMetadata = metadata
@@ -142,7 +187,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         currentMetadata = stoppedMetadata
         lastMetadata = stoppedMetadata
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + rampDuration) { [weak self] in
+        scheduledStopCoordinator.scheduleStop(after: rampDuration) { [weak self] in
             self?.stopImmediately()
         }
 
@@ -175,7 +220,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
     }
 
     private func scheduleNaturalStop(after duration: TimeInterval) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+        scheduledStopCoordinator.scheduleStop(after: duration) { [weak self] in
             guard self?.renderState != nil else {
                 return
             }
@@ -184,6 +229,8 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
     }
 
     private func stopImmediately() {
+        scheduledStopCoordinator.invalidatePlayback()
+
         guard engine != nil || renderState != nil else {
             guardrailMonitor?.stopMonitoring()
             return

@@ -159,6 +159,50 @@ struct CalibratedTonePlaybackTests {
         #expect(error == .unsafeAmplitude(1.0))
     }
 
+    @MainActor
+    @Test
+    func restartingPlaybackInvalidatesStaleFadeStopWithoutBlockingCurrentNaturalStop() {
+        let scheduler = ManualCalibratedToneStopScheduler()
+        let recorder = CalibratedToneStopRecorder()
+        let coordinator = CalibratedToneScheduledStopCoordinator(scheduler: scheduler.schedule)
+
+        coordinator.beginPlayback()
+        coordinator.scheduleStop(after: 0.2) {
+            recorder.record("stale-fade-stop")
+        }
+
+        coordinator.beginPlayback()
+        coordinator.scheduleStop(after: 1.0) {
+            recorder.record("current-natural-stop")
+        }
+
+        #expect(scheduler.scheduledDelays == [0.2, 1.0])
+
+        scheduler.run(at: 0)
+        #expect(recorder.events.isEmpty)
+
+        scheduler.run(at: 1)
+        #expect(recorder.events == ["current-natural-stop"])
+    }
+
+    @MainActor
+    @Test
+    func immediateStopInvalidatesRemainingCallbacksForPlayback() {
+        let scheduler = ManualCalibratedToneStopScheduler()
+        let recorder = CalibratedToneStopRecorder()
+        let coordinator = CalibratedToneScheduledStopCoordinator(scheduler: scheduler.schedule)
+
+        coordinator.beginPlayback()
+        coordinator.scheduleStop(after: 1.0) {
+            recorder.record("natural-stop")
+        }
+
+        coordinator.invalidatePlayback()
+        scheduler.run(at: 0)
+
+        #expect(recorder.events.isEmpty)
+    }
+
     @Test
     func plannerBuildsPlaybackRequestFromConversionAndGuardrailMetadata() throws {
         let validation = passedGuardrails()
@@ -358,5 +402,32 @@ struct CalibratedTonePlaybackTests {
         } catch {
             return nil
         }
+    }
+}
+
+@MainActor
+private final class ManualCalibratedToneStopScheduler {
+    private(set) var scheduledDelays: [TimeInterval] = []
+    private var scheduledActions: [@MainActor @Sendable () -> Void] = []
+
+    func schedule(
+        after delay: TimeInterval,
+        action: @escaping @MainActor @Sendable () -> Void
+    ) {
+        scheduledDelays.append(delay)
+        scheduledActions.append(action)
+    }
+
+    func run(at index: Int) {
+        scheduledActions[index]()
+    }
+}
+
+@MainActor
+private final class CalibratedToneStopRecorder {
+    private(set) var events: [String] = []
+
+    func record(_ event: String) {
+        events.append(event)
     }
 }
