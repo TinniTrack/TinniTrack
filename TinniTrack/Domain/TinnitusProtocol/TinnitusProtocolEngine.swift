@@ -1,6 +1,6 @@
 import Foundation
 
-struct TinnitusProtocolEngine {
+nonisolated struct TinnitusProtocolEngine {
     private let configuration: TinnitusProtocolConfiguration
     private let converter: CalibratedAudioConverter
     private let playbackPlanner: CalibratedTonePlaybackPlanner

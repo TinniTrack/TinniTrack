@@ -1,10 +1,10 @@
 import Foundation
 
-enum CalibratedHeadphoneIdentifier {
+nonisolated enum CalibratedHeadphoneIdentifier {
     static let airPodsPro2 = "AIRPODSPROV2"
 }
 
-enum CalibrationConversionError: Error, Equatable {
+nonisolated enum CalibrationConversionError: Error, Equatable {
     case unsupportedHeadphoneProfile(String, supported: [String])
     case unsupportedFrequency(Double, supported: [Double])
     case invalidVolume(Double)
@@ -17,12 +17,12 @@ enum CalibrationConversionError: Error, Equatable {
     )
 }
 
-struct VolumeCurveBucket: Codable, Equatable {
+nonisolated struct VolumeCurveBucket: Codable, Equatable {
     let outputVolume: Double
     let splOffsetDB: Double
 }
 
-struct CalibratedAudioCalibrationMetadata: Codable, Equatable {
+nonisolated struct CalibratedAudioCalibrationMetadata: Codable, Equatable {
     let headphoneIdentifier: String
     let supportedFrequenciesHz: [Double]
     let sourceRepositoryURL: String
@@ -35,7 +35,7 @@ struct CalibratedAudioCalibrationMetadata: Codable, Equatable {
     let validationStatus: CalibrationValidationStatus
 }
 
-struct CalibratedHeadphoneProfile: Equatable {
+nonisolated struct CalibratedHeadphoneProfile: Equatable {
     let headphoneIdentifier: String
     let metadata: CalibratedAudioCalibrationMetadata
     let frequencySensitivityDBSPL: [Double: Double]
@@ -50,7 +50,7 @@ struct CalibratedHeadphoneProfile: Equatable {
     }
 }
 
-struct CalibratedAudioConversion: Equatable {
+nonisolated struct CalibratedAudioConversion: Equatable {
     let headphoneIdentifier: String
     let frequencyHz: Double
     let requestedDBHL: Double
@@ -63,7 +63,7 @@ struct CalibratedAudioConversion: Equatable {
     let calibrationMetadata: CalibratedAudioCalibrationMetadata
 }
 
-struct CalibratedAudioConverter {
+nonisolated struct CalibratedAudioConverter {
     private let profilesByIdentifier: [String: CalibratedHeadphoneProfile]
 
     init(profiles: [CalibratedHeadphoneProfile] = [.airPodsPro2]) {
@@ -289,7 +289,7 @@ struct CalibratedAudioConverter {
     }
 }
 
-extension CalibratedHeadphoneProfile {
+nonisolated extension CalibratedHeadphoneProfile {
     static let airPodsPro2 = CalibratedHeadphoneProfile(
         headphoneIdentifier: CalibratedHeadphoneIdentifier.airPodsPro2,
         metadata: CalibratedAudioCalibrationMetadata(

@@ -1,12 +1,12 @@
 import Foundation
 
-enum CalibratedTonePlaybackChannel: String, Equatable {
+nonisolated enum CalibratedTonePlaybackChannel: String, Equatable {
     case left
     case right
     case both
 }
 
-enum CalibratedTonePlaybackError: Error, Equatable {
+nonisolated enum CalibratedTonePlaybackError: Error, Equatable {
     case guardrailsNotEvaluated
     case guardrailsFailed(CalibratedAudioGuardrailError?)
     case guardrailsRestartRequired(CalibratedAudioGuardrailError?)
@@ -17,7 +17,7 @@ enum CalibratedTonePlaybackError: Error, Equatable {
     case unsafeAmplitude(Double)
 }
 
-struct CalibratedTonePlaybackRequest: Equatable {
+nonisolated struct CalibratedTonePlaybackRequest: Equatable {
     let frequencyHz: Double
     let levelDBHL: Double
     let channel: CalibratedTonePlaybackChannel
@@ -48,7 +48,7 @@ struct CalibratedTonePlaybackRequest: Equatable {
     }
 }
 
-enum CalibratedTonePlaybackDefaults {
+nonisolated enum CalibratedTonePlaybackDefaults {
     static let sampleRate = 44_100.0
     static let rampDuration: TimeInterval = 0.2
     static let levelAdjustmentRampDuration: TimeInterval = 0.05
@@ -56,7 +56,7 @@ enum CalibratedTonePlaybackDefaults {
     static let mixerGainPolicy = "AVAudioEngine mainMixerNode.outputVolume fixed at 1.0; no app-level EQ, limiter, compressor, or extra gain is applied by the calibrated player."
 }
 
-struct CalibratedTonePlaybackMetadata: Equatable {
+nonisolated struct CalibratedTonePlaybackMetadata: Equatable {
     let frequencyHz: Double
     let channel: CalibratedTonePlaybackChannel
     let requestedDBHL: Double
@@ -117,14 +117,14 @@ struct CalibratedTonePlaybackMetadata: Equatable {
     }
 }
 
-struct CalibratedTonePlaybackPlan: Equatable {
+nonisolated struct CalibratedTonePlaybackPlan: Equatable {
     let request: CalibratedTonePlaybackRequest
     let conversion: CalibratedAudioConversion
     let renderConfiguration: CalibratedToneRenderConfiguration
     let metadata: CalibratedTonePlaybackMetadata
 }
 
-struct CalibratedTonePlaybackPlanner {
+nonisolated struct CalibratedTonePlaybackPlanner {
     let converter: CalibratedAudioConverter
     let sampleRate: Double
     let bufferFrameCount: Int

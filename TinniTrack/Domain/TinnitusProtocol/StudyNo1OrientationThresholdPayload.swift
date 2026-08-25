@@ -1,11 +1,11 @@
 import Foundation
 
-enum StudyNo1OrientationThresholdPayloadValidationError: Error, Equatable {
+nonisolated enum StudyNo1OrientationThresholdPayloadValidationError: Error, Equatable {
     case missingRequiredFields([String])
     case incompleteThresholdRun(reason: String)
 }
 
-struct StudyNo1OrientationThresholdRunPayload: Codable, Equatable {
+nonisolated struct StudyNo1OrientationThresholdRunPayload: Codable, Equatable {
     static let payloadVersion = "study-no-1-orientation-threshold-v1"
     static let protocolVersion = "orientation_threshold_v1"
 
@@ -91,7 +91,7 @@ struct StudyNo1OrientationThresholdRunPayload: Codable, Equatable {
     }
 }
 
-struct StudyNo1OrientationThresholdEarContext: Codable, Equatable {
+nonisolated struct StudyNo1OrientationThresholdEarContext: Codable, Equatable {
     let channel: CalibratedTonePlaybackChannel
     let frequencyHz: Double
     let thresholdDBHL: Double?
@@ -102,14 +102,14 @@ struct StudyNo1OrientationThresholdEarContext: Codable, Equatable {
     let samples: [StudyNo1OrientationThresholdFrequencySampleContext]
 }
 
-struct StudyNo1OrientationThresholdFrequencySampleContext: Codable, Equatable {
+nonisolated struct StudyNo1OrientationThresholdFrequencySampleContext: Codable, Equatable {
     let frequencyHz: Double
     let calculatedThresholdDBHL: Double?
     let channel: CalibratedTonePlaybackChannel
     let units: [StudyNo1OrientationThresholdUnitContext]
 }
 
-struct StudyNo1OrientationThresholdUnitContext: Codable, Equatable {
+nonisolated struct StudyNo1OrientationThresholdUnitContext: Codable, Equatable {
     let levelDBHL: Double
     let startOfUnitTimeStamp: TimeInterval
     let preStimulusDelay: TimeInterval
@@ -117,7 +117,7 @@ struct StudyNo1OrientationThresholdUnitContext: Codable, Equatable {
     let timeoutTimeStamp: TimeInterval?
 }
 
-struct StudyNo1OrientationThresholdPayloadBuilder {
+nonisolated struct StudyNo1OrientationThresholdPayloadBuilder {
     private let calibrationMetadata: CalibratedAudioCalibrationMetadata
 
     init(calibrationMetadata: CalibratedAudioCalibrationMetadata = CalibratedHeadphoneProfile.airPodsPro2.metadata) {
@@ -172,7 +172,7 @@ struct StudyNo1OrientationThresholdPayloadBuilder {
     }
 }
 
-extension StudyNo1RouteOutputContext {
+nonisolated extension StudyNo1RouteOutputContext {
     init(_ output: CalibratedAudioRouteOutput) {
         portType = output.portType.description
         portName = output.portName
@@ -183,7 +183,7 @@ extension StudyNo1RouteOutputContext {
     }
 }
 
-extension StudyNo1VolumeContext {
+nonisolated extension StudyNo1VolumeContext {
     init(metadata: CalibratedAudioGuardrailMetadata?) {
         outputVolume = metadata?.rawOutputVolume ?? -1.0
         bucketedOutputVolume = metadata?.bucketedVolume?.outputVolume
@@ -192,7 +192,7 @@ extension StudyNo1VolumeContext {
     }
 }
 
-extension StudyNo1ResearchKitCalibrationContext {
+nonisolated extension StudyNo1ResearchKitCalibrationContext {
     init(metadata: CalibratedAudioCalibrationMetadata) {
         sourceRepositoryURL = metadata.sourceRepositoryURL
         vendoredResearchKitCommit = metadata.vendoredResearchKitCommit
@@ -204,7 +204,7 @@ extension StudyNo1ResearchKitCalibrationContext {
     }
 }
 
-extension CalibratedAudioRoutePortKind {
+nonisolated extension CalibratedAudioRoutePortKind {
     var description: String {
         switch self {
         case .builtInSpeaker:

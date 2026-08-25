@@ -1,12 +1,12 @@
 import Foundation
 
-enum AcousticValidationStatus: String, Codable, Equatable {
+nonisolated enum AcousticValidationStatus: String, Codable, Equatable {
     case pass
     case fail
     case needsReview
 }
 
-enum AcousticValidationNoiseControlMode: String, Codable, CaseIterable, Equatable {
+nonisolated enum AcousticValidationNoiseControlMode: String, Codable, CaseIterable, Equatable {
     case activeNoiseCancellation
     case transparency
     case off
@@ -14,12 +14,12 @@ enum AcousticValidationNoiseControlMode: String, Codable, CaseIterable, Equatabl
     case unknown
 }
 
-enum AcousticValidationClinicalPilotStatus: String, Codable, Equatable {
+nonisolated enum AcousticValidationClinicalPilotStatus: String, Codable, Equatable {
     case completed
     case notRun
 }
 
-enum AcousticValidationError: Error, Equatable {
+nonisolated enum AcousticValidationError: Error, Equatable {
     case unsupportedFrequencyCoverage(missing: [Double])
     case unsupportedChannelCoverage(missing: [CalibratedTonePlaybackChannel])
     case unsupportedVolume(actual: Double, required: Double, tolerance: Double)
@@ -30,9 +30,9 @@ enum AcousticValidationError: Error, Equatable {
     case duplicateMeasurements([String])
 }
 
-extension CalibratedTonePlaybackChannel: Codable {}
+nonisolated extension CalibratedTonePlaybackChannel: Codable {}
 
-struct AcousticValidationTolerancePolicy: Codable, Equatable {
+nonisolated struct AcousticValidationTolerancePolicy: Codable, Equatable {
     let passToleranceDB: Double
     let reviewToleranceDB: Double
     let minimumChannelSeparationDB: Double
@@ -44,7 +44,7 @@ struct AcousticValidationTolerancePolicy: Codable, Equatable {
     )
 }
 
-struct AcousticValidationVolumePolicy: Codable, Equatable {
+nonisolated struct AcousticValidationVolumePolicy: Codable, Equatable {
     let requiredOutputVolume: Double
     let tolerance: Double
 
@@ -61,7 +61,7 @@ struct AcousticValidationVolumePolicy: Codable, Equatable {
     }
 }
 
-struct AcousticValidationProtocol: Codable, Equatable {
+nonisolated struct AcousticValidationProtocol: Codable, Equatable {
     let identifier: String
     let version: String
     let headphoneIdentifier: String
@@ -111,7 +111,7 @@ struct AcousticValidationProtocol: Codable, Equatable {
     }
 }
 
-struct AcousticValidationMatrixPoint: Codable, Equatable {
+nonisolated struct AcousticValidationMatrixPoint: Codable, Equatable {
     let frequencyHz: Double
     let channel: CalibratedTonePlaybackChannel
     let requestedDBHL: Double
@@ -130,7 +130,7 @@ struct AcousticValidationMatrixPoint: Codable, Equatable {
     }
 }
 
-struct AcousticValidationRouteContext: Codable, Equatable {
+nonisolated struct AcousticValidationRouteContext: Codable, Equatable {
     let portName: String
     let portType: String
     let portUID: String?
@@ -138,7 +138,7 @@ struct AcousticValidationRouteContext: Codable, Equatable {
     let verifiedHeadphoneIdentifier: String
 }
 
-struct AcousticValidationAirPodsFirmwareContext: Codable, Equatable {
+nonisolated struct AcousticValidationAirPodsFirmwareContext: Codable, Equatable {
     let version: String?
     let unavailableReason: String?
 
@@ -147,7 +147,7 @@ struct AcousticValidationAirPodsFirmwareContext: Codable, Equatable {
     }
 }
 
-struct AcousticValidationDeviceContext: Codable, Equatable {
+nonisolated struct AcousticValidationDeviceContext: Codable, Equatable {
     let deviceModel: String
     let osVersion: String
     let airPodsModelIdentifier: String
@@ -157,7 +157,7 @@ struct AcousticValidationDeviceContext: Codable, Equatable {
     let noiseControlMode: AcousticValidationNoiseControlMode
 }
 
-struct AcousticValidationEnvironmentContext: Codable, Equatable {
+nonisolated struct AcousticValidationEnvironmentContext: Codable, Equatable {
     let thresholdDBA: Double
     let requiredContiguousSamples: Int
     let samplingInterval: TimeInterval
@@ -184,7 +184,7 @@ struct AcousticValidationEnvironmentContext: Codable, Equatable {
     }
 }
 
-struct AcousticValidationMeasurementChain: Codable, Equatable {
+nonisolated struct AcousticValidationMeasurementChain: Codable, Equatable {
     let labName: String
     let operatorName: String
     let couplerOrEarSimulator: String
@@ -195,7 +195,7 @@ struct AcousticValidationMeasurementChain: Codable, Equatable {
     let calibrationDate: Date
 }
 
-struct AcousticValidationClinicalAudiometerPilot: Codable, Equatable {
+nonisolated struct AcousticValidationClinicalAudiometerPilot: Codable, Equatable {
     let status: AcousticValidationClinicalPilotStatus
     let audiometerModel: String?
     let transducer: String?
@@ -204,7 +204,7 @@ struct AcousticValidationClinicalAudiometerPilot: Codable, Equatable {
     let notes: String
 }
 
-struct AcousticValidationMeasurement: Codable, Equatable {
+nonisolated struct AcousticValidationMeasurement: Codable, Equatable {
     let frequencyHz: Double
     let channel: CalibratedTonePlaybackChannel
     let measuredDBSPL: Double?
@@ -216,7 +216,7 @@ struct AcousticValidationMeasurement: Codable, Equatable {
     }
 }
 
-struct AcousticValidationRunRecord: Codable, Equatable {
+nonisolated struct AcousticValidationRunRecord: Codable, Equatable {
     let runIdentifier: String
     let runVersion: String
     let validationProtocol: AcousticValidationProtocol
@@ -229,7 +229,7 @@ struct AcousticValidationRunRecord: Codable, Equatable {
     let createdAt: Date
 }
 
-struct AcousticValidationPointResult: Codable, Equatable {
+nonisolated struct AcousticValidationPointResult: Codable, Equatable {
     let point: AcousticValidationMatrixPoint
     let measuredDBSPL: Double
     let inactiveChannelMeasuredDBSPL: Double
@@ -239,7 +239,7 @@ struct AcousticValidationPointResult: Codable, Equatable {
     let status: AcousticValidationStatus
 }
 
-struct AcousticValidationEvaluation: Codable, Equatable {
+nonisolated struct AcousticValidationEvaluation: Codable, Equatable {
     let runIdentifier: String
     let runVersion: String
     let status: AcousticValidationStatus
@@ -254,7 +254,7 @@ struct AcousticValidationEvaluation: Codable, Equatable {
     }
 }
 
-struct AcousticValidationEvaluator {
+nonisolated struct AcousticValidationEvaluator {
     private let converter: CalibratedAudioConverter
 
     init(converter: CalibratedAudioConverter = CalibratedAudioConverter()) {
@@ -474,7 +474,7 @@ struct AcousticValidationEvaluator {
     }
 }
 
-private struct AcousticValidationResolvedMeasurement: Equatable {
+nonisolated private struct AcousticValidationResolvedMeasurement: Equatable {
     let measuredDBSPL: Double
     let inactiveChannelMeasuredDBSPL: Double
 }

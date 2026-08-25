@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct SignupDraft: Codable, Equatable {
+nonisolated struct SignupDraft: Codable, Equatable, Sendable {
     var email: String
     var firstName: String
     var lastName: String

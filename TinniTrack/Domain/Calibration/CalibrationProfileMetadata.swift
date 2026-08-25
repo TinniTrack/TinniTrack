@@ -1,11 +1,11 @@
 import Foundation
 
-enum CalibrationValidationStatus: String, Codable, Equatable {
+nonisolated enum CalibrationValidationStatus: String, Codable, Equatable {
     case researchKitReferenceAvailable
     case labValidationRequired
 }
 
-struct CalibrationProfileMetadata: Equatable {
+nonisolated struct CalibrationProfileMetadata: Equatable {
     let identifier: String
     let version: String
     let source: String
@@ -14,13 +14,13 @@ struct CalibrationProfileMetadata: Equatable {
     let notes: String
 }
 
-struct OutputDeviceMetadata: Equatable {
+nonisolated struct OutputDeviceMetadata: Equatable {
     let displayName: String
     let researchKitHeadphoneTypeIdentifier: String
     let notes: String
 }
 
-enum CalibrationProfileCatalog {
+nonisolated enum CalibrationProfileCatalog {
     static let airPodsPro2ResearchKitReference = OutputDeviceMetadata(
         displayName: "AirPods Pro 2",
         researchKitHeadphoneTypeIdentifier: "AIRPODSPROV2",
