@@ -97,6 +97,7 @@ struct SignupDraftStore: SignupDraftStoring {
     }
 
     private func isExpired(_ draft: SignupDraft) -> Bool {
-        now().timeIntervalSince(draft.updatedAt) > retentionInterval
+        let age = now().timeIntervalSince(draft.updatedAt)
+        return age < 0 || age > retentionInterval
     }
 }

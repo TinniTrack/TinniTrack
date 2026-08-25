@@ -111,4 +111,31 @@ struct SignupDraftStoreTests {
         #expect(defaults.data(forKey: "draft") == nil)
         #expect(store.load(defaultDateOfBirth: now).email.isEmpty)
     }
+
+    @Test
+    func futureDatedDraftIsPurgedAtStoreInitialization() throws {
+        let suiteName = "SignupDraftStoreTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let futureDraft = SignupDraft(
+            email: "user@example.com",
+            firstName: "Jane",
+            lastName: "Doe",
+            dateOfBirth: now,
+            updatedAt: now.addingTimeInterval(1)
+        )
+        defaults.set(try JSONEncoder().encode(futureDraft), forKey: "draft")
+
+        let store = SignupDraftStore(
+            defaults: defaults,
+            key: "draft",
+            legacyKey: nil,
+            now: { now }
+        )
+
+        #expect(defaults.data(forKey: "draft") == nil)
+        #expect(store.load(defaultDateOfBirth: now).email.isEmpty)
+    }
 }
