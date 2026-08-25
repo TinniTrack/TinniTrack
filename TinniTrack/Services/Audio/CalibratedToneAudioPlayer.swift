@@ -69,18 +69,21 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
     init(
         audioSession: AVAudioSession = .sharedInstance(),
         guardrailMonitor: CalibratedAudioSessionGuardrailMonitor? = nil,
-        converter: CalibratedAudioConverter = CalibratedAudioConverter(),
-        preferredSampleRate: Double = CalibratedTonePlaybackDefaults.sampleRate,
-        preferredBufferFrameCount: Int = CalibratedTonePlaybackDefaults.renderBufferFrameCount,
-        scheduledStopCoordinator: CalibratedToneScheduledStopCoordinator = CalibratedToneScheduledStopCoordinator(),
+        converter: CalibratedAudioConverter? = nil,
+        preferredSampleRate: Double? = nil,
+        preferredBufferFrameCount: Int? = nil,
+        scheduledStopCoordinator: CalibratedToneScheduledStopCoordinator? = nil,
         dateProvider: @escaping () -> Date = Date.init
     ) {
         self.audioSession = audioSession
         self.guardrailMonitor = guardrailMonitor
-        self.converter = converter
+        self.converter = converter ?? CalibratedAudioConverter()
         self.preferredSampleRate = preferredSampleRate
+            ?? CalibratedTonePlaybackDefaults.sampleRate
         self.preferredBufferFrameCount = preferredBufferFrameCount
+            ?? CalibratedTonePlaybackDefaults.renderBufferFrameCount
         self.scheduledStopCoordinator = scheduledStopCoordinator
+            ?? CalibratedToneScheduledStopCoordinator()
         self.dateProvider = dateProvider
     }
 
