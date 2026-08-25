@@ -101,7 +101,7 @@ final class SupabaseConsentService: ConsentServiceProtocol {
     private func currentUserID() async throws -> UUID {
         do {
             return try await client.auth.session.user.id
-        } catch {
+        } catch AuthError.sessionMissing {
             throw ConsentServiceError.noActiveSession
         }
     }

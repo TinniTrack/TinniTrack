@@ -77,7 +77,7 @@ final class SupabaseProfileService: ProfileServiceProtocol {
         do {
             let session = try await client.auth.session
             return session.user.id
-        } catch {
+        } catch AuthError.sessionMissing {
             return nil
         }
     }
