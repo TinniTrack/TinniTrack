@@ -1340,23 +1340,6 @@ private extension View {
     }
 }
 
-private struct StudyConsentSuccessView: View {
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 58, weight: .semibold))
-                .foregroundStyle(LoudnessMatchModalColors.success)
-            Text("Enrollment Complete")
-                .font(.title2.bold())
-            Text("Your signed consent was saved securely.")
-                .font(.subheadline)
-                .foregroundStyle(StudyConsentReadableColors.bodyText)
-        }
-        .padding(34)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
 #if DEBUG
 #Preview("Landing") {
     StudyConsentFlowPreview()
