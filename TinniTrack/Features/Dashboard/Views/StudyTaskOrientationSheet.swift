@@ -132,6 +132,11 @@ struct StudyTaskOrientationSheet: View {
                 updateThresholdPlaybackForPresentationChange(isPaused: isPresented)
             }
             .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    loudnessViewModel.resumeEnvironmentGateAfterAppActivity()
+                } else {
+                    loudnessViewModel.suspendEnvironmentGateForAppInactivity()
+                }
                 updateThresholdPlaybackForPresentationChange(isPaused: phase != .active)
             }
             .onChange(of: isCloseConfirmationPresented) { _, isPresented in

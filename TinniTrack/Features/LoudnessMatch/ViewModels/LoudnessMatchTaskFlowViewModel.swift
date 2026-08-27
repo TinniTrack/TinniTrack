@@ -71,6 +71,12 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     private var airPodsContinuityObservation: AudioSessionObservation?
     private var shouldResumeEnvironmentGateAfterPlayback = false
     private var playbackStopTask: Task<Void, Never>?
+    private var pendingEnvironmentMonitorStopTasks: [Task<Void, Never>] = []
+    private var audioWorkflowEndTask: Task<Void, Never>?
+    private var isEnvironmentSuspendedForAppInactivity = false
+    private var shouldResumeEnvironmentGateAfterAppActivity = false
+    private var appInactivityMonitorStopTask: Task<Void, Never>?
+    private var appActivityResumeTask: Task<Void, Never>?
     private var playbackPreparationGeneration: UInt64 = 0
     private let environmentDiagnosticsLogger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "TinniTrack",
@@ -688,6 +694,69 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         cancelEnvironmentMonitorConsumer()
     }
 
+    func suspendEnvironmentGateForAppInactivity() {
+        guard !isEnvironmentSuspendedForAppInactivity,
+              audioWorkflowEndTask == nil
+        else {
+            return
+        }
+
+        isEnvironmentSuspendedForAppInactivity = true
+        appActivityResumeTask?.cancel()
+        appActivityResumeTask = nil
+        playbackPreparationGeneration &+= 1
+        isPreparingPlayback = false
+        shouldResumeEnvironmentGateAfterAppActivity = isRunningEnvironmentGate
+            || shouldResumeEnvironmentGateAfterPlayback
+
+        if environmentGateUpdate?.status != .idle {
+            applyEnvironmentGateUpdate(
+                environmentGateStateMachine.suspend(reason: .appInactive)
+            )
+        }
+        appInactivityMonitorStopTask = cancelEnvironmentMonitorConsumer()
+    }
+
+    func resumeEnvironmentGateAfterAppActivity() {
+        guard isEnvironmentSuspendedForAppInactivity,
+              audioWorkflowEndTask == nil
+        else {
+            return
+        }
+
+        isEnvironmentSuspendedForAppInactivity = false
+        let monitorStopTask = appInactivityMonitorStopTask
+        appInactivityMonitorStopTask = nil
+        let playbackStopTask = playbackStopTask
+        appActivityResumeTask?.cancel()
+        appActivityResumeTask = Task { @MainActor [weak self] in
+            await monitorStopTask?.value
+            await playbackStopTask?.value
+            guard let self,
+                  !Task.isCancelled,
+                  !self.isEnvironmentSuspendedForAppInactivity,
+                  self.audioWorkflowEndTask == nil,
+                  self.shouldResumeEnvironmentGateAfterAppActivity
+            else {
+                return
+            }
+
+            self.shouldResumeEnvironmentGateAfterAppActivity = false
+            if self.isRunningEnvironmentGate {
+                self.appActivityResumeTask = nil
+                return
+            }
+            if self.shouldResumeEnvironmentGateAfterPlayback {
+                self.resumeEnvironmentGateAfterPlaybackIfNeeded(reason: .manualRestart)
+            } else {
+                self.startContinuousEnvironmentGate(
+                    reason: self.hasPassedEnvironmentGate ? .manualRestart : .initial
+                )
+            }
+            self.appActivityResumeTask = nil
+        }
+    }
+
     private func finishContinuousEnvironmentGateTask(
         generation: TinnitusEnvironmentSPLGateStateMachine.Generation,
         error: Error? = nil
@@ -714,17 +783,21 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         }
     }
 
-    private func cancelEnvironmentMonitorConsumer() {
+    @discardableResult
+    private func cancelEnvironmentMonitorConsumer() -> Task<Void, Never>? {
         let monitorSession = environmentMonitorSession
         environmentMonitorSession = nil
         environmentGateTask?.cancel()
         environmentGateTask = nil
         isRunningEnvironmentGate = false
         if let monitorSession {
-            Task { @MainActor in
+            let stopTask = Task { @MainActor in
                 await monitorSession.stop()
             }
+            pendingEnvironmentMonitorStopTasks.append(stopTask)
+            return stopTask
         }
+        return nil
     }
 
     func completeFitConfirmation() {
@@ -873,7 +946,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         _ = player?.stop()
         if hasPassedEnvironmentGate {
             applyEnvironmentGateUpdate(
-                environmentGateStateMachine.suspend(reason: .responseTap)
+                environmentGateStateMachine.suspend(
+                    reason: isEnvironmentSuspendedForAppInactivity
+                        ? .appInactive
+                        : .responseTap
+                )
             )
         }
         playbackStopTask?.cancel()
@@ -981,7 +1058,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         syncFromEngine()
         if hasPassedEnvironmentGate {
             applyEnvironmentGateUpdate(
-                environmentGateStateMachine.suspend(reason: .responseTap)
+                environmentGateStateMachine.suspend(
+                    reason: isEnvironmentSuspendedForAppInactivity
+                        ? .appInactive
+                        : .responseTap
+                )
             )
         }
         playbackStopTask?.cancel()
@@ -999,6 +1080,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         reason: TinnitusEnvironmentSPLReacquisitionReason = .postPlayback
     ) {
         guard shouldResumeEnvironmentGateAfterPlayback,
+              !isEnvironmentSuspendedForAppInactivity,
               !isRunningEnvironmentGate,
               environmentGateTask == nil
         else {
@@ -1061,6 +1143,12 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func endAudioSessionWorkflow() {
+        guard audioWorkflowEndTask == nil else {
+            return
+        }
+        appActivityResumeTask?.cancel()
+        appActivityResumeTask = nil
+        shouldResumeEnvironmentGateAfterAppActivity = false
         let monitorSession = environmentMonitorSession
         environmentMonitorSession = nil
         environmentGateTask?.cancel()
@@ -1068,13 +1156,19 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         isRunningEnvironmentGate = false
         let player = self.player
         let workflowManager = environmentWorkflowManager
-        Task { @MainActor in
+        let pendingStops = pendingEnvironmentMonitorStopTasks
+        pendingEnvironmentMonitorStopTasks = []
+        let endTask = Task { @MainActor in
             if let monitorSession {
                 await monitorSession.stop()
+            }
+            for stopTask in pendingStops {
+                await stopTask.value
             }
             _ = await player?.stopAndWaitForSilence()
             workflowManager?.endAudioWorkflow()
         }
+        audioWorkflowEndTask = endTask
     }
 
     func makeStudyNo1Payload(

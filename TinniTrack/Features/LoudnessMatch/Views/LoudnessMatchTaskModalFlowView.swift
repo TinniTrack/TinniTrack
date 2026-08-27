@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LoudnessMatchTaskModalFlowView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     let scheduledTask: ScheduledTask
     let enrollment: StudyEnrollment
@@ -64,6 +65,16 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
         .onChange(of: preflightSession.requestedFallback) { _, fallback in
             handleRequestedFallback(fallback)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                viewModel.resumeEnvironmentGateAfterAppActivity()
+            } else {
+                viewModel.suspendEnvironmentGateForAppInactivity()
+                if viewModel.isPlaying {
+                    viewModel.stopTone()
+                }
+            }
         }
         .onDisappear {
             guard !isNoiseSuggestionsPresented else {
