@@ -38,12 +38,7 @@ struct StudyConsentFlowView: View {
             enrollmentRecoveryStatus: viewModel.enrollmentRecoveryStatus,
             isResumingEnrollment: viewModel.state == .finalizing,
             reviewConsent: { isReviewPresented = true },
-            resumeEnrollment: {
-                Task { @MainActor in
-                    guard await viewModel.resumeEnrollment() else { return }
-                    await handleCompletedEnrollment()
-                }
-            },
+            resumeEnrollment: resumeEnrollmentAndHandleCompletion,
             retryEnrollmentRecoveryProbe: {
                 Task {
                     await viewModel.retryEnrollmentRecoveryProbe()
@@ -88,9 +83,7 @@ struct StudyConsentFlowView: View {
             )) {
                 if viewModel.shouldRetryEnrollmentRecoveryFromAlert {
                     Button("Try Again") {
-                        Task {
-                            await viewModel.resumeEnrollment()
-                        }
+                        resumeEnrollmentAndHandleCompletion()
                     }
                     Button("Not Now", role: .cancel) {
                         viewModel.dismissEnrollmentRecoveryError()
@@ -106,6 +99,14 @@ struct StudyConsentFlowView: View {
             } message: {
                 Text(viewModel.errorMessage ?? "")
             }
+    }
+
+    @MainActor
+    private func resumeEnrollmentAndHandleCompletion() {
+        Task { @MainActor in
+            guard await viewModel.resumeEnrollment() else { return }
+            await handleCompletedEnrollment()
+        }
     }
 
     @MainActor
