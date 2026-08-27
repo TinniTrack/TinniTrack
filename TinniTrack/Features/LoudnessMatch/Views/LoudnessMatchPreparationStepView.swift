@@ -45,8 +45,6 @@ struct LoudnessMatchPreparationStepView: View {
                 selectLaterality: selectLaterality
             )
             .accessibilityIdentifier("loudness_tinnitus_location_step")
-        case .activeTest:
-            EmptyView()
         }
     }
 }

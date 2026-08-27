@@ -43,7 +43,6 @@ final class StudyTaskDashboardViewModel: ObservableObject {
     @Published private(set) var scheduledTasks: [ScheduledTask] = []
     @Published private(set) var isLoadingTasks = false
     @Published private(set) var taskLoadErrorMessage: String?
-    @Published private(set) var isCompletingStudyOnboarding = false
 
     private let study: Study
     private var enrollment: StudyEnrollment?
@@ -145,9 +144,6 @@ final class StudyTaskDashboardViewModel: ObservableObject {
         guard !Task.isCancelled else {
             return .cancelled
         }
-
-        isCompletingStudyOnboarding = true
-        defer { isCompletingStudyOnboarding = false }
 
         do {
             try await studyService.completeStudyNo1Onboarding(

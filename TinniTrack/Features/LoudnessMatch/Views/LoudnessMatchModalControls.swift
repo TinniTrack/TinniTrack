@@ -8,7 +8,6 @@ enum LoudnessMatchModalStep: Equatable {
     case fit
     case maxVolume
     case tinnitusLocation
-    case activeTest
 }
 
 enum LoudnessMatchModalColors {

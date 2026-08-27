@@ -13,24 +13,42 @@ struct StudyTaskDashboardView: View {
     @State private var activeLoudnessTask: ScheduledTask?
 
     private let studyService: StudyServiceProtocol
+    private let loudnessViewModel: LoudnessMatchTaskFlowViewModel?
 
     init(
         study: Study,
         enrollment: StudyEnrollment,
         profileTimezone: String? = nil,
-        coordinator: AudiogramImportCoordinating = AudiogramImportCoordinator(),
-        studyService: StudyServiceProtocol? = nil
+        coordinator: AudiogramImportCoordinating? = nil,
+        studyService: StudyServiceProtocol? = nil,
+        processInfo: ProcessInfo = .processInfo
     ) {
         let resolvedStudyService = studyService ?? SupabaseStudyService()
+        let resolvedCoordinator: AudiogramImportCoordinating
+        let resolvedLoudnessViewModel: LoudnessMatchTaskFlowViewModel?
+        #if DEBUG
+        if UITestAudioPreflightFixture.isEnabled(processInfo: processInfo) {
+            resolvedCoordinator = UITestAudioPreflightFixture.makeAudiogramCoordinator()
+            resolvedLoudnessViewModel = UITestAudioPreflightFixture.makeLoudnessViewModel()
+        } else {
+            resolvedCoordinator = coordinator ?? AudiogramImportCoordinator()
+            resolvedLoudnessViewModel = nil
+        }
+        #else
+        resolvedCoordinator = coordinator ?? AudiogramImportCoordinator()
+        resolvedLoudnessViewModel = nil
+        #endif
+
         self.study = study
         self.enrollment = enrollment
         self.profileTimezone = profileTimezone
         self.studyService = resolvedStudyService
+        self.loudnessViewModel = resolvedLoudnessViewModel
         _viewModel = StateObject(
             wrappedValue: StudyTaskDashboardViewModel(
                 study: study,
                 enrollment: enrollment,
-                coordinator: coordinator,
+                coordinator: resolvedCoordinator,
                 studyService: resolvedStudyService,
                 profileTimezone: profileTimezone
             )
@@ -56,7 +74,8 @@ struct StudyTaskDashboardView: View {
                 LoudnessMatchTaskModalFlowView(
                     scheduledTask: task,
                     enrollment: enrollment,
-                    studyService: studyService
+                    studyService: studyService,
+                    viewModel: loudnessViewModel
                 ) {
                     Task { await viewModel.didSubmitTask() }
                 }
@@ -230,7 +249,8 @@ struct StudyTaskDashboardView: View {
         StudyTaskOrientationSheet(
             viewModel: viewModel,
             enrollment: enrollment,
-            studyService: studyService
+            studyService: studyService,
+            loudnessViewModel: loudnessViewModel
         )
     }
 

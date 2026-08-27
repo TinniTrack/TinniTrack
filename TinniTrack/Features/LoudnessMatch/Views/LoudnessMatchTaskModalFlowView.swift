@@ -142,7 +142,7 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     private func preparationPage(for step: LoudnessMatchModalStep) -> some View {
-        LoudnessMatchModalContentLayout {
+        VStack(spacing: 0) {
             LoudnessMatchPreparationStepView(
                 step: step,
                 viewModel: viewModel,
@@ -150,15 +150,22 @@ struct LoudnessMatchTaskModalFlowView: View {
                 showNoiseSuggestions: showNoiseSuggestions,
                 selectLaterality: selectLaterality
             )
-        } footer: {
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(.horizontal, 34)
+        .padding(.vertical, 24)
+        .background(LoudnessMatchModalColors.background)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             LoudnessMatchModalPrimaryButton(
                 title: primaryButtonTitle(for: step),
                 isEnabled: isPrimaryButtonEnabled(for: step)
             ) {
                 advance(from: step)
             }
+            .padding(.horizontal, 34)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
         }
-        .background(LoudnessMatchModalColors.background)
         .navigationTitle("Loudness Match")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -182,8 +189,6 @@ struct LoudnessMatchTaskModalFlowView: View {
             return "Continue"
         case .tinnitusLocation:
             return "Start Test"
-        case .activeTest:
-            return ""
         }
     }
 
@@ -198,8 +203,6 @@ struct LoudnessMatchTaskModalFlowView: View {
                 && !viewModel.isResolvingAudiogramThreshold
                 && startLoudnessMatchTask == nil
                 && viewModel.preflightReady
-        case .activeTest:
-            return false
         }
     }
 
@@ -244,9 +247,6 @@ struct LoudnessMatchTaskModalFlowView: View {
                 return
             }
             startLoudnessMatch(for: selectedLaterality)
-
-        case .activeTest:
-            break
         }
     }
 
@@ -271,7 +271,7 @@ struct LoudnessMatchTaskModalFlowView: View {
                 return
             }
 
-            preflightSession.transition(to: phase(for: .activeTest))
+            preflightSession.transition(to: .activeTest)
             isActiveTestPresented = true
             clearStartTaskIfCurrent(generation)
         }
@@ -327,8 +327,6 @@ struct LoudnessMatchTaskModalFlowView: View {
             return .maximumVolume
         case .tinnitusLocation:
             return .postPreflight
-        case .activeTest:
-            return .activeTest
         }
     }
 

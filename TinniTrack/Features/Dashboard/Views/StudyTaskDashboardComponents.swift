@@ -1,14 +1,5 @@
 import SwiftUI
 
-enum StudyTaskOrientationRoute: Hashable {
-    case taskIntro
-    case correctEar
-    case quietRoom
-    case fit
-    case maxVolume
-    case thresholdStatus
-}
-
 struct FutureStudyTaskRow: View {
     let task: ScheduledTask
     let canStart: Bool
@@ -31,6 +22,7 @@ struct FutureStudyTaskRow: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!canStart)
+            .accessibilityIdentifier("study_start_loudness_task_button")
 
             if !canStart {
                 Text(startAvailabilityMessage)

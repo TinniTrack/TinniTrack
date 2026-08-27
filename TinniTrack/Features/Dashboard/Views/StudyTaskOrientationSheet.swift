@@ -512,6 +512,15 @@ struct StudyTaskOrientationSheet: View {
     }
 }
 
+private enum StudyTaskOrientationRoute: Hashable {
+    case taskIntro
+    case correctEar
+    case quietRoom
+    case fit
+    case maxVolume
+    case thresholdStatus
+}
+
 private struct StudyOrientationPageAction {
     let title: String
     var isEnabled = true

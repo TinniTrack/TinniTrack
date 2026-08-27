@@ -19,10 +19,16 @@ struct HomeView: View {
     ) {
         #if DEBUG
         let uiTestStudyScenario = processInfo.environment["UITEST_MOCK_STUDY_SCENARIO"]
+        let usesAudioPreflightFixture = UITestAudioPreflightFixture.isEnabled(processInfo: processInfo)
+        let usesRecurringTaskFixture = processInfo.environment[
+            UITestAudioPreflightFixture.recurringTaskEnvironmentKey
+        ] == "1"
         if studyService == nil,
            consentService == nil,
            (processInfo.environment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] == "1"
             || processInfo.environment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] == "1"
+            || usesAudioPreflightFixture
+            || usesRecurringTaskFixture
             || uiTestStudyScenario != nil) {
             let uiTestServices = UITestEnrollmentServices(processInfo: processInfo)
             self.studyService = uiTestServices
@@ -333,7 +339,6 @@ private struct StudyDetailView: View {
         }
         .navigationTitle(confirmedEnrollment == nil ? "Study Details" : studyCard.study.title)
         .navigationBarTitleDisplayMode(.inline)
-        .interactivePopGestureEnabled()
     }
 
     private var canEnroll: Bool {
@@ -410,14 +415,21 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
     private let enrollmentID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
     private let userID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     private let scenario: Scenario
+    private let servesRecurringTask: Bool
     private var isEnrolled: Bool
     private var finalizationAttemptCount = 0
 
     init(processInfo: ProcessInfo = .processInfo) {
+        let usesRecurringTaskFixture = processInfo.environment[
+            UITestAudioPreflightFixture.recurringTaskEnvironmentKey
+        ] == "1"
         scenario = Scenario(
             rawValue: processInfo.environment["UITEST_MOCK_STUDY_SCENARIO"] ?? "success"
         ) ?? .success
+        servesRecurringTask = usesRecurringTaskFixture
         isEnrolled = processInfo.environment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] == "1"
+            || UITestAudioPreflightFixture.isEnabled(processInfo: processInfo)
+            || usesRecurringTaskFixture
     }
 
     func fetchStudies() async throws -> [Study] {
@@ -470,7 +482,10 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
     }
 
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
-        []
+        guard servesRecurringTask, enrollmentID == self.enrollmentID else {
+            return []
+        }
+        return [recurringLoudnessTask]
     }
 
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
@@ -503,7 +518,26 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
             status: .enrolled,
             enrolledAt: Date(timeIntervalSince1970: 1_700_000_100),
             createdAt: Date(timeIntervalSince1970: 1_700_000_100),
-            onboardingCompletedAt: nil
+            onboardingCompletedAt: servesRecurringTask
+                ? Date(timeIntervalSince1970: 1_700_000_200)
+                : nil
+        )
+    }
+
+    private var recurringLoudnessTask: ScheduledTask {
+        let now = Date()
+        return ScheduledTask(
+            id: UUID(uuidString: "77777777-7777-7777-7777-777777777777")!,
+            enrollmentID: enrollmentID,
+            taskKey: "lm_1khz_v2",
+            taskVersion: 2,
+            scheduledFor: now,
+            windowStart: now.addingTimeInterval(-300),
+            windowEnd: now.addingTimeInterval(3_600),
+            status: .scheduled,
+            dayIndex: 0,
+            slotIndex: 0,
+            completedAt: nil
         )
     }
 
