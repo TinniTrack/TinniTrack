@@ -30,7 +30,7 @@ The currently implemented participant path is:
    - finish orientation, which generates the ongoing scheduled tasks through a Supabase RPC.
 6. Start an available Study No. 1 scheduled loudness-match task during its active window.
 7. Pass the modal preflight:
-   - AirPods Pro 2 route heuristic,
+   - one AirPods Pro A2DP route plus route-bound participant Pro 2 confirmation,
    - quiet-room gate,
    - fit confirmation,
    - maximum system volume guardrail,
@@ -42,7 +42,7 @@ The currently implemented participant path is:
    - record confidence for each accepted match.
 9. Submit a structured payload to Supabase.
 
-The current implementation stores estimated dB HL, estimated dB SPL, dB SL, route metadata, AirPods heuristic evidence, quiet-room samples, guardrail metadata, playback metadata, protocol events, quality flags, and explicit measurement limitations.
+The current implementation stores estimated dB HL, estimated dB SPL, dB SL, route metadata, the resolved AirPods calibration identifier and verification source, quiet-room samples, guardrail metadata, playback metadata, protocol events, quality flags, and explicit measurement limitations.
 
 ## App Limitations
 
@@ -102,7 +102,7 @@ Important current implementation areas:
 - `TinniTrack/Domain/Calibration/`
   - AirPods Pro 2 calibration tables, dB HL/dB SPL/amplitude conversion, guardrails, playback planning, and tone rendering.
 - `TinniTrack/Services/Audio/`
-  - AVAudioSession route/volume providers, AirPods route heuristic resolver, quiet-room SPL meter, guardrail monitor, and AVAudioEngine playback service.
+  - AVAudioSession route/volume providers, research-protocol route-confirmation resolver, quiet-room SPL meter, guardrail monitor, and AVAudioEngine playback service.
 - `TinniTrack/Domain/TinnitusProtocol/StudyNo1LoudnessMatchPayload.swift`
   - Current loudness-match payload builder and validation rules.
 - `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift`
@@ -163,7 +163,7 @@ But the Study No. 1 app flow needs behavior ResearchKit does not provide as a st
 - Participant confidence per accepted match.
 - Study-specific quality flags.
 - Payloads shaped for Supabase RPC submission.
-- App-specific AirPods Pro 2 route heuristics and restart rules.
+- App-specific AirPods Pro family route assessment, participant confirmation, and restart rules.
 
 ### Why The Audio Engine Was Rewritten Into The App
 
@@ -300,7 +300,7 @@ The current preflight readiness check requires:
 
 - calibrated playback enabled,
 - guardrails passed,
-- AirPods Pro 2 route heuristic passed,
+- one AirPods Pro A2DP route and participant Pro 2 confirmation bound to that route,
 - no active AirPods route interruption,
 - quiet-room gate passed,
 - fit seal confirmed,
@@ -675,21 +675,20 @@ The current code implements:
 
 - `failed`
 - `compatibleBluetoothPlaybackRoute`
-- `likelyAirPodsPro2Route`
+- `likelyAirPodsProRoute`
+- `likelyAirPodsProCommunicationRoute`
 
-Participant-confirmed and researcher-confirmed AirPods Pro 2 levels are not implemented in the product flow today. The calibration guardrail currently relies on a route-name heuristic resolver, not a verified external device registry.
+The correct-ear flow requires both the advisory AirPods Pro family name signal and the participant's confirmation that the current device is AirPods Pro 2. That confirmation is bound to the current A2DP route UID for the task attempt, with an exact route-name fallback only when iOS supplies no UID. A matching confirmed route is recorded with the `.researchProtocol` verification source.
 
-### Route Heuristic
+### Route Name Signal
 
-`HeadphoneRouteAssessment` treats a route as likely AirPods Pro 2 when:
+`HeadphoneRouteAssessment` treats the route name only as an advisory AirPods Pro family signal when:
 
 - the route is Bluetooth A2DP,
 - there is exactly one output,
-- the normalized route name contains an AirPods signal,
-- the normalized route name contains Pro,
-- the normalized route name contains a second-generation signal such as `2`, `second generation`, `2nd generation`, `gen 2`, or `generation 2`.
+- the normalized route name contains the complete `AirPods Pro` or `Air Pods Pro` product-family phrase.
 
-The app fingerprints route UIDs for diagnostics rather than storing raw identifiers as participant-facing proof. Exact serials and screenshots should not be collected unless the study protocol and IRB explicitly allow it.
+The name signal never proves generation and never supplies calibrated-profile verification on its own. It is a conservative family-level prerequisite that must be paired with participant confirmation. The app also uses it for diagnostics and call-profile guidance. The app fingerprints route UIDs for participant-facing diagnostics rather than displaying raw identifiers. Exact serials and screenshots should not be collected unless the study protocol and IRB explicitly allow it.
 
 ### Guardrail Policy
 
@@ -700,7 +699,7 @@ The app fingerprints route UIDs for diagnostics rather than storing raw identifi
 - exactly one output,
 - Bluetooth A2DP route,
 - verified calibrated headphone identifier `AIRPODSPROV2`,
-- non-nil verification source,
+- a verification source other than `.routeNameHeuristic`,
 - finite output volume from 0.0 through 1.0,
 - maximum output volume.
 
@@ -780,7 +779,7 @@ The current payload builder is `StudyNo1LoudnessMatchPayloadBuilder`.
 Payload version:
 
 ```text
-study-no-1-loudness-match-v1
+study-no-1-loudness-match-v2
 ```
 
 Protocol kind:
@@ -795,7 +794,7 @@ The builder validates:
 - study session/enrollment ID,
 - scheduled task ID,
 - supported device metadata,
-- AirPods model assessment or unavailable status,
+- AirPods model identifier or unavailable status,
 - audio route output metadata,
 - output volume from 0.0 through 1.0,
 - non-empty environment samples,
@@ -1074,12 +1073,12 @@ Future ResearchKit use should go through `ResearchKitStudyTaskAdapter` unless th
 
 Potential future improvements:
 
-- participant-confirmed AirPods Pro 2 setup step,
+- enrollment-scoped persistence and audit history for participant confirmations,
 - researcher-confirmed model-number workflow using A2931, A2699, A2698, A3047, A3048, or A3049,
-- explicit logging of verification level and source,
+- confirmation actor and timestamp fields in submitted payloads,
 - route UID hashing policy review,
 - optional CMHeadphoneMotion support signal,
-- restart and exclusion rules for route changes during active playback.
+- study-level exclusion rules for repeated route changes during active playback.
 
 ### Quiet-Room Measurement
 

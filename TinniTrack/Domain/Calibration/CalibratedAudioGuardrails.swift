@@ -181,7 +181,8 @@ nonisolated struct CalibratedAudioGuardrailPolicy {
         }
 
         guard output.verifiedCalibratedHeadphoneIdentifier == requiredHeadphoneIdentifier,
-              output.verificationSource != nil
+              let verificationSource = output.verificationSource,
+              verificationSource != .routeNameHeuristic
         else {
             return failure(
                 .unverifiedHeadphoneProfile(route: route, requiredIdentifier: requiredHeadphoneIdentifier),

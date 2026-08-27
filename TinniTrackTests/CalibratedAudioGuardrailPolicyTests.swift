@@ -83,6 +83,23 @@ struct CalibratedAudioGuardrailPolicyTests {
     }
 
     @Test
+    func routeNameHeuristicCannotVerifyCalibratedHeadphoneProfile() {
+        let route = CalibratedAudioRouteDetails(outputs: [
+            CalibratedAudioRouteOutput(
+                portName: "AirPods Pro 2",
+                portType: .bluetoothA2DP,
+                verifiedCalibratedHeadphoneIdentifier: "AIRPODSPROV2",
+                verificationSource: .routeNameHeuristic
+            )
+        ])
+
+        let validation = policy.validate(route: route, outputVolume: 1.0, timestamp: timestamp)
+
+        #expect(validation.state == .failed)
+        #expect(validation.error == .unverifiedHeadphoneProfile(route: route, requiredIdentifier: "AIRPODSPROV2"))
+    }
+
+    @Test
     func unknownRouteDataReturnsUnavailableAudioSessionData() {
         let noRouteValidation = policy.validate(route: nil, outputVolume: 1.0, timestamp: timestamp)
         let emptyRouteValidation = policy.validate(

@@ -5,6 +5,7 @@ struct StudyConsentLandingView: View {
     let definition: StudyConsentDefinition
     let enrollmentRecoveryStatus: StudyConsentFlowViewModel.EnrollmentRecoveryStatus
     let isResumingEnrollment: Bool
+    let canReviewConsent: Bool
     let reviewConsent: () -> Void
     let resumeEnrollment: () -> Void
     let retryEnrollmentRecoveryProbe: () -> Void
@@ -86,11 +87,23 @@ struct StudyConsentLandingView: View {
             .accessibilityIdentifier("study_consent_recovery_checking")
 
         case .unavailable:
-            Button(action: reviewConsent) {
-                StudyConsentPrimaryNavigationLabel(title: definition.landing.primaryActionTitle)
+            if canReviewConsent {
+                Button(action: reviewConsent) {
+                    StudyConsentPrimaryNavigationLabel(title: definition.landing.primaryActionTitle)
+                }
+                .buttonStyle(AppCapsuleButtonStyle())
+                .accessibilityIdentifier("study_consent_review_button")
+            } else {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text("Opening your study…")
+                        .font(.subheadline)
+                        .foregroundStyle(StudyConsentReadableColors.bodyText)
+                }
+                .frame(maxWidth: .infinity, minHeight: 58)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("study_consent_completion_routing")
             }
-            .buttonStyle(AppCapsuleButtonStyle())
-            .accessibilityIdentifier("study_consent_review_button")
 
         case .available(let recovery):
             StudyConsentRecoveryCard(

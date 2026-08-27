@@ -1,12 +1,23 @@
 # AirPods Pro 2 Runtime Verification Findings
 
-Last reviewed: 2026-06-23
+Last reviewed: 2026-08-26
 
 ## Summary
 
 Public iOS APIs do not provide a trustworthy way for an App Store app to prove that the currently connected headphones are AirPods Pro 2. `AVAudioSession` can report the active audio route and some route metadata, but it does not expose AirPods model number, generation, serial number, firmware version, Bluetooth MAC address, noise-control mode, or a signed device identity.
 
 For TinniTrack, AirPods Pro 2 should be treated as a study setup and eligibility requirement that is confirmed by the participant or researcher, then continuously checked at runtime with conservative audio-route guardrails. The app can verify that playback is currently routed through a compatible Bluetooth playback profile, but it cannot independently attest the exact headphone model.
+
+## Implementation Status
+
+The product now follows this trust boundary:
+
+- The correct-ear step asks the participant to confirm that the current device is AirPods Pro 2.
+- The confirmation is bound to the current A2DP route UID for the task attempt. If iOS supplies no UID, the app falls back to the exact route name for within-attempt correlation only.
+- A matching confirmed route resolves the `AIRPODSPROV2` calibration identifier with the `.researchProtocol` source.
+- Route names provide an advisory AirPods Pro family signal. The product conservatively requires that family signal together with participant confirmation; the name never proves generation or satisfies calibrated-profile verification on its own.
+- `CalibratedAudioGuardrailPolicy` rejects `.routeNameHeuristic` as calibration proof.
+- The app continues to require one A2DP output, maximum volume, and route/volume continuity.
 
 ## Public API Findings
 
@@ -58,13 +69,14 @@ HealthKit headphone audio exposure data can support hearing-health context and r
 
 Implement runtime verification as an assessment with confidence levels rather than a boolean model check.
 
-Suggested levels:
+Route assessment levels:
 
 - `failed`: route is absent or incompatible.
 - `compatibleBluetoothPlaybackRoute`: exactly one Bluetooth A2DP output is active.
 - `likelyAirPodsProRoute`: A2DP output is active and the route name looks like AirPods Pro.
-- `participantConfirmedAirPodsPro2`: participant confirmed the model number during onboarding or pre-task setup.
-- `researcherConfirmedAirPodsPro2`: researcher confirmed the model number in a supervised workflow.
+- `likelyAirPodsProCommunicationRoute`: an AirPods Pro-like route is active through HFP call/headset audio rather than A2DP playback.
+
+Model confirmation is tracked separately from route assessment. A `ResearchProtocolHeadphoneRouteConfirmation` records the expected calibration identifier and the route UID (or exact route name fallback) that the participant confirmed during onboarding or pre-task setup.
 
 For calibrated playback tasks, require:
 
@@ -74,7 +86,7 @@ For calibrated playback tasks, require:
 - route and volume remain unchanged after verification,
 - participant or researcher AirPods Pro 2 confirmation is present.
 
-The route name should only influence warning text or confidence metadata. It must not be the sole basis for passing the AirPods Pro 2 requirement because users can rename AirPods and other devices can use misleading names.
+The route name is an advisory AirPods Pro family signal and must not be the sole basis for passing the AirPods Pro 2 requirement because users can rename AirPods and other devices can use misleading names. TinniTrack conservatively combines that family signal with an explicit route-bound generation confirmation.
 
 ## AVAudioSession Checks
 
@@ -109,8 +121,14 @@ enum HeadphoneVerificationLevel: String, Equatable {
     case failed
     case compatibleBluetoothPlaybackRoute
     case likelyAirPodsProRoute
-    case participantConfirmedAirPodsPro2
-    case researcherConfirmedAirPodsPro2
+    case likelyAirPodsProCommunicationRoute
+}
+
+struct ResearchProtocolHeadphoneRouteConfirmation: Equatable {
+    let headphoneIdentifier: String
+    let portUID: String?
+    let portName: String
+    let confirmedAt: Date
 }
 ```
 
@@ -136,7 +154,7 @@ Bluetooth HFP:
 
 Bluetooth A2DP, but route name does not look like AirPods Pro:
 
-> Bluetooth playback is active, but this device does not look like AirPods Pro. iOS cannot verify the model automatically.
+> Bluetooth playback is active, but the selected route is not identified as AirPods Pro. Select the AirPods Pro route, then check again.
 
 AirPods Pro-like route name:
 
@@ -154,9 +172,9 @@ Volume changed after verification:
 
 > System volume changed after verification. Set volume back to the required level and restart this task.
 
-## Study Data to Log
+## Recommended Study Data to Log
 
-For each calibrated task attempt, log:
+For each calibrated task attempt, the study protocol should log:
 
 - verification level,
 - participant/researcher confirmation source,
@@ -173,6 +191,8 @@ For each calibrated task attempt, log:
 - task restart requirement.
 
 Do not log serial numbers or participant-entered model numbers unless the IRB/protocol explicitly requires it. If model numbers are collected, store only the selected model code or confirmation status, not screenshots.
+
+The current payload records the resolved calibration identifier and `.researchProtocol` verification source, but not the confirmation actor or timestamp. Those fields remain future schema work.
 
 ## SensorKit Findings
 

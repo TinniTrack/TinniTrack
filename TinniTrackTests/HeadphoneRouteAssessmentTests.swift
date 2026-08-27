@@ -12,7 +12,7 @@ struct HeadphoneRouteAssessmentTests {
 
         #expect(assessment.level == .failed)
         #expect(assessment.primaryIssue == .noOutput)
-        #expect(assessment.passesAirPodsPro2Heuristic == false)
+        #expect(assessment.isCompatibleBluetoothPlaybackRoute == false)
     }
 
     @Test
@@ -56,18 +56,18 @@ struct HeadphoneRouteAssessmentTests {
     }
 
     @Test
-    func airPodsPro2HeadsetProfilePassesIdentityHeuristicDuringCalls() {
+    func airPodsProHeadsetProfileRetainsAdvisoryNameSignalDuringCalls() {
         let assessment = assessor.assess(
             outputs: [output(name: "AirPods Pro 2", portType: .bluetoothHFP)],
             outputVolume: 1.0
         )
 
-        #expect(assessment.level == .likelyAirPodsPro2CommunicationRoute)
-        #expect(assessment.issues.isEmpty)
-        #expect(assessment.passesAirPodsPro2Heuristic)
-        #expect(assessment.passesAirPodsPro2PlaybackHeuristic == false)
+        #expect(assessment.level == .likelyAirPodsProCommunicationRoute)
+        #expect(assessment.primaryIssue == .bluetoothHeadsetProfile)
+        #expect(assessment.looksLikeAirPodsProRoute)
+        #expect(assessment.isCompatibleBluetoothPlaybackRoute == false)
         #expect(assessment.diagnosticReport.contains("Result: failed"))
-        #expect(assessment.diagnosticReport.contains("AirPods identity: likely AirPods Pro 2"))
+        #expect(assessment.diagnosticReport.contains("AirPods name signal: looks like AirPods Pro"))
     }
 
     @Test
@@ -79,7 +79,7 @@ struct HeadphoneRouteAssessmentTests {
 
         #expect(assessment.level == .failed)
         #expect(assessment.primaryIssue == .bluetoothHeadsetProfile)
-        #expect(assessment.passesAirPodsPro2Heuristic == false)
+        #expect(assessment.looksLikeAirPodsProRoute == false)
     }
 
     @Test
@@ -95,37 +95,45 @@ struct HeadphoneRouteAssessmentTests {
 
     @Test(arguments: [
         "Vasyl's AirPods Pro 2",
+        "Basil’s AirPods Pro",
+        "Air Pods Pro",
         "AirPods Pro (2nd generation)",
         "AirPods Pro second generation",
         "AirPods Pro Gen 2"
     ])
-    func airPodsPro2LikeA2DPRoutePasses(portName: String) {
+    func airPodsProLikeA2DPRouteIsCompatibleWithAdvisoryNameSignal(portName: String) {
         let assessment = assessor.assess(
             outputs: [output(name: portName, portType: .bluetoothA2DP)],
             outputVolume: 0.25
         )
 
-        #expect(assessment.level == .likelyAirPodsPro2Route)
+        #expect(assessment.level == .likelyAirPodsProRoute)
         #expect(assessment.issues.isEmpty)
-        #expect(assessment.passesAirPodsPro2Heuristic)
+        #expect(assessment.looksLikeAirPodsProRoute)
+        #expect(assessment.isCompatibleBluetoothPlaybackRoute)
         #expect(assessment.outputVolume == 0.25)
     }
 
     @Test(arguments: [
         "Bluetooth Speaker",
         "AirPods Max",
-        "AirPods Pro",
-        "AirPods 3"
+        "AirPods 3",
+        "Beats Fit Pro 2",
+        "Galaxy Buds Pro 2",
+        "FakeAirPods Pro",
+        "NotAirPods Pro",
+        "AirPods Professional"
     ])
-    func nonMatchingA2DPRouteFailsAirPodsPro2Heuristic(portName: String) {
+    func otherA2DPNamesRemainCompatibleWithoutAirPodsNameSignal(portName: String) {
         let assessment = assessor.assess(
             outputs: [output(name: portName, portType: .bluetoothA2DP)],
             outputVolume: 1.0
         )
 
         #expect(assessment.level == .compatibleBluetoothPlaybackRoute)
-        #expect(assessment.primaryIssue == .unsupportedBluetoothPlaybackDevice)
-        #expect(assessment.passesAirPodsPro2Heuristic == false)
+        #expect(assessment.issues.isEmpty)
+        #expect(assessment.looksLikeAirPodsProRoute == false)
+        #expect(assessment.isCompatibleBluetoothPlaybackRoute)
     }
 
     @Test
@@ -135,26 +143,13 @@ struct HeadphoneRouteAssessmentTests {
             outputVolume: 0.9
         )
 
-        #expect(assessment.diagnosticReport.contains("Result: failed"))
-        #expect(assessment.diagnosticReport.contains("Issue: unsupportedBluetoothPlaybackDevice"))
+        #expect(assessment.diagnosticReport.contains("Result: compatible playback route"))
+        #expect(assessment.diagnosticReport.contains("AirPods name signal: looks like AirPods Pro"))
+        #expect(assessment.diagnosticReport.contains("Issue: none"))
         #expect(assessment.diagnosticReport.contains("Port name: Basil's AirPods Pro"))
         #expect(assessment.diagnosticReport.contains("Raw port type: BluetoothA2DPOutput"))
         #expect(assessment.diagnosticReport.contains("Route UID hash:"))
         #expect(assessment.diagnosticReport.contains("private-route-id") == false)
-    }
-
-    @Test
-    func routeNameHeuristicResolverMarksOnlyLikelyAirPodsPro2Routes() {
-        let resolver = RouteNameHeuristicCalibratedHeadphoneResolver()
-
-        let verified = resolver.verification(for: output(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP))
-        let callRoute = resolver.verification(for: output(name: "Vasyl's AirPods Pro 2", portType: .bluetoothHFP))
-        let rejected = resolver.verification(for: output(name: "AirPods Max", portType: .bluetoothA2DP))
-
-        #expect(verified?.identifier == "AIRPODSPROV2")
-        #expect(verified?.source == .routeNameHeuristic)
-        #expect(callRoute == nil)
-        #expect(rejected == nil)
     }
 
     private func output(

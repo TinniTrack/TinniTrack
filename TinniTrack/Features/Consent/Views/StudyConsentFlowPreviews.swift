@@ -8,14 +8,14 @@ import SwiftUI
 #Preview("Reader") {
     StudyConsentReaderView(
         viewModel: StudyConsentFlowPreviewModel.makeReader(),
-        isCompletionHandlingRequested: .constant(false)
+        onEnrollmentCompleted: {}
     )
 }
 
 #Preview("Signature") {
     StudyConsentSignatureView(
         viewModel: StudyConsentFlowPreviewModel.makeSignature(),
-        isCompletionHandlingRequested: .constant(false),
+        onEnrollmentCompleted: {},
         exitConsentFlow: {}
     )
 }

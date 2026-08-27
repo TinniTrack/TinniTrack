@@ -60,7 +60,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     var canContinueToSignature: Bool {
-        hasScrolledToConsentEnd
+        state == .reviewingConsent && hasScrolledToConsentEnd
     }
 
     var canReviewConsent: Bool {
@@ -97,10 +97,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     var canSignAndEnroll: Bool {
-        isSignatureFormComplete
-            && state != .finalizing
-            && state != .completed
-            && state != .dismissed
+        isSignatureFormComplete && state == .signing
     }
 
     func reviewConsent() {
@@ -142,9 +139,10 @@ final class StudyConsentFlowViewModel: ObservableObject {
         await probeEnrollmentRecovery()
     }
 
-    func resumeEnrollment() async {
-        guard canResumeEnrollment else { return }
-        guard case .available(let recovery) = enrollmentRecoveryStatus else { return }
+    @discardableResult
+    func resumeEnrollment() async -> Bool {
+        guard canResumeEnrollment else { return false }
+        guard case .available(let recovery) = enrollmentRecoveryStatus else { return false }
 
         errorMessage = nil
         state = .finalizing
@@ -153,10 +151,12 @@ final class StudyConsentFlowViewModel: ObservableObject {
             try await consentService.resumeEnrollment(for: study)
             enrollmentRecoveryStatus = .unavailable
             state = .completed
+            return true
         } catch {
             enrollmentRecoveryStatus = .available(recovery)
             state = .landing
             errorMessage = Self.userFacingErrorMessage(for: error)
+            return false
         }
     }
 
@@ -170,17 +170,19 @@ final class StudyConsentFlowViewModel: ObservableObject {
         }
     }
 
+    func returnToReviewAfterSignatureNavigationPop() {
+        guard state == .signing else { return }
+        resetConsentReviewProgress()
+        state = .reviewingConsent
+    }
+
     func markConsentScrolledToEnd() {
+        guard state == .reviewingConsent else { return }
         hasScrolledToConsentEnd = true
     }
 
     func continueToSignature() {
         guard canContinueToSignature else { return }
-        state = .signing
-    }
-
-    func restoreSignatureStepAfterNavigationPresentation() {
-        guard state != .finalizing else { return }
         state = .signing
     }
 
@@ -196,8 +198,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
             resetConsentReviewProgress()
             state = .landing
         case .signing:
-            resetConsentReviewProgress()
-            state = .reviewingConsent
+            returnToReviewAfterSignatureNavigationPop()
         case .landing, .finalizing, .completed, .dismissed, .failed:
             break
         }
@@ -228,16 +229,17 @@ final class StudyConsentFlowViewModel: ObservableObject {
         hasScrolledToConsentEnd = false
     }
 
-    func signAndEnroll() async {
-        guard canSignAndEnroll else { return }
+    @discardableResult
+    func signAndEnroll() async -> Bool {
+        guard canSignAndEnroll else { return false }
         guard definition.studySlug == study.slug else {
             fail(message: ConsentServiceError.studyMismatch.localizedDescription)
-            return
+            return false
         }
 
         guard let signatureImageData else {
             fail(message: "Draw your signature before enrolling.")
-            return
+            return false
         }
         let signatureImageSHA256Hex = artifactGenerator.sha256Hex(for: signatureImageData)
 
@@ -281,7 +283,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
             guard consentCompletion.isValidSignedConsent else {
                 fail(message: "Consent must include your name, signature, signed PDF, and consent metadata.")
-                return
+                return false
             }
 
             try await consentService.finalizeConsentAndEnroll(
@@ -290,8 +292,10 @@ final class StudyConsentFlowViewModel: ObservableObject {
             )
             pendingConsentCompletion = nil
             state = .completed
+            return true
         } catch {
             fail(message: Self.userFacingErrorMessage(for: error))
+            return false
         }
     }
 

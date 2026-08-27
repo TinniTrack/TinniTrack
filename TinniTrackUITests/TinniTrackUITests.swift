@@ -381,6 +381,78 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
+    func testStudyNo1EnrollmentSuccessRoutesAfterSignatureFirstAndNameEdits() throws {
+        let app = makeAuthenticatedStudyApp()
+        app.launchEnvironment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] = "1"
+        app.launch()
+
+        let studyCard = app.buttons["study_card_study-no-1"]
+        XCTAssertTrue(studyCard.waitForExistence(timeout: 5))
+        studyCard.tap()
+
+        XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 3))
+        app.buttons["study_consent_review_button"].tap()
+        XCTAssertTrue(app.staticTexts["Informed Consent"].waitForExistence(timeout: 3))
+
+        scrollConsentToBottom(in: app)
+        let signatureStepButton = app.buttons["study_consent_signature_button"]
+        XCTAssertTrue(signatureStepButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(signatureStepButton.isEnabled)
+        signatureStepButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 3))
+        let signAndEnrollButton = app.buttons["Sign and Enroll"]
+        XCTAssertFalse(signAndEnrollButton.isEnabled)
+
+        let drawSignatureButton = app.buttons["study_consent_draw_signature_button"]
+        XCTAssertTrue(drawSignatureButton.waitForExistence(timeout: 2))
+        drawSignatureButton.tap()
+        let saveSignatureButton = app.buttons["study_signature_save_button"]
+        XCTAssertTrue(saveSignatureButton.waitForExistence(timeout: 2))
+        drawSignature(in: app)
+        XCTAssertTrue(saveSignatureButton.isEnabled)
+        saveSignatureButton.tap()
+
+        XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
+        XCTAssertFalse(signAndEnrollButton.isEnabled)
+
+        let firstNameField = app.textFields["study_consent_first_name_field"]
+        let lastNameField = app.textFields["study_consent_last_name_field"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))
+        XCTAssertTrue(lastNameField.exists)
+
+        lastNameField.tap()
+        lastNameField.typeText("Draft")
+        XCTAssertTrue(waitForEnabledState(false, of: signAndEnrollButton))
+
+        firstNameField.tap()
+        firstNameField.typeText("Alex")
+        XCTAssertTrue(waitForEnabledState(true, of: signAndEnrollButton))
+
+        replaceText(in: lastNameField, with: "")
+        XCTAssertTrue(waitForEnabledState(false, of: signAndEnrollButton))
+        replaceText(in: lastNameField, with: "Rivers")
+        XCTAssertTrue(waitForEnabledState(true, of: signAndEnrollButton))
+
+        replaceText(in: firstNameField, with: "")
+        XCTAssertTrue(waitForEnabledState(false, of: signAndEnrollButton))
+        replaceText(in: firstNameField, with: "Alex")
+        XCTAssertTrue(waitForEnabledState(true, of: signAndEnrollButton))
+
+        let signatureScroll = app.scrollViews["study_consent_signature"]
+        for _ in 0..<3 where !signAndEnrollButton.isHittable {
+            signatureScroll.swipeUp()
+        }
+        XCTAssertTrue(signAndEnrollButton.isHittable)
+        signAndEnrollButton.tap()
+
+        XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
+        XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
+        XCTAssertFalse(app.navigationBars["Study Details"].exists)
+    }
+
+    @MainActor
     func testStudyConsentEmailLinksExposeCopyMenu() throws {
         let app = makeAuthenticatedStudyApp()
         app.launch()
@@ -476,7 +548,20 @@ final class TinniTrackUITests: XCTestCase {
            !currentValue.isEmpty {
             field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count))
         }
-        field.typeText(text)
+        if !text.isEmpty {
+            field.typeText(text)
+        }
+    }
+
+    @MainActor
+    private func waitForEnabledState(
+        _ isEnabled: Bool,
+        of element: XCUIElement,
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        let predicate = NSPredicate(format: "enabled == %@", NSNumber(value: isEnabled))
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
     @MainActor

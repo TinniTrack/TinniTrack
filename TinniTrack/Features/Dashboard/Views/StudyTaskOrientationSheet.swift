@@ -14,6 +14,8 @@ struct StudyTaskOrientationSheet: View {
     @State private var isCloseConfirmationPresented = false
     @State private var isNoiseSuggestionsPresented = false
     @State private var orientationThresholdErrorMessage: String?
+    @State private var prepareOnboardingThresholdTask: Task<Void, Never>?
+    @AccessibilityFocusState private var isInterruptionPopupFocused: Bool
 
     init(
         step: Binding<StudyTaskOrientationStep>,
@@ -45,8 +47,10 @@ struct StudyTaskOrientationSheet: View {
                         await handleOrientationThresholdCompletion(summary, onboardingTask: onboardingTask)
                     }
                 }
+                .accessibilityHidden(isInterruptionOverlayPresented)
             } else {
                 orientationNavigation
+                    .accessibilityHidden(isInterruptionOverlayPresented)
             }
 
             if shouldShowAirPodsInterruptionOverlay {
@@ -74,6 +78,12 @@ struct StudyTaskOrientationSheet: View {
             if !isInterrupted {
                 resumeCurrentStepAfterAirPodsReconnect()
             }
+        }
+        .onChange(of: loudnessViewModel.headphoneRouteAssessment) { _, assessment in
+            returnToAirPodsConfirmationIfNeeded(for: assessment)
+        }
+        .onChange(of: isInterruptionOverlayPresented) { _, isPresented in
+            isInterruptionPopupFocused = isPresented
         }
         .onDisappear {
             cleanupForDismiss(abortActiveTest: false)
@@ -428,7 +438,7 @@ struct StudyTaskOrientationSheet: View {
         case .hearingTest:
             return viewModel.isAudiogramPrerequisiteMet
         case .correctEar:
-            return loudnessViewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic
+            return loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
         case .quietRoom:
             return loudnessViewModel.environmentGateResult?.passed == true
         case .maxVolume:
@@ -440,12 +450,7 @@ struct StudyTaskOrientationSheet: View {
     }
 
     private func isPrimaryButtonInteractionEnabled(for pageStep: StudyTaskOrientationStep) -> Bool {
-        switch pageStep {
-        case .correctEar:
-            return true
-        default:
-            return isPrimaryButtonEnabled(for: pageStep)
-        }
+        isPrimaryButtonEnabled(for: pageStep)
     }
 
     private func isPrimaryButtonLoading(for pageStep: StudyTaskOrientationStep) -> Bool {
@@ -487,12 +492,20 @@ struct StudyTaskOrientationSheet: View {
     }
 
     private var airPodsInterruptionTitle: String {
-        loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp
+        if isCurrentA2DPRouteUnconfirmed {
+            return "AirPods Output Changed"
+        }
+
+        return loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp
             ? "Calibrated Audio Blocked"
             : "Reconnect Your AirPods"
     }
 
     private var airPodsInterruptionBodyText: String {
+        if isCurrentA2DPRouteUnconfirmed {
+            return "The audio output changed after confirmation. Exit and restart orientation to confirm the current AirPods before continuing."
+        }
+
         if loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp {
             return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones. Onboarding will resume once AirPods return to calibrated playback."
         }
@@ -521,49 +534,56 @@ struct StudyTaskOrientationSheet: View {
             Color.black.opacity(0.32)
                 .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 18) {
-                if let quietRoomLevelRatio {
-                    LoudnessMatchNoiseGateMeter(
-                        status: .tooLoud,
-                        levelRatio: quietRoomLevelRatio,
-                        isCompact: true
-                    )
-                    .padding(.horizontal, 6)
-                    .accessibilityHidden(true)
-                } else {
-                    Image(systemName: systemName)
-                        .font(.system(size: 58, weight: .regular))
-                        .foregroundStyle(LoudnessMatchModalColors.primary)
-                        .frame(maxWidth: .infinity)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    if let quietRoomLevelRatio {
+                        LoudnessMatchNoiseGateMeter(
+                            status: .tooLoud,
+                            levelRatio: quietRoomLevelRatio,
+                            isCompact: true
+                        )
+                        .padding(.horizontal, 6)
                         .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: systemName)
+                            .font(.system(size: 58, weight: .regular))
+                            .foregroundStyle(LoudnessMatchModalColors.primary)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityHidden(true)
+                    }
+
+                    Text(title)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundStyle(LoudnessMatchModalColors.text)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityFocused($isInterruptionPopupFocused)
+
+                    Text(bodyText)
+                        .font(.callout)
+                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    LoudnessMatchModalPrimaryButton(title: "Exit Orientation", isEnabled: true) {
+                        exitTask()
+                    }
                 }
-
-                Text(title)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundStyle(LoudnessMatchModalColors.text)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .multilineTextAlignment(.center)
-
-                Text(bodyText)
-                    .font(.callout)
-                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(5)
-                    .minimumScaleFactor(0.82)
-
-                LoudnessMatchModalPrimaryButton(title: "Exit Orientation", isEnabled: true) {
-                    requestClose()
-                }
+                .padding(24)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(LoudnessMatchModalColors.background)
+                        .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 12)
+                )
+                .padding(.horizontal, 30)
+                .padding(.vertical, 32)
             }
-            .padding(24)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(LoudnessMatchModalColors.background)
-                    .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 12)
-            )
-            .padding(.horizontal, 30)
+            .scrollIndicators(.hidden)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
         .accessibilityIdentifier(accessibilityIdentifier)
     }
 
@@ -610,16 +630,31 @@ struct StudyTaskOrientationSheet: View {
             guard loudnessViewModel.acknowledgeSafetyAndStartTest() else {
                 return
             }
-            Task {
-                if await viewModel.prepareStudyOnboardingThresholdTask() != nil {
-                    guard currentNavigationStep == .maxVolume else {
-                        return
-                    }
-                    loudnessViewModel.stopVolumeGateMonitoring()
-                    step = .activeTest
-                } else if !viewModel.requiresStudyOnboardingCompletion {
-                    close()
+            prepareOnboardingThresholdTask?.cancel()
+            prepareOnboardingThresholdTask = Task { @MainActor in
+                let onboardingTask = await viewModel.prepareStudyOnboardingThresholdTask()
+                guard !Task.isCancelled,
+                      currentNavigationStep == .maxVolume,
+                      step == .maxVolume
+                else {
+                    return
                 }
+
+                if !viewModel.requiresStudyOnboardingCompletion {
+                    close()
+                    return
+                }
+
+                guard onboardingTask != nil,
+                      loudnessViewModel.preflightReady,
+                      loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed,
+                      !loudnessViewModel.isAirPodsRouteInterrupted
+                else {
+                    return
+                }
+
+                loudnessViewModel.stopVolumeGateMonitoring()
+                step = .activeTest
             }
         case .activeTest:
             break
@@ -659,6 +694,8 @@ struct StudyTaskOrientationSheet: View {
                 loudnessViewModel.cancelEnvironmentGate()
                 loudnessViewModel.stopAirPodsContinuityMonitoring()
             case .maxVolume:
+                prepareOnboardingThresholdTask?.cancel()
+                prepareOnboardingThresholdTask = nil
                 loudnessViewModel.stopVolumeGateMonitoring()
             case .welcome, .hearingTest, .taskIntro, .fit, .activeTest:
                 break
@@ -670,7 +707,17 @@ struct StudyTaskOrientationSheet: View {
         isCloseConfirmationPresented = true
     }
 
+    private func exitTask() {
+        cleanupForDismiss(abortActiveTest: hasStartedTest)
+        close()
+    }
+
     private func handleStepEntered(_ newStep: StudyTaskOrientationStep) {
+        if newStep != .maxVolume {
+            prepareOnboardingThresholdTask?.cancel()
+            prepareOnboardingThresholdTask = nil
+        }
+
         switch newStep {
         case .correctEar:
             loudnessViewModel.stopAirPodsContinuityMonitoring()
@@ -703,7 +750,29 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
+    private var isCurrentA2DPRouteUnconfirmed: Bool {
+        loudnessViewModel.headphoneRouteAssessment.isCompatibleBluetoothPlaybackRoute
+            && !loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
+    }
+
+    private func returnToAirPodsConfirmationIfNeeded(for assessment: HeadphoneRouteAssessment) {
+        guard step != .welcome,
+              step != .hearingTest,
+              step != .taskIntro,
+              step != .correctEar,
+              step != .activeTest,
+              assessment.isCompatibleBluetoothPlaybackRoute,
+              !loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
+        else {
+            return
+        }
+
+        navigationPath = Self.initialNavigationPath(for: .correctEar)
+    }
+
     private func cleanupForDismiss(abortActiveTest: Bool) {
+        prepareOnboardingThresholdTask?.cancel()
+        prepareOnboardingThresholdTask = nil
         loudnessViewModel.stopHeadphoneRouteMonitoring()
         loudnessViewModel.stopAirPodsContinuityMonitoring()
         loudnessViewModel.cancelEnvironmentGate()
@@ -714,6 +783,10 @@ struct StudyTaskOrientationSheet: View {
         } else if loudnessViewModel.isPlaying {
             loudnessViewModel.stopTone()
         }
+    }
+
+    private var isInterruptionOverlayPresented: Bool {
+        shouldShowAirPodsInterruptionOverlay || shouldShowQuietRoomInterruptionPopup
     }
 
     private var messageText: String {
@@ -734,6 +807,8 @@ struct StudyTaskOrientationSheet: View {
             return "Please place your AirPods in your ear."
         case .unsupportedHeadphones:
             return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
+        case .airPodsPro2ConfirmationRequired:
+            return "Confirm that the connected headphones are AirPods Pro 2 before continuing."
         case .calibratedPlaybackRouteUnavailable:
             return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
         case .missingAudiogramThreshold(let message):
