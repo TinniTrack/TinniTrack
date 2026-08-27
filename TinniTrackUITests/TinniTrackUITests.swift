@@ -525,11 +525,15 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Place your AirPods in the correct ear"].exists)
         XCTAssertFalse(app.staticTexts["Place your AirPods in the correct ear."].exists)
         XCTAssertEqual(
-            app.images.matching(identifier: "loudness_airpod_left_image").count,
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_left_image")
+                .count,
             1
         )
         XCTAssertEqual(
-            app.images.matching(identifier: "loudness_airpod_right_image").count,
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_right_image")
+                .count,
             1
         )
         XCTAssertTrue(app.staticTexts["AirPods connected"].exists)
@@ -537,16 +541,21 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertEqual(primaryButton.label, "Confirm AirPods Pro 2")
         XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
         XCTAssertFalse(app.switches["loudness_airpods_pro2_confirmation"].exists)
-        XCTAssertFalse(
-            app.staticTexts[
+        let removedGenerationBlurb = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@",
                 "iOS cannot identify the AirPods generation. Open Settings, choose Bluetooth, then tap the Info button beside your AirPods. If these are AirPods Pro 2 but the connected name does not include “AirPods Pro,” restore that name there or contact the study team."
-            ].exists
+            )
+        ).firstMatch
+        XCTAssertFalse(
+            removedGenerationBlurb.exists
         )
 
         primaryButton.tap()
 
         XCTAssertTrue(
-            app.otherElements["loudness_noise_gate_step"].waitForExistence(timeout: 3)
+            app.descendants(matching: .any)["loudness_noise_gate_step"]
+                .waitForExistence(timeout: 3)
         )
     }
 
@@ -559,19 +568,29 @@ final class TinniTrackUITests: XCTestCase {
         let primaryButton = advanceToAirPodsStep(in: app)
 
         XCTAssertEqual(
-            app.images.matching(identifier: "loudness_airpod_left_image").count,
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_left_image")
+                .count,
             1
         )
         XCTAssertEqual(
-            app.images.matching(identifier: "loudness_airpod_right_image").count,
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_right_image")
+                .count,
             1
         )
-        XCTAssertTrue(app.staticTexts["Waiting for AirPods"].exists)
-        XCTAssertTrue(app.staticTexts["Connect both AirPods to this iPhone."].exists)
-        XCTAssertTrue(
-            app.staticTexts[
+        let status = app.descendants(matching: .any)["loudness_airpods_status_label"]
+        XCTAssertTrue(status.exists)
+        XCTAssertTrue(status.label.contains("Waiting for AirPods"))
+        XCTAssertTrue(status.label.contains("Connect both AirPods to this iPhone."))
+        let troubleshooting = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@",
                 "Make sure your AirPods are not connected to another device. If your iPhone does not detect them, take them out and put them back in."
-            ].exists
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            troubleshooting.exists
         )
         XCTAssertEqual(primaryButton.label, "Confirm AirPods Pro 2")
         XCTAssertTrue(waitForEnabledState(false, of: primaryButton, timeout: 3))

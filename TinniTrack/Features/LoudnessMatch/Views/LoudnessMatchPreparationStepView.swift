@@ -116,6 +116,7 @@ private struct AirPodsCorrectEarStepView: View {
             #endif
         }
         .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("loudness_airpods_step")
     }
 
@@ -201,13 +202,15 @@ private struct AirPodsCorrectEarStepView: View {
             Image(systemName: systemName)
                 .font(.system(size: 88, weight: .regular))
                 .foregroundStyle(LoudnessMatchModalColors.graphic)
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityIdentifier(accessibilityIdentifier)
+                .accessibilityHidden(true)
             Text(label)
                 .font(.headline)
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
                 .accessibilityHidden(true)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(accessibilityLabel))
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var connectionTitle: String {

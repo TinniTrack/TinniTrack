@@ -379,23 +379,15 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             return
         }
 
-        guard let portName = headphoneRouteAssessment.portName,
-              let portTypeRawValue = headphoneRouteAssessment.portTypeRawValue
-        else {
+        guard let portName = headphoneRouteAssessment.portName else {
             message = airPodsGateMessage(for: headphoneRouteAssessment)
             return
         }
 
-        let output = AudioSessionRouteOutputSnapshot(
-            portName: portName,
-            portTypeRawValue: portTypeRawValue,
-            portUID: headphoneRouteAssessment.routeUID,
-            channelNames: headphoneRouteAssessment.channelNames
-        )
         let confirmation = ResearchProtocolHeadphoneRouteConfirmation(
             headphoneIdentifier: CalibratedHeadphoneIdentifier.airPodsPro2,
-            portUID: output.portUID,
-            portName: output.portName,
+            portUID: headphoneRouteAssessment.routeUID,
+            portName: portName,
             confirmedAt: dateProvider()
         )
 

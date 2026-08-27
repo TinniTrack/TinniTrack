@@ -25,11 +25,15 @@ enum UITestAudioPreflightFixture {
         let routeProvider: AudioSessionRouteVolumeProviding = isWaitingForAirPods
             ? WaitingAudioSessionRouteProvider()
             : ReadyAudioSessionRouteProvider()
-        let guardrailValidation = makePassedGuardrailValidation(
-            verificationSource: requiresConfirmation
-                ? .appCalibrationProfile
-                : .researchProtocol
-        )
+        let guardrailValidation = if isWaitingForAirPods {
+            makeWaitingForAirPodsGuardrailValidation()
+        } else {
+            makePassedGuardrailValidation(
+                verificationSource: requiresConfirmation
+                    ? .appCalibrationProfile
+                    : .researchProtocol
+            )
+        }
         let viewModel = LoudnessMatchTaskFlowViewModel(
             guardrailProvider: { guardrailValidation },
             headphoneRouteProvider: routeProvider,
@@ -42,6 +46,15 @@ enum UITestAudioPreflightFixture {
         }
         viewModel.clearMessage()
         return viewModel
+    }
+
+    private static func makeWaitingForAirPodsGuardrailValidation()
+        -> CalibratedAudioGuardrailValidation {
+        CalibratedAudioGuardrailPolicy().validate(
+            route: CalibratedAudioRouteDetails(outputs: []),
+            outputVolume: 1.0,
+            timestamp: fixtureDate
+        )
     }
 
     private static func makePassedGuardrailValidation(

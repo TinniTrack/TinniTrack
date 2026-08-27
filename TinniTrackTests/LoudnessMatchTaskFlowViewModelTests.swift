@@ -830,6 +830,36 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func correctEarConfirmationSurvivesPassedGuardrailAssessmentSync() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [
+                audioOutput(
+                    name: "Verified AirPods Pro 2",
+                    portType: .bluetoothA2DP,
+                    uid: "verified-airpods-pro-2"
+                )
+            ],
+            outputVolume: 1.0
+        )
+        let validation = passedGuardrails(verificationSource: .appCalibrationProfile)
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { validation },
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.headphoneRouteAssessment.portTypeRawValue == nil)
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed)
+        #expect(viewModel.validateAirPodsForCorrectEarStep())
+        #expect(viewModel.message == nil)
+    }
+
+    @Test
     func participantConfirmationBecomesGuardrailProfileProofForDefaultAirPodsName() {
         let routeProvider = MockAudioSessionRouteVolumeProvider(
             outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP)],
@@ -1478,15 +1508,19 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
     }
 
-    private func passedGuardrails() -> CalibratedAudioGuardrailValidation {
+    private func passedGuardrails(
+        verificationSource: CalibratedHeadphoneVerificationSource = .researchProtocol
+    ) -> CalibratedAudioGuardrailValidation {
         CalibratedAudioGuardrailPolicy().validate(
-            route: supportedRoute(),
+            route: supportedRoute(verificationSource: verificationSource),
             outputVolume: 1.0,
             timestamp: timestamp
         )
     }
 
-    private func supportedRoute() -> CalibratedAudioRouteDetails {
+    private func supportedRoute(
+        verificationSource: CalibratedHeadphoneVerificationSource = .researchProtocol
+    ) -> CalibratedAudioRouteDetails {
         CalibratedAudioRouteDetails(outputs: [
             CalibratedAudioRouteOutput(
                 portName: "Verified AirPods Pro 2",
@@ -1494,7 +1528,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
                 portUID: "verified-airpods-pro-2",
                 channelNames: ["left", "right"],
                 verifiedCalibratedHeadphoneIdentifier: "AIRPODSPROV2",
-                verificationSource: .researchProtocol
+                verificationSource: verificationSource
             )
         ])
     }
