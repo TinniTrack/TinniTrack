@@ -102,23 +102,17 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func signatureDestinationRestoresSigningStateAfterReaderRefresh() async {
+    func signatureNavigationPopReturnsToConsentReview() async {
         let viewModel = Self.viewModel()
         await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         viewModel.continueToSignature()
 
-        viewModel.reviewConsent()
-        viewModel.firstName = "Taylor"
-        viewModel.lastName = "Rivers"
-        viewModel.signatureImageData = Data([1, 2, 3])
-        #expect(viewModel.canSignAndEnroll == false)
+        viewModel.returnToReviewAfterSignatureNavigationPop()
 
-        viewModel.restoreSignatureStepAfterNavigationPresentation()
-
-        #expect(viewModel.state == .signing)
-        #expect(viewModel.canSignAndEnroll)
+        #expect(viewModel.state == .reviewingConsent)
+        #expect(viewModel.canContinueToSignature == false)
     }
 
     @Test
@@ -154,7 +148,7 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func signaturePresentationCannotRestoreCompletedState() async {
+    func navigationPopCannotChangeCompletedState() async {
         let viewModel = Self.viewModel()
 
         await viewModel.probeEnrollmentRecovery()
@@ -166,7 +160,8 @@ struct StudyConsentFlowViewModelTests {
         viewModel.lastName = "Rivers"
         #expect(await viewModel.signAndEnroll())
 
-        viewModel.restoreSignatureStepAfterNavigationPresentation()
+        viewModel.returnToReviewAfterSignatureNavigationPop()
+        viewModel.returnToLandingAfterNavigationPop()
         viewModel.continueToSignature()
 
         #expect(viewModel.state == .completed)

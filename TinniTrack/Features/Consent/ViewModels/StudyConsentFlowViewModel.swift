@@ -170,6 +170,12 @@ final class StudyConsentFlowViewModel: ObservableObject {
         }
     }
 
+    func returnToReviewAfterSignatureNavigationPop() {
+        guard state == .signing else { return }
+        resetConsentReviewProgress()
+        state = .reviewingConsent
+    }
+
     func markConsentScrolledToEnd() {
         guard state == .reviewingConsent else { return }
         hasScrolledToConsentEnd = true
@@ -177,11 +183,6 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
     func continueToSignature() {
         guard canContinueToSignature else { return }
-        state = .signing
-    }
-
-    func restoreSignatureStepAfterNavigationPresentation() {
-        guard state == .reviewingConsent || state == .signing else { return }
         state = .signing
     }
 
@@ -197,8 +198,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
             resetConsentReviewProgress()
             state = .landing
         case .signing:
-            resetConsentReviewProgress()
-            state = .reviewingConsent
+            returnToReviewAfterSignatureNavigationPop()
         case .landing, .finalizing, .completed, .dismissed, .failed:
             break
         }

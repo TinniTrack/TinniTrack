@@ -44,8 +44,6 @@ struct StudyConsentReaderView: View {
                     )
                 }
                 .onAppear {
-                    guard !isSignaturePresented else { return }
-                    viewModel.reviewConsent()
                     DispatchQueue.main.async {
                         proxy.scrollTo(topAnchorID, anchor: .top)
                     }
@@ -81,9 +79,10 @@ struct StudyConsentReaderView: View {
             .toolbar(.hidden, for: .tabBar)
             .foregroundStyle(LoudnessMatchModalColors.text)
             .background(LoudnessMatchModalColors.background)
-            .onAppear {
-                viewModel.restoreSignatureStepAfterNavigationPresentation()
-            }
+        }
+        .onChange(of: isSignaturePresented) { wasPresented, isPresented in
+            guard wasPresented, !isPresented else { return }
+            viewModel.returnToReviewAfterSignatureNavigationPop()
         }
         .background(LoudnessMatchModalColors.background)
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {

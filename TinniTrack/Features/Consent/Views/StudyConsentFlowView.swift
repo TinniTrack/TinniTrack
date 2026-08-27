@@ -40,6 +40,7 @@ struct StudyConsentFlowView: View {
             canReviewConsent: viewModel.canReviewConsent,
             reviewConsent: {
                 guard viewModel.canReviewConsent else { return }
+                viewModel.reviewConsent()
                 isReviewPresented = true
             },
             resumeEnrollment: resumeEnrollmentAndHandleCompletion,
@@ -53,9 +54,6 @@ struct StudyConsentFlowView: View {
             .navigationBarTitleDisplayMode(.inline)
             .foregroundStyle(LoudnessMatchModalColors.text)
             .background(LoudnessMatchModalColors.background)
-            .onAppear {
-                viewModel.returnToLandingAfterNavigationPop()
-            }
             .navigationDestination(isPresented: $isReviewPresented) {
                 StudyConsentReaderView(
                     viewModel: viewModel,
@@ -66,6 +64,10 @@ struct StudyConsentFlowView: View {
                 .toolbar(.hidden, for: .tabBar)
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .background(LoudnessMatchModalColors.background)
+            }
+            .onChange(of: isReviewPresented) { wasPresented, isPresented in
+                guard wasPresented, !isPresented else { return }
+                viewModel.returnToLandingAfterNavigationPop()
             }
             .task(id: viewModel.state) {
                 switch viewModel.state {
