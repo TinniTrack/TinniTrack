@@ -4,7 +4,7 @@ import UIKit
 struct StudyConsentReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: StudyConsentFlowViewModel
-    @Binding var isCompletionHandlingRequested: Bool
+    let onEnrollmentCompleted: @MainActor () async -> Void
     @State private var isSignaturePresented = false
     @State private var isDeclineConfirmationPresented = false
     private let topAnchorID = "study_consent_reader_top"
@@ -44,8 +44,6 @@ struct StudyConsentReaderView: View {
                     )
                 }
                 .onAppear {
-                    guard !isSignaturePresented else { return }
-                    viewModel.reviewConsent()
                     DispatchQueue.main.async {
                         proxy.scrollTo(topAnchorID, anchor: .top)
                     }
@@ -69,7 +67,7 @@ struct StudyConsentReaderView: View {
         .navigationDestination(isPresented: $isSignaturePresented) {
             StudyConsentSignatureView(
                 viewModel: viewModel,
-                isCompletionHandlingRequested: $isCompletionHandlingRequested,
+                onEnrollmentCompleted: handleCompletedEnrollment,
                 exitConsentFlow: {
                     viewModel.exitConsentFlowToStudyDetails()
                     isSignaturePresented = false
@@ -81,19 +79,27 @@ struct StudyConsentReaderView: View {
             .toolbar(.hidden, for: .tabBar)
             .foregroundStyle(LoudnessMatchModalColors.text)
             .background(LoudnessMatchModalColors.background)
-            .onAppear {
-                viewModel.restoreSignatureStepAfterNavigationPresentation()
-            }
+        }
+        .onChange(of: isSignaturePresented) { wasPresented, isPresented in
+            guard wasPresented, !isPresented else { return }
+            viewModel.returnToReviewAfterSignatureNavigationPop()
         }
         .background(LoudnessMatchModalColors.background)
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
             viewModel.exitConsentFlowToStudyDetails()
             dismiss()
         }
-        .onChange(of: viewModel.state) { _, state in
-            guard state == .completed else { return }
-            isCompletionHandlingRequested = true
+    }
+
+    @MainActor
+    private func handleCompletedEnrollment() async {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            isSignaturePresented = false
         }
+        await Task.yield()
+        await onEnrollmentCompleted()
     }
 
     private func markConsentReviewedIfBottomIsVisible(bottomY: CGFloat, viewportHeight: CGFloat) {

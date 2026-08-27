@@ -17,7 +17,6 @@ struct StudyConsentFlowView: View {
     @StateObject private var viewModel: StudyConsentFlowViewModel
     @State private var isReviewPresented = false
     @State private var hasHandledCompletion = false
-    @State private var isCompletionHandlingRequested = false
 
     init(
         study: Study,
@@ -38,12 +37,13 @@ struct StudyConsentFlowView: View {
             definition: viewModel.definition,
             enrollmentRecoveryStatus: viewModel.enrollmentRecoveryStatus,
             isResumingEnrollment: viewModel.state == .finalizing,
-            reviewConsent: { isReviewPresented = true },
-            resumeEnrollment: {
-                Task {
-                    await viewModel.resumeEnrollment()
-                }
+            canReviewConsent: viewModel.canReviewConsent,
+            reviewConsent: {
+                guard viewModel.canReviewConsent else { return }
+                viewModel.reviewConsent()
+                isReviewPresented = true
             },
+            resumeEnrollment: resumeEnrollmentAndHandleCompletion,
             retryEnrollmentRecoveryProbe: {
                 Task {
                     await viewModel.retryEnrollmentRecoveryProbe()
@@ -54,13 +54,10 @@ struct StudyConsentFlowView: View {
             .navigationBarTitleDisplayMode(.inline)
             .foregroundStyle(LoudnessMatchModalColors.text)
             .background(LoudnessMatchModalColors.background)
-            .onAppear {
-                viewModel.returnToLandingAfterNavigationPop()
-            }
             .navigationDestination(isPresented: $isReviewPresented) {
                 StudyConsentReaderView(
                     viewModel: viewModel,
-                    isCompletionHandlingRequested: $isCompletionHandlingRequested
+                    onEnrollmentCompleted: handleCompletedEnrollment
                 )
                 .navigationTitle("Informed Consent")
                 .navigationBarTitleDisplayMode(.inline)
@@ -68,21 +65,19 @@ struct StudyConsentFlowView: View {
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .background(LoudnessMatchModalColors.background)
             }
+            .onChange(of: isReviewPresented) { wasPresented, isPresented in
+                guard wasPresented, !isPresented else { return }
+                viewModel.returnToLandingAfterNavigationPop()
+            }
             .task(id: viewModel.state) {
                 switch viewModel.state {
                 case .landing:
                     await viewModel.probeEnrollmentRecoveryIfNeeded()
-                case .completed:
-                    await handleCompletedEnrollment()
                 case .dismissed:
                     dismiss()
-                case .reviewingConsent, .signing, .finalizing, .failed:
+                case .reviewingConsent, .signing, .finalizing, .completed, .failed:
                     break
                 }
-            }
-            .task(id: isCompletionHandlingRequested) {
-                guard isCompletionHandlingRequested else { return }
-                await handleCompletedEnrollment()
             }
             .alert("Unable to Finish Enrollment", isPresented: Binding(
                 get: { viewModel.errorMessage != nil },
@@ -94,9 +89,7 @@ struct StudyConsentFlowView: View {
             )) {
                 if viewModel.shouldRetryEnrollmentRecoveryFromAlert {
                     Button("Try Again") {
-                        Task {
-                            await viewModel.resumeEnrollment()
-                        }
+                        resumeEnrollmentAndHandleCompletion()
                     }
                     Button("Not Now", role: .cancel) {
                         viewModel.dismissEnrollmentRecoveryError()
@@ -115,13 +108,17 @@ struct StudyConsentFlowView: View {
     }
 
     @MainActor
-    private func handleCompletedEnrollment() async {
-        guard !hasHandledCompletion else {
-            isCompletionHandlingRequested = false
-            return
+    private func resumeEnrollmentAndHandleCompletion() {
+        Task { @MainActor in
+            guard await viewModel.resumeEnrollment() else { return }
+            await handleCompletedEnrollment()
         }
+    }
+
+    @MainActor
+    private func handleCompletedEnrollment() async {
+        guard viewModel.state == .completed, !hasHandledCompletion else { return }
         hasHandledCompletion = true
-        isCompletionHandlingRequested = false
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {

@@ -102,22 +102,72 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func signatureDestinationRestoresSigningStateAfterReaderRefresh() async {
+    func signatureNavigationPopReturnsToConsentReview() async {
         let viewModel = Self.viewModel()
         await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
         viewModel.markConsentScrolledToEnd()
         viewModel.continueToSignature()
 
+        viewModel.returnToReviewAfterSignatureNavigationPop()
+
+        #expect(viewModel.state == .reviewingConsent)
+        #expect(viewModel.canContinueToSignature == false)
+    }
+
+    @Test
+    func signatureFirstAndNameEditsStillFinalizeSuccessfully() async {
+        let service = MockConsentService()
+        let generator = MockConsentArtifactGenerator()
+        let viewModel = Self.viewModel(service: service, generator: generator)
+
+        await viewModel.probeEnrollmentRecovery()
         viewModel.reviewConsent()
-        viewModel.firstName = "Taylor"
+        viewModel.markConsentScrolledToEnd()
+        viewModel.continueToSignature()
+
+        viewModel.signatureImageData = Data([9, 8, 7])
+        viewModel.firstName = "   "
+        viewModel.lastName = "Draft"
+        #expect(viewModel.canSignAndEnroll == false)
+
+        viewModel.firstName = "Alex"
+        viewModel.lastName = ""
+        #expect(viewModel.canSignAndEnroll == false)
+
         viewModel.lastName = "Rivers"
-        viewModel.signatureImageData = Data([1, 2, 3])
         #expect(viewModel.canSignAndEnroll)
 
-        viewModel.restoreSignatureStepAfterNavigationPresentation()
+        let didComplete = await viewModel.signAndEnroll()
 
-        #expect(viewModel.canSignAndEnroll)
+        #expect(didComplete)
+        #expect(viewModel.state == .completed)
+        #expect(viewModel.canSignAndEnroll == false)
+        #expect(generator.generateCallCount == 1)
+        #expect(await service.finalizeCallCount() == 1)
+    }
+
+    @Test
+    func navigationPopCannotChangeCompletedState() async {
+        let viewModel = Self.viewModel()
+
+        await viewModel.probeEnrollmentRecovery()
+        viewModel.reviewConsent()
+        viewModel.markConsentScrolledToEnd()
+        viewModel.continueToSignature()
+        viewModel.signatureImageData = Data([9, 8, 7])
+        viewModel.firstName = "Alex"
+        viewModel.lastName = "Rivers"
+        #expect(await viewModel.signAndEnroll())
+
+        viewModel.returnToReviewAfterSignatureNavigationPop()
+        viewModel.returnToLandingAfterNavigationPop()
+        viewModel.continueToSignature()
+
+        #expect(viewModel.state == .completed)
+        #expect(viewModel.canContinueToSignature == false)
+        #expect(viewModel.canReviewConsent == false)
+        #expect(viewModel.canSignAndEnroll == false)
     }
 
     @Test
@@ -145,8 +195,13 @@ struct StudyConsentFlowViewModelTests {
         #expect(viewModel.state == .finalizing)
         #expect(viewModel.canSignAndEnroll == false)
 
+        let duplicateDidComplete = await viewModel.signAndEnroll()
+        #expect(duplicateDidComplete == false)
+        #expect(await service.finalizeCallCount() == 1)
+
         await service.unblock()
-        await submissionTask.value
+        let firstDidComplete = await submissionTask.value
+        #expect(firstDidComplete)
     }
 
     @Test
@@ -163,8 +218,9 @@ struct StudyConsentFlowViewModelTests {
         viewModel.lastName = " Rivers "
         viewModel.signatureImageData = Data([9, 8, 7])
 
-        await viewModel.signAndEnroll()
+        let didComplete = await viewModel.signAndEnroll()
 
+        #expect(didComplete)
         #expect(viewModel.state == .completed)
         #expect(generator.generateCallCount == 1)
         #expect(await service.finalizeCallCount() == 1)
@@ -217,7 +273,7 @@ struct StudyConsentFlowViewModelTests {
         #expect(generator.generateCallCount == 0)
 
         await service.unblockResume()
-        await resumeTask.value
+        _ = await resumeTask.value
 
         #expect(viewModel.state == .completed)
         #expect(generator.generateCallCount == 0)

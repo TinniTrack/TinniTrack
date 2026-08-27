@@ -9,7 +9,7 @@ private enum StudyConsentSignatureField: Hashable {
 struct StudyConsentSignatureView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: StudyConsentFlowViewModel
-    @Binding var isCompletionHandlingRequested: Bool
+    let onEnrollmentCompleted: @MainActor () async -> Void
     let exitConsentFlow: () -> Void
     @State private var isSignatureCapturePresented = false
     @State private var isDeclineConfirmationPresented = false
@@ -82,7 +82,10 @@ struct StudyConsentSignatureView: View {
                     isLoading: viewModel.state == .finalizing
                 ) {
                     dismissTextFocus()
-                    Task { await viewModel.signAndEnroll() }
+                    Task { @MainActor in
+                        guard await viewModel.signAndEnroll() else { return }
+                        await onEnrollmentCompleted()
+                    }
                 }
                 .padding(.top, 8)
 
@@ -126,9 +129,6 @@ struct StudyConsentSignatureView: View {
         .onChange(of: viewModel.state) { _, state in
             if state == .finalizing {
                 dismissTextFocus()
-            }
-            if state == .completed {
-                isCompletionHandlingRequested = true
             }
         }
         .accessibilityIdentifier("study_consent_signature")
