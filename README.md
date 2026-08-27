@@ -42,7 +42,7 @@ The currently implemented participant path is:
    - record confidence for each accepted match.
 9. Submit a structured payload to Supabase.
 
-The current implementation stores estimated dB HL, estimated dB SPL, dB SL, route metadata, the resolved AirPods calibration identifier and verification source, quiet-room samples, guardrail metadata, playback metadata, protocol events, quality flags, and explicit measurement limitations.
+The current implementation stores estimated dB HL, estimated dB SPL, dB SL, route metadata, the resolved AirPods calibration identifier and verification source, provisional quiet-environment estimates with measurement provenance, guardrail metadata, playback metadata, protocol events, quality flags, and explicit measurement limitations.
 
 ## App Limitations
 
@@ -53,7 +53,7 @@ Current limitations are intentional and are represented in code and payloads:
 - Public APIs cannot prove exact AirPods Pro 2 generation, model number, firmware, serial number, ear-tip seal, in-ear state, or actual in-ear SPL.
 - AVAudioSession exposes route category data, route names, route UIDs, channels, and `outputVolume`, but not a verified acoustic device identity.
 - HealthKit audiograms provide participant hearing thresholds, but they do not make this app's own tone playback clinically validated.
-- Ambient noise sampling is app-owned and currently simpler than ResearchKit's A-weighted SPL meter implementation.
+- Quiet-environment sampling is app-owned and A-weighted, but its generic built-in-microphone dBA conversion and current thresholds remain provisional until physical-device validation establishes bias and uncertainty.
 
 The code and payload wording use "estimated model-calibrated output" rather than "exact SPL."
 
@@ -102,7 +102,7 @@ Important current implementation areas:
 - `TinniTrack/Domain/Calibration/`
   - AirPods Pro 2 calibration tables, dB HL/dB SPL/amplitude conversion, guardrails, playback planning, and tone rendering.
 - `TinniTrack/Services/Audio/`
-  - AVAudioSession route/volume providers, research-protocol route-confirmation resolver, quiet-room SPL meter, guardrail monitor, and AVAudioEngine playback service.
+  - AVAudioSession coordination, route/volume providers, research-protocol route-confirmation resolver, A-weighted PCM quiet-environment screening, guardrail monitor, and AVAudioEngine playback service.
 - `TinniTrack/Domain/TinnitusProtocol/StudyNo1LoudnessMatchPayload.swift`
   - Current loudness-match payload builder and validation rules.
 - `TinniTrack/Services/ResearchKit/ResearchKitStudyTaskAdapter.swift`
@@ -207,7 +207,7 @@ Study No. 1 does not copy the whole task, but it intentionally uses several comp
 
 ### ResearchKit Environment SPL Meter Lessons
 
-ResearchKit's environment SPL step is more sophisticated than the app's current microphone implementation. It:
+ResearchKit's environment SPL step informed the app-owned implementation. It:
 
 - saves and restores audio session state,
 - requests microphone permission,
@@ -220,7 +220,7 @@ ResearchKit's environment SPL step is more sophisticated than the app's current 
 - enables continuation only after the pass criterion is met,
 - stops the engine and restores session state after completion.
 
-The app's current `AVAudioEnvironmentSPLMeter` follows the same broad UX pattern, but it is not full ResearchKit parity yet. It records temporary audio, converts average power with a default sensitivity offset, and feeds the app's quiet-room gate evaluator. A-weighting, device-specific sensitivity tables, and stronger microphone-route controls remain future validation work.
+The current `AVAudioEnvironmentSPLMeter` now applies those lessons with built-in-input verification, streaming A-weighted Float32 PCM energy, exact one-second windows, provenance-bearing measurements, and coordinated audio-session restoration. Its generic microphone sensitivity reference is still an unvalidated screening estimate, not a calibrated physical dBA claim. The exact pipeline, policy, lifecycle, export semantics, and validation boundary are documented in [Quiet-Environment Screening](docs/quiet-environment-screening.md).
 
 ## Study No. 1
 
@@ -711,12 +711,11 @@ Study No. 1 requires a quiet-room gate before active tone playback.
 
 Current configuration:
 
-- threshold: 45 dB,
-- required contiguous passing samples: 5,
-- sample interval: 1 second,
-- max one-shot samples: 12,
-- pass comparison: sample must be strictly less than threshold,
-- any sample at or above threshold resets the contiguous pass count.
+- exact decision window: one second of A-weighted PCM energy, independent of audio tap-buffer boundaries,
+- initial pass: five contiguous valid windows strictly below `45.0` provisional dBA,
+- sustained-loudness interruption: two consecutive windows at or above `45.0`, or at least `8.0 dB` above the secondary local baseline,
+- recovery: five contiguous valid windows strictly below `43.0` provisional dBA,
+- max one-shot samples: 12 valid windows.
 
 The modal quiet-room UI reports states such as:
 
@@ -729,13 +728,13 @@ The quiet-room screen uses the shared animated level visualization for both onbo
 Current implementation details:
 
 - `AVAudioEnvironmentSPLMeter` requests microphone permission through `AVAudioApplication.requestRecordPermission`.
-- It uses an audio session suited to recording and measurement.
-- It records a temporary `tinnitrack-environment-spl.caf`.
-- It uses 44100 Hz, one channel, and Apple IMA4 format.
-- It converts recorder average power using a default sensitivity offset.
-- It restores prior audio session state after monitoring.
+- `StudyAudioSessionCoordinator` selects and verifies the actual built-in microphone input, records its configuration, and rejects route or configuration changes.
+- Capture waits `0.35` seconds for session settling and discards a `0.5`-second A-weighting warm-up before admitting a fresh full window.
+- The current `117.3 dB` conversion offset comes from the generic ResearchKit iPhone sensitivity reference and is explicitly marked provisional and unvalidated.
+- Screening is intentionally suspended during tone playback, response handling, audio-session handoffs, and app inactivity. It reacquires only after playback is silent and fresh settling, warm-up, route verification, and measurement complete.
+- Raw PCM is neither recorded nor persisted. Submissions contain only provisional estimates and privacy-safe provenance metadata.
 
-This implementation is useful for an app-level quietness gate, but it is not yet ResearchKit-equivalent dBA measurement. Future validation work should add A-weighting, device-specific sensitivity handling, built-in microphone route enforcement, and microphone calibration checks if the study needs stronger ambient-noise claims.
+The absolute threshold always remains authoritative; the adaptive baseline is only an additional change detector and cannot adapt a noisy room into a pass. See [Quiet-Environment Screening](docs/quiet-environment-screening.md) for the exact state machine, payload fields, privacy guarantees, and simulator-versus-device validation plan.
 
 ## HealthKit Audiogram Import
 
@@ -779,7 +778,7 @@ The current payload builder is `StudyNo1LoudnessMatchPayloadBuilder`.
 Payload version:
 
 ```text
-study-no-1-loudness-match-v2
+study-no-1-loudness-match-v3
 ```
 
 Protocol kind:
@@ -797,7 +796,7 @@ The builder validates:
 - AirPods model identifier or unavailable status,
 - audio route output metadata,
 - output volume from 0.0 through 1.0,
-- non-empty environment samples,
+- non-empty provisional environment samples plus measurement schema, level semantics, and provenance-bearing windows,
 - passed quiet-room result,
 - fit seal confirmed,
 - safety acknowledgement,
@@ -815,7 +814,7 @@ The payload includes:
 - device context,
 - AirPods/route context,
 - audio session context,
-- environment gate context,
+- environment gate context with unit-explicit A-weighted digital and provisional estimated-dBA fields,
 - fit/safety context,
 - threshold source,
 - trial data,
@@ -1084,13 +1083,12 @@ Potential future improvements:
 
 Potential future improvements:
 
-- A-weighting,
-- built-in microphone route enforcement,
-- device-specific microphone sensitivity offsets,
+- physical validation of the generic sensitivity estimate across supported iPhone models and units,
+- measured bias and uncertainty metadata or validated model-specific microphone calibration profiles,
 - microphone permission recovery UX,
-- comparison to ResearchKit SPL meter behavior,
-- study-specific threshold tuning,
-- recording of environmental failure reasons.
+- physical-device comparison to a calibrated reference meter and ResearchKit behavior,
+- evidence-based tuning of the `45.0`/`43.0` screening thresholds,
+- expanded device tests for route changes, interruptions, media-services resets, and playback-to-measurement isolation.
 
 ### Pitch-Match Study
 
@@ -1170,7 +1168,7 @@ dB SPL means sound pressure level. It is an absolute acoustic pressure scale rel
 
 When people say a quiet room is around some number of dB SPL, they are usually talking about a physical sound pressure measurement. In practice, environmental sound meters often use A-weighting and report dBA, which weights frequencies to approximate human hearing sensitivity.
 
-The app's current quiet-room gate stores app-estimated ambient levels. It should not be treated as a fully validated dBA meter yet.
+The app's current quiet-room gate stores A-weighted digital levels and separate provisional estimated-dBA screening values with route, algorithm, validity, and calibration provenance. It should not be treated as a validated dBA meter.
 
 ### dB HL
 
