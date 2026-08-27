@@ -110,8 +110,10 @@ final class ResearchKitStudyTaskAdapter: NSObject, ResearchStudyTaskAdapting, OR
         case .environmentSPLMeter(let identifier, let thresholdDBA):
             let step = ORKEnvironmentSPLMeterStep(identifier: "\(identifier).environment-spl")
             step.thresholdValue = thresholdDBA
-            step.samplingInterval = 0.2
-            step.requiredContiguousSamples = 3
+            step.samplingInterval = TinnitusEnvironmentSPLGateConfiguration.studyNo1.windowDuration
+            step.requiredContiguousSamples = TinnitusEnvironmentSPLGateConfiguration
+                .studyNo1
+                .requiredContiguousSamples
             return ORKOrderedTask(identifier: identifier, steps: [step])
 
         case .speechInNoise(let identifier):
