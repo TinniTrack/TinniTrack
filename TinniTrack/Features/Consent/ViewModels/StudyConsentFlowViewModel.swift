@@ -125,7 +125,9 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     func prepareConsentReview() {
+        guard !isEnrollmentInProgress else { return }
         resetConsentReviewProgress()
+        enrollmentOperation = .idle
     }
 
     func probeEnrollmentRecoveryIfNeeded() async {
@@ -167,15 +169,6 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
     private func resetConsentReviewProgress() {
         hasScrolledToConsentEnd = false
-    }
-
-    func abandonConsentAttempt() {
-        guard !isEnrollmentInProgress else { return }
-        // There is no pending completion before the first submission. Once
-        // one exists, the service may already have saved that exact evidence,
-        // so returning to landing must not discard its retry identity.
-        resetConsentReviewProgress()
-        enrollmentOperation = .idle
     }
 
     func clearSignature() {

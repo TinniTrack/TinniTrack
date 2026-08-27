@@ -1,43 +1,42 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import TinniTrack
 
 @MainActor
 struct StudyConsentFlowViewModelTests {
     @Test
-    func routeBindingsOwnLandingReviewAndSignatureTransitions() {
-        var route = StudyConsentRoute.landing
+    func navigationPathOwnsEveryPresentedScreenAsOneEntry() {
+        var navigationPath = NavigationPath()
 
-        route.setReviewPresented(true)
-        #expect(route == .review)
-        #expect(route.presentsReview)
-        #expect(route.presentsSignature == false)
+        navigationPath.append(DashboardStudyDetailsRoute(
+            studyCard: DashboardStudyCard(study: Self.study, enrollment: nil)
+        ))
+        navigationPath.append(StudyConsentRoute.review)
+        navigationPath.append(StudyConsentRoute.signature)
+        #expect(navigationPath.count == 3)
 
-        route.setSignaturePresented(true)
-        #expect(route == .signature)
-        #expect(route.presentsReview)
-        #expect(route.presentsSignature)
+        navigationPath.removeLast()
+        #expect(navigationPath.count == 2)
 
-        route.setSignaturePresented(false)
-        #expect(route == .review)
-
-        route.setReviewPresented(false)
-        #expect(route == .landing)
-        #expect(route.presentsReview == false)
+        navigationPath.removeLast()
+        #expect(navigationPath.count == 1)
     }
 
     @Test
-    func routeIgnoresInvalidPresentationAndStaysStableDuringCancelledPop() {
-        var route = StudyConsentRoute.landing
-        route.setSignaturePresented(true)
-        #expect(route == .landing)
+    func consentNavigationContextAllowsOnlyTheNextScreenAndReturnsToItsLandingDepth() {
+        let context = StudyConsentNavigationContext(landingPathCount: 1)
 
-        route.setReviewPresented(true)
-        route.setSignaturePresented(true)
-        let routeBeforeCancelledEdgeSwipe = route
+        #expect(context.canPresent(.review, at: 1))
+        #expect(context.canPresent(.review, at: 2) == false)
+        #expect(context.canPresent(.signature, at: 1) == false)
+        #expect(context.canPresent(.signature, at: 2))
+        #expect(context.canPresent(.signature, at: 3) == false)
 
-        #expect(routeBeforeCancelledEdgeSwipe == .signature)
-        #expect(route == .signature)
+        #expect(context.presentedStepCount(at: 0) == nil)
+        #expect(context.presentedStepCount(at: 1) == 0)
+        #expect(context.presentedStepCount(at: 2) == 1)
+        #expect(context.presentedStepCount(at: 3) == 2)
     }
 
     @Test
@@ -57,7 +56,7 @@ struct StudyConsentFlowViewModelTests {
     }
 
     @Test
-    func abandoningConsentReturnsOperationToIdleWithoutClearingFormState() async {
+    func preparingFreshReviewReturnsOperationToIdleWithoutClearingFormState() async {
         let service = MockConsentService()
         let generator = MockConsentArtifactGenerator()
         let viewModel = Self.viewModel(service: service, generator: generator)
@@ -66,7 +65,7 @@ struct StudyConsentFlowViewModelTests {
         viewModel.signatureImageData = Data([1, 2, 3])
         viewModel.markConsentScrolledToEnd()
 
-        viewModel.abandonConsentAttempt()
+        viewModel.prepareConsentReview()
 
         #expect(viewModel.enrollmentOperation == .idle)
         #expect(viewModel.canContinueToSignature == false)
@@ -202,7 +201,7 @@ struct StudyConsentFlowViewModelTests {
         let failedResult = await viewModel.completeEnrollment(using: .signedConsent)
         #expect(failedResult == nil)
 
-        viewModel.abandonConsentAttempt()
+        viewModel.prepareConsentReview()
         #expect(viewModel.enrollmentOperation == .idle)
 
         let enrollment = await viewModel.completeEnrollment(using: .signedConsent)
