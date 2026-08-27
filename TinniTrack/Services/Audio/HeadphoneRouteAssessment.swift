@@ -4,8 +4,8 @@ import Foundation
 enum HeadphoneRouteVerificationLevel: String, Equatable, Codable {
     case failed
     case compatibleBluetoothPlaybackRoute
-    case likelyAirPodsPro2Route
-    case likelyAirPodsPro2CommunicationRoute
+    case likelyAirPodsProRoute
+    case likelyAirPodsProCommunicationRoute
 }
 
 enum HeadphoneRouteIssue: String, Equatable, Codable {
@@ -15,7 +15,6 @@ enum HeadphoneRouteIssue: String, Equatable, Codable {
     case unsupportedWiredOrExternalRoute
     case bluetoothHeadsetProfile
     case bluetoothLowEnergyRoute
-    case unsupportedBluetoothPlaybackDevice
     case unknownRoute
     case outputVolumeUnavailable
 }
@@ -43,17 +42,21 @@ struct HeadphoneRouteAssessment: Equatable {
         issues: [.noOutput]
     )
 
-    var passesAirPodsPro2Heuristic: Bool {
+    var looksLikeAirPodsProRoute: Bool {
         switch level {
-        case .likelyAirPodsPro2Route, .likelyAirPodsPro2CommunicationRoute:
-            return issues.isEmpty
+        case .likelyAirPodsProRoute, .likelyAirPodsProCommunicationRoute:
+            return true
         case .failed, .compatibleBluetoothPlaybackRoute:
             return false
         }
     }
 
-    var passesAirPodsPro2PlaybackHeuristic: Bool {
-        level == .likelyAirPodsPro2Route && issues.isEmpty
+    var isCompatibleBluetoothPlaybackRoute: Bool {
+        outputCount == 1 && portType == .bluetoothA2DP
+    }
+
+    var isAirPodsProPlaybackRouteCandidate: Bool {
+        isCompatibleBluetoothPlaybackRoute && looksLikeAirPodsProRoute
     }
 
     var isBluetoothHeadsetProfile: Bool {
@@ -70,8 +73,8 @@ struct HeadphoneRouteAssessment: Equatable {
 
     var diagnosticItems: [HeadphoneRouteDiagnosticItem] {
         [
-            HeadphoneRouteDiagnosticItem(title: "Result", value: passesAirPodsPro2PlaybackHeuristic ? "passed" : "failed"),
-            HeadphoneRouteDiagnosticItem(title: "AirPods identity", value: passesAirPodsPro2Heuristic ? "likely AirPods Pro 2" : "unverified"),
+            HeadphoneRouteDiagnosticItem(title: "Result", value: isCompatibleBluetoothPlaybackRoute ? "compatible playback route" : "failed"),
+            HeadphoneRouteDiagnosticItem(title: "AirPods name signal", value: looksLikeAirPodsProRoute ? "looks like AirPods Pro" : "not recognized"),
             HeadphoneRouteDiagnosticItem(title: "Level", value: level.rawValue),
             HeadphoneRouteDiagnosticItem(title: "Issue", value: issues.map(\.rawValue).joined(separator: ", ").nilIfEmpty ?? "none"),
             HeadphoneRouteDiagnosticItem(title: "Output count", value: "\(outputCount)"),
@@ -143,8 +146,8 @@ struct HeadphoneRouteAssessor {
         }
 
         let portType = CalibratedAudioSessionGuardrailMonitor.portKind(for: output.portTypeRawValue)
-        let issue = issue(for: portType, portName: output.portName)
-        let level = verificationLevel(for: portType, portName: output.portName, issue: issue)
+        let issue = issue(for: portType)
+        let level = verificationLevel(for: portType, portName: output.portName)
 
         return HeadphoneRouteAssessment(
             level: level,
@@ -161,33 +164,27 @@ struct HeadphoneRouteAssessor {
 
     private func verificationLevel(
         for portType: CalibratedAudioRoutePortKind,
-        portName: String,
-        issue: HeadphoneRouteIssue?
+        portName: String
     ) -> HeadphoneRouteVerificationLevel {
-        if portType == .bluetoothA2DP, issue == nil {
-            return .likelyAirPodsPro2Route
+        if portType == .bluetoothA2DP {
+            return Self.looksLikeAirPodsPro(portName)
+                ? .likelyAirPodsProRoute
+                : .compatibleBluetoothPlaybackRoute
         }
 
-        if portType == .bluetoothHFP, issue == nil {
-            return .likelyAirPodsPro2CommunicationRoute
+        if portType == .bluetoothHFP, Self.looksLikeAirPodsPro(portName) {
+            return .likelyAirPodsProCommunicationRoute
         }
 
-        guard portType == .bluetoothA2DP else {
-            return .failed
-        }
-
-        return .compatibleBluetoothPlaybackRoute
+        return .failed
     }
 
-    private func issue(
-        for portType: CalibratedAudioRoutePortKind,
-        portName: String
-    ) -> HeadphoneRouteIssue? {
+    private func issue(for portType: CalibratedAudioRoutePortKind) -> HeadphoneRouteIssue? {
         switch portType {
         case .bluetoothA2DP:
-            return Self.looksLikeAirPodsPro2(portName) ? nil : .unsupportedBluetoothPlaybackDevice
+            return nil
         case .bluetoothHFP:
-            return Self.looksLikeAirPodsPro2(portName) ? nil : .bluetoothHeadsetProfile
+            return .bluetoothHeadsetProfile
         case .bluetoothLE:
             return .bluetoothLowEnergyRoute
         case .builtInSpeaker, .builtInReceiver:
@@ -199,43 +196,25 @@ struct HeadphoneRouteAssessor {
         }
     }
 
-    static func looksLikeAirPodsPro2(_ portName: String) -> Bool {
+    static func looksLikeAirPodsPro(_ portName: String) -> Bool {
         let normalized = portName
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             .lowercased()
             .replacingOccurrences(of: "’", with: "'")
             .replacingOccurrences(of: "-", with: " ")
 
-        let containsAirPods = normalized.contains("airpods") || normalized.contains("air pods")
-        let containsPro = normalized.contains("pro")
-        let containsSecondGeneration = normalized.contains("2")
-            || normalized.contains("second generation")
-            || normalized.contains("2nd generation")
-            || normalized.contains("gen 2")
-            || normalized.contains("generation 2")
+        let tokenString = normalized
+            .split { !$0.isLetter && !$0.isNumber }
+            .joined(separator: " ")
+        let paddedTokenString = " \(tokenString) "
 
-        return containsAirPods && containsPro && containsSecondGeneration
+        return paddedTokenString.contains(" airpods pro ")
+            || paddedTokenString.contains(" air pods pro ")
     }
 }
 
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
-    }
-}
-
-struct RouteNameHeuristicCalibratedHeadphoneResolver: CalibratedHeadphoneProfileResolving {
-    private let assessor = HeadphoneRouteAssessor()
-
-    func verification(for output: AudioSessionRouteOutputSnapshot) -> CalibratedHeadphoneVerification? {
-        let assessment = assessor.assess(outputs: [output], outputVolume: nil)
-        guard assessment.passesAirPodsPro2PlaybackHeuristic else {
-            return nil
-        }
-
-        return CalibratedHeadphoneVerification(
-            identifier: CalibratedHeadphoneIdentifier.airPodsPro2,
-            source: .routeNameHeuristic
-        )
     }
 }
