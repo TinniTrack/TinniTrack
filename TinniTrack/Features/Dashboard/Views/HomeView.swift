@@ -20,8 +20,9 @@ struct HomeView: View {
         #if DEBUG
         if studyService == nil,
            consentService == nil,
-           processInfo.environment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] == "1" {
-            let uiTestServices = UITestEnrollmentServices()
+           (processInfo.environment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] == "1"
+            || processInfo.environment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] == "1") {
+            let uiTestServices = UITestEnrollmentServices(processInfo: processInfo)
             self.studyService = uiTestServices
             self.consentService = uiTestServices
             _dashboardViewModel = StateObject(wrappedValue: HomeDashboardViewModel(studyService: uiTestServices))
@@ -394,7 +395,11 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
     private let studyID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
     private let enrollmentID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
     private let userID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
-    private var isEnrolled = false
+    private var isEnrolled: Bool
+
+    init(processInfo: ProcessInfo = .processInfo) {
+        isEnrolled = processInfo.environment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] == "1"
+    }
 
     func fetchStudies() async throws -> [Study] {
         [

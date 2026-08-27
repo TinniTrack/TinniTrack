@@ -101,39 +101,63 @@ struct StudyTaskDashboardView: View {
     }
 
     private var orientationRequiredContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                StudyPrerequisiteCard(
-                    title: "Welcome. Thanks for choosing to participate in this study!",
-                    message: "Before tasks can start, complete orientation and import your hearing-test baseline."
-                )
-
-                StudyActionButton(title: "Begin Orientation", isPrimary: true) {
-                    orientationStep = .welcome
-                    isOrientationPresented = true
-                }
-            }
-            .padding(20)
-        }
-        .background(Color(uiColor: .systemGroupedBackground))
+        studyGateContent(
+            title: "Welcome. Thanks for choosing to participate in this study!",
+            message: "Before tasks can start, complete orientation and import your hearing-test baseline.",
+            actionTitle: "Begin Orientation",
+            initialStep: .welcome,
+            actionAccessibilityIdentifier: "study_begin_orientation_button",
+            accessibilityIdentifier: "study_orientation_required_content"
+        )
     }
 
     private var blockedPrerequisiteContent: some View {
+        studyGateContent(
+            title: "Study Tasks Are Temporarily Locked",
+            message: "A hearing-test baseline is required before you can run loudness tasks.",
+            actionTitle: "Resolve Prerequisites",
+            initialStep: .hearingTest,
+            actionAccessibilityIdentifier: "study_resolve_prerequisites_button",
+            accessibilityIdentifier: "study_prerequisites_blocked_content"
+        )
+    }
+
+    private func studyGateContent(
+        title: String,
+        message: String,
+        actionTitle: String,
+        initialStep: StudyTaskOrientationStep,
+        actionAccessibilityIdentifier: String,
+        accessibilityIdentifier: String
+    ) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                StudyPrerequisiteCard(
-                    title: "Study Tasks Are Temporarily Locked",
-                    message: "A hearing-test baseline is required before you can run loudness tasks."
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(LoudnessMatchModalColors.text)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.86)
 
-                StudyActionButton(title: "Resolve Prerequisites", isPrimary: true) {
-                    orientationStep = .hearingTest
+                    Text(message)
+                        .font(.system(size: 16))
+                        .lineSpacing(3)
+                        .foregroundStyle(LoudnessMatchModalColors.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                LoudnessMatchModalPrimaryButton(title: actionTitle) {
+                    orientationStep = initialStep
                     isOrientationPresented = true
                 }
+                .padding(.top, 2)
+                .accessibilityIdentifier(actionAccessibilityIdentifier)
             }
-            .padding(20)
+            .padding(.horizontal, 34)
+            .padding(.bottom, 28)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(LoudnessMatchModalColors.background)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private func readyContent(latestAudiogramDate: Date?) -> some View {

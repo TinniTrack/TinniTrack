@@ -96,7 +96,6 @@ struct StudyConsentSignatureView: View {
                 .font(.headline)
                 .foregroundStyle(LoudnessMatchModalColors.primary)
                 .frame(maxWidth: .infinity)
-                .padding(.bottom, 24)
                 .accessibilityIdentifier("study_consent_signature_decline_button")
             }
             .padding(.horizontal, 32)

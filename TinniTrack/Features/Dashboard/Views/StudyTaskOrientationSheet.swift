@@ -10,11 +10,29 @@ struct StudyTaskOrientationSheet: View {
     let close: () -> Void
 
     @StateObject private var loudnessViewModel = LoudnessMatchTaskFlowViewModel()
+    @State private var navigationPath: [StudyTaskOrientationStep]
     @State private var isCloseConfirmationPresented = false
     @State private var isNoiseSuggestionsPresented = false
     @State private var orientationThresholdErrorMessage: String?
     @State private var prepareOnboardingThresholdTask: Task<Void, Never>?
     @AccessibilityFocusState private var isInterruptionPopupFocused: Bool
+
+    init(
+        step: Binding<StudyTaskOrientationStep>,
+        viewModel: StudyTaskDashboardViewModel,
+        enrollment: StudyEnrollment,
+        studyService: StudyServiceProtocol,
+        openHealthApp: @escaping () -> Void,
+        close: @escaping () -> Void
+    ) {
+        _step = step
+        self.viewModel = viewModel
+        self.enrollment = enrollment
+        self.studyService = studyService
+        self.openHealthApp = openHealthApp
+        self.close = close
+        _navigationPath = State(initialValue: Self.initialNavigationPath(for: step.wrappedValue))
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -31,23 +49,9 @@ struct StudyTaskOrientationSheet: View {
                 }
                 .accessibilityHidden(isInterruptionOverlayPresented)
             } else {
-                LoudnessMatchModalContentLayout {
-                    currentStepContent
-                } footer: {
-                    LoudnessMatchModalPrimaryButton(
-                        title: primaryButtonTitle,
-                        isEnabled: isPrimaryButtonEnabled,
-                        isInteractionEnabled: isPrimaryButtonInteractionEnabled,
-                        isLoading: isPrimaryButtonLoading
-                    ) {
-                        advance()
-                    }
-                }
-                .accessibilityHidden(isInterruptionOverlayPresented)
+                orientationNavigation
+                    .accessibilityHidden(isInterruptionOverlayPresented)
             }
-
-            topControls
-                .accessibilityHidden(isInterruptionOverlayPresented)
 
             if shouldShowAirPodsInterruptionOverlay {
                 airPodsInterruptionPopup
@@ -63,6 +67,9 @@ struct StudyTaskOrientationSheet: View {
         .interactiveDismissDisabled(true)
         .onAppear {
             handleStepEntered(step)
+        }
+        .onChange(of: navigationPath) { oldPath, newPath in
+            handleNavigationPathChange(from: oldPath, to: newPath)
         }
         .onChange(of: step) { _, newStep in
             handleStepEntered(newStep)
@@ -111,9 +118,9 @@ struct StudyTaskOrientationSheet: View {
         } message: {
             Text(messageText)
         }
-        .alert("Stop orientation?", isPresented: $isCloseConfirmationPresented) {
+        .alert("Exit Orientation?", isPresented: $isCloseConfirmationPresented) {
             Button("Keep Going", role: .cancel) {}
-            Button("Stop Orientation", role: .destructive) {
+            Button("Exit Orientation", role: .destructive) {
                 cleanupForDismiss(abortActiveTest: hasStartedTest)
                 close()
             }
@@ -122,9 +129,61 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
+    private var orientationNavigation: some View {
+        NavigationStack(path: $navigationPath) {
+            orientationPage(for: .welcome)
+                .navigationDestination(for: StudyTaskOrientationStep.self) { destination in
+                    orientationPage(for: destination)
+                }
+        }
+        .tint(LoudnessMatchModalColors.primary)
+    }
+
+    private func orientationPage(for pageStep: StudyTaskOrientationStep) -> some View {
+        GeometryReader { proxy in
+            ScrollView {
+                currentStepContent(for: pageStep)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minHeight: max(0, proxy.size.height - 48), alignment: .top)
+                    .padding(.horizontal, 34)
+                    .padding(.vertical, 24)
+            }
+        }
+        .background(LoudnessMatchModalColors.background)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            orientationPrimaryAction(for: pageStep)
+        }
+        .navigationTitle("Orientation")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: requestClose) {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Close")
+                .accessibilityIdentifier("study_onboarding_close_button")
+            }
+        }
+    }
+
+    private func orientationPrimaryAction(for pageStep: StudyTaskOrientationStep) -> some View {
+        LoudnessMatchModalPrimaryButton(
+            title: primaryButtonTitle(for: pageStep),
+            isEnabled: isPrimaryButtonEnabled(for: pageStep),
+            isInteractionEnabled: isPrimaryButtonInteractionEnabled(for: pageStep),
+            isLoading: isPrimaryButtonLoading(for: pageStep)
+        ) {
+            advance(from: pageStep)
+        }
+        .accessibilityIdentifier("study_onboarding_primary_button")
+        .padding(.horizontal, 34)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
     @ViewBuilder
-    private var currentStepContent: some View {
-        switch step {
+    private func currentStepContent(for pageStep: StudyTaskOrientationStep) -> some View {
+        switch pageStep {
         case .welcome:
             welcomeStep
         case .hearingTest:
@@ -168,8 +227,6 @@ struct StudyTaskOrientationSheet: View {
 
     private var welcomeStep: some View {
         VStack(alignment: .leading, spacing: 28) {
-            Spacer(minLength: 0)
-
             Image(systemName: "waveform.path")
                 .font(.system(size: 92, weight: .medium))
                 .foregroundStyle(LoudnessMatchModalColors.primary)
@@ -180,10 +237,7 @@ struct StudyTaskOrientationSheet: View {
                 title: "Welcome to Study No. 1",
                 bodyText: "We will set up your hearing-test baseline, then run the same tinnitus loudness-match flow used for every Study No. 1 task."
             )
-
-            Spacer(minLength: 0)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
         .accessibilityIdentifier("study_onboarding_welcome_step")
     }
 
@@ -360,32 +414,8 @@ struct StudyTaskOrientationSheet: View {
         .disabled(isLoading)
     }
 
-    private var topControls: some View {
-        HStack {
-            if step != .welcome, step != .activeTest {
-                LoudnessMatchModalIconButton(
-                    systemName: "chevron.left",
-                    accessibilityLabel: "Back",
-                    accessibilityIdentifier: "study_onboarding_back_button",
-                    action: goBack
-                )
-            }
-
-            Spacer()
-
-            LoudnessMatchModalIconButton(
-                systemName: "xmark",
-                accessibilityLabel: "Close",
-                accessibilityIdentifier: "study_onboarding_close_button",
-                action: requestClose
-            )
-        }
-        .padding(.horizontal, 26)
-        .padding(.top, 18)
-    }
-
-    private var primaryButtonTitle: String {
-        switch step {
+    private func primaryButtonTitle(for pageStep: StudyTaskOrientationStep) -> String {
+        switch pageStep {
         case .welcome:
             return "Continue"
         case .hearingTest:
@@ -401,8 +431,8 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
-    private var isPrimaryButtonEnabled: Bool {
-        switch step {
+    private func isPrimaryButtonEnabled(for pageStep: StudyTaskOrientationStep) -> Bool {
+        switch pageStep {
         case .welcome, .taskIntro, .fit:
             return true
         case .hearingTest:
@@ -419,12 +449,16 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
-    private var isPrimaryButtonInteractionEnabled: Bool {
-        isPrimaryButtonEnabled
+    private func isPrimaryButtonInteractionEnabled(for pageStep: StudyTaskOrientationStep) -> Bool {
+        isPrimaryButtonEnabled(for: pageStep)
     }
 
-    private var isPrimaryButtonLoading: Bool {
-        step == .maxVolume && viewModel.isPreparingOnboardingThresholdTask
+    private func isPrimaryButtonLoading(for pageStep: StudyTaskOrientationStep) -> Bool {
+        pageStep == .maxVolume && viewModel.isPreparingOnboardingThresholdTask
+    }
+
+    private var currentNavigationStep: StudyTaskOrientationStep {
+        navigationPath.last ?? .welcome
     }
 
     private var hasStartedTest: Bool {
@@ -561,17 +595,21 @@ struct StudyTaskOrientationSheet: View {
         return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
     }
 
-    private func advance() {
-        switch step {
+    private func advance(from pageStep: StudyTaskOrientationStep) {
+        guard pageStep == currentNavigationStep else {
+            return
+        }
+
+        switch pageStep {
         case .welcome:
-            step = .hearingTest
+            navigationPath.append(.hearingTest)
         case .hearingTest:
             guard viewModel.isAudiogramPrerequisiteMet else {
                 return
             }
-            step = .taskIntro
+            navigationPath.append(.taskIntro)
         case .taskIntro:
-            step = .correctEar
+            navigationPath.append(.correctEar)
         case .correctEar:
             guard loudnessViewModel.validateAirPodsForCorrectEarStep() else {
                 return
@@ -579,15 +617,15 @@ struct StudyTaskOrientationSheet: View {
             loudnessViewModel.stopHeadphoneRouteMonitoring()
             loudnessViewModel.startAirPodsContinuityMonitoring()
             loudnessViewModel.prepareEnvironmentGateForQuietRoomStep()
-            step = .quietRoom
+            navigationPath.append(.quietRoom)
         case .quietRoom:
             guard loudnessViewModel.environmentGateResult?.passed == true else {
                 return
             }
-            step = .fit
+            navigationPath.append(.fit)
         case .fit:
             loudnessViewModel.completeFitConfirmation()
-            step = .maxVolume
+            navigationPath.append(.maxVolume)
         case .maxVolume:
             guard loudnessViewModel.acknowledgeSafetyAndStartTest() else {
                 return
@@ -595,7 +633,10 @@ struct StudyTaskOrientationSheet: View {
             prepareOnboardingThresholdTask?.cancel()
             prepareOnboardingThresholdTask = Task { @MainActor in
                 let onboardingTask = await viewModel.prepareStudyOnboardingThresholdTask()
-                guard !Task.isCancelled, step == .maxVolume else {
+                guard !Task.isCancelled,
+                      currentNavigationStep == .maxVolume,
+                      step == .maxVolume
+                else {
                     return
                 }
 
@@ -620,46 +661,50 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
-    private func goBack() {
-        guard step != .activeTest else {
+    private func handleNavigationPathChange(
+        from oldPath: [StudyTaskOrientationStep],
+        to newPath: [StudyTaskOrientationStep]
+    ) {
+        let oldStep = oldPath.last ?? .welcome
+        let newStep = newPath.last ?? .welcome
+        guard oldStep != newStep else {
             return
         }
 
+        if newPath.count < oldPath.count {
+            cleanupForNavigationPop(
+                oldPath.dropFirst(newPath.count).reversed()
+            )
+        }
+
+        step = newStep
+    }
+
+    private func cleanupForNavigationPop<Steps: Sequence>(_ poppedSteps: Steps)
+    where Steps.Element == StudyTaskOrientationStep {
         if loudnessViewModel.isPlaying {
             loudnessViewModel.stopTone()
         }
 
-        switch step {
-        case .welcome:
-            break
-        case .hearingTest:
-            step = .welcome
-        case .taskIntro:
-            step = .hearingTest
-        case .correctEar:
-            loudnessViewModel.stopHeadphoneRouteMonitoring()
-            step = .taskIntro
-        case .quietRoom:
-            loudnessViewModel.cancelEnvironmentGate()
-            loudnessViewModel.stopAirPodsContinuityMonitoring()
-            step = .correctEar
-        case .fit:
-            step = .quietRoom
-        case .maxVolume:
-            loudnessViewModel.stopVolumeGateMonitoring()
-            step = .fit
-        case .activeTest:
-            break
+        for poppedStep in poppedSteps {
+            switch poppedStep {
+            case .correctEar:
+                loudnessViewModel.stopHeadphoneRouteMonitoring()
+            case .quietRoom:
+                loudnessViewModel.cancelEnvironmentGate()
+                loudnessViewModel.stopAirPodsContinuityMonitoring()
+            case .maxVolume:
+                prepareOnboardingThresholdTask?.cancel()
+                prepareOnboardingThresholdTask = nil
+                loudnessViewModel.stopVolumeGateMonitoring()
+            case .welcome, .hearingTest, .taskIntro, .fit, .activeTest:
+                break
+            }
         }
     }
 
     private func requestClose() {
-        if hasStartedTest {
-            isCloseConfirmationPresented = true
-        } else {
-            cleanupForDismiss(abortActiveTest: false)
-            close()
-        }
+        isCloseConfirmationPresented = true
     }
 
     private func exitTask() {
@@ -722,7 +767,7 @@ struct StudyTaskOrientationSheet: View {
             return
         }
 
-        step = .correctEar
+        navigationPath = Self.initialNavigationPath(for: .correctEar)
     }
 
     private func cleanupForDismiss(abortActiveTest: Bool) {
@@ -825,6 +870,27 @@ struct StudyTaskOrientationSheet: View {
             return "Success. We imported your hearing test."
         }
         return "Success. We imported your hearing test from \(Self.hearingTestDateFormatter.string(from: date))."
+    }
+
+    private static func initialNavigationPath(
+        for initialStep: StudyTaskOrientationStep
+    ) -> [StudyTaskOrientationStep] {
+        switch initialStep {
+        case .welcome:
+            return []
+        case .hearingTest:
+            return [.hearingTest]
+        case .taskIntro:
+            return [.hearingTest, .taskIntro]
+        case .correctEar:
+            return [.hearingTest, .taskIntro, .correctEar]
+        case .quietRoom:
+            return [.hearingTest, .taskIntro, .correctEar, .quietRoom]
+        case .fit:
+            return [.hearingTest, .taskIntro, .correctEar, .quietRoom, .fit]
+        case .maxVolume, .activeTest:
+            return [.hearingTest, .taskIntro, .correctEar, .quietRoom, .fit, .maxVolume]
+        }
     }
 
     private static let hearingTestDateFormatter: DateFormatter = {
