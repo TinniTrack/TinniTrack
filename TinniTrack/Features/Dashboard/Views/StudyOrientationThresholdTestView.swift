@@ -159,6 +159,7 @@ private struct ThresholdEarTest: View {
                 isActive: true,
                 isEnabled: !isPaused,
                 feedbackTrigger: feedbackTrigger,
+                size: .large,
                 accessibilityLabel: "I hear the tone",
                 accessibilityHint: "Records that you can hear the current tone.",
                 accessibilityIdentifier: "study_threshold_heard_button",

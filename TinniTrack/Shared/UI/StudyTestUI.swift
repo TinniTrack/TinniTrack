@@ -216,20 +216,20 @@ struct StudyTestPage<Content: View>: View {
     }
 
     private func closeButton(_ closeAction: StudyTestCloseAction) -> some View {
-        Button(action: closeAction.action) {
-            Image(systemName: closeAction.systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(StudyTestColors.text)
-                .frame(width: 44, height: 44)
-                .background(StudyTestColors.surface, in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(StudyTestColors.separator.opacity(0.38), lineWidth: 1)
-                }
-                .contentShape(Circle())
-                .accessibilityHidden(true)
+        Group {
+            if #available(iOS 26.0, *) {
+                Button(role: .close, action: closeAction.action)
+            } else {
+                Button(
+                    closeAction.accessibilityLabel,
+                    systemImage: closeAction.systemImage,
+                    action: closeAction.action
+                )
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+            }
         }
-        .buttonStyle(StudyTestPressButtonStyle())
         .accessibilityLabel(Text(closeAction.accessibilityLabel))
         .studyTestAccessibilityHint(closeAction.accessibilityHint)
         .studyTestAccessibilityIdentifier(closeAction.accessibilityIdentifier)
@@ -537,18 +537,26 @@ struct StudyTestControlButton: View {
 
 /// Prominent tone/listen action used by both threshold and loudness tests.
 struct StudyTestToneButton: View {
+    enum Size {
+        case standard
+        case large
+    }
+
     let title: String
     let systemImage: String
     var isActive: Bool
     var isEnabled: Bool
     var feedbackTrigger: Int
+    var size: Size
     var accessibilityLabel: String?
     var accessibilityHint: String?
     var accessibilityIdentifier: String?
     let action: () -> Void
 
-    @ScaledMetric(relativeTo: .body) private var scaledDiameter: CGFloat = 88
-    @ScaledMetric(relativeTo: .body) private var scaledIconSize: CGFloat = 34
+    @ScaledMetric(relativeTo: .body) private var scaledStandardDiameter: CGFloat = 88
+    @ScaledMetric(relativeTo: .body) private var scaledLargeDiameter: CGFloat = 104
+    @ScaledMetric(relativeTo: .body) private var scaledStandardIconSize: CGFloat = 34
+    @ScaledMetric(relativeTo: .body) private var scaledLargeIconSize: CGFloat = 40
 
     init(
         title: String,
@@ -556,6 +564,7 @@ struct StudyTestToneButton: View {
         isActive: Bool = false,
         isEnabled: Bool = true,
         feedbackTrigger: Int = 0,
+        size: Size = .standard,
         accessibilityLabel: String? = nil,
         accessibilityHint: String? = nil,
         accessibilityIdentifier: String? = nil,
@@ -566,6 +575,7 @@ struct StudyTestToneButton: View {
         self.isActive = isActive
         self.isEnabled = isEnabled
         self.feedbackTrigger = feedbackTrigger
+        self.size = size
         self.accessibilityLabel = accessibilityLabel
         self.accessibilityHint = accessibilityHint
         self.accessibilityIdentifier = accessibilityIdentifier
@@ -636,11 +646,21 @@ struct StudyTestToneButton: View {
     }
 
     private var diameter: CGFloat {
-        min(max(scaledDiameter, 76), 124)
+        switch size {
+        case .standard:
+            return min(max(scaledStandardDiameter, 76), 124)
+        case .large:
+            return min(max(scaledLargeDiameter, 92), 136)
+        }
     }
 
     private var iconSize: CGFloat {
-        min(max(scaledIconSize, 30), 50)
+        switch size {
+        case .standard:
+            return min(max(scaledStandardIconSize, 30), 50)
+        case .large:
+            return min(max(scaledLargeIconSize, 36), 54)
+        }
     }
 
     private var fillColor: Color {
