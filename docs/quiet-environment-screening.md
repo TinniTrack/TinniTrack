@@ -55,7 +55,7 @@ The audio workflow captures the external `AVAudioSession` state once, serializes
 
 The screen does not create an audio recording. Raw PCM exists only while `EnvironmentPCMWindowProcessor` computes energy; it is not placed in `TinnitusEnvironmentSPLMeasurement`, written to a file, persisted to Supabase, or included in structured logs.
 
-The provenance-bearing measurement schema is version `2`, with level algorithm `a-weighted-pcm-energy-v1` and filter algorithm `iec-a-weighting-bilinear-sos-v1`. A measurement records:
+The provenance-bearing measurement schema is version `2`, with level algorithm `a-weighted-pcm-energy-v1` and filter algorithm `iec-a-weighting-frequency-fitted-sos-v2`. The high-frequency digital section compensates for bilinear warping and is regression-checked against the representative A-weighting response at both 44.1 and 48 kHz. A measurement records:
 
 - window start, end, duration, validity, and any typed failure reason;
 - A-weighted digital level in dBFS and the separate provisional estimated-dBA value;

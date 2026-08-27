@@ -109,7 +109,7 @@ enum StudyProtocolCatalog {
         ],
         calibrationProfile: CalibrationProfileCatalog.airPodsPro2ResearchKitCalibration,
         resultPayload: MeasurementPayloadMetadata(
-            schemaVersion: "study-no-1-loudness-match-v2",
+            schemaVersion: "study-no-1-loudness-match-v3",
             protocolVersion: "lm_v1",
             rawPayloadKeys: [
                 "task_key",
