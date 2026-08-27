@@ -94,14 +94,20 @@ struct StudyOrientationThresholdTestSessionTests {
     }
 
     @Test
-    func missingOutputVolumeFailsAndRetryBuildsAFreshSequencer() throws {
+    func rightEarRetryBuildsAFreshSequencerAndPlaysItsFirstTone() async throws {
         let factory = ThresholdSequencerFactoryFake()
         let playback = ThresholdPlaybackRecorder()
         let outputVolume = ThresholdOutputVolume(value: nil)
+        let sleeper = CancellationIgnoringThresholdSleeper()
+        let timing = StudyOrientationThresholdTestTiming(
+            preStimulusDelay: { _ in 0.3 },
+            sleep: sleeper.sleep
+        )
         let session = makeSession(
             factory: factory,
             playback: playback,
-            outputVolume: { outputVolume.value }
+            outputVolume: { outputVolume.value },
+            timing: timing
         )
 
         session.startCurrentEar()
@@ -118,11 +124,64 @@ struct StudyOrientationThresholdTestSessionTests {
         outputVolume.value = 0.8
         session.retryCurrentEar()
         let retrySequencer = try #require(factory.createdSequencers.last)
+        #expect(await waitUntil { sleeper.pendingCount == 1 })
+        sleeper.resumeAll()
+        #expect(await waitUntil { playback.playedStimuli.count == 1 })
+        #expect(playback.playedStimuli.last?.channel == .right)
         session.heardTone()
 
         #expect(factory.requestedChannels == [.right, .right])
         #expect(failedSequencer !== retrySequencer)
         #expect(session.stage == .instructions(.left))
+        sleeper.resumeAll()
+    }
+
+    @Test
+    func leftEarRetryBuildsAFreshSequencerAndPlaysItsFirstTone() async throws {
+        let factory = ThresholdSequencerFactoryFake()
+        let playback = ThresholdPlaybackRecorder()
+        let outputVolume = ThresholdOutputVolume(value: 0.8)
+        let sleeper = CancellationIgnoringThresholdSleeper()
+        let timing = StudyOrientationThresholdTestTiming(
+            preStimulusDelay: { _ in 0.3 },
+            sleep: sleeper.sleep
+        )
+        let session = makeSession(
+            factory: factory,
+            playback: playback,
+            outputVolume: { outputVolume.value },
+            timing: timing
+        )
+
+        session.startCurrentEar()
+        session.heardTone()
+        #expect(session.stage == .instructions(.left))
+
+        outputVolume.value = nil
+        session.startCurrentEar()
+        session.heardTone()
+
+        guard case .failed(let failedEar, let message) = session.stage else {
+            Issue.record("Expected a retryable left-ear failure.")
+            return
+        }
+        #expect(failedEar == .left)
+        #expect(message.contains("output volume"))
+        let failedSequencer = try #require(factory.createdSequencers.last)
+
+        outputVolume.value = 0.8
+        session.retryCurrentEar()
+        let retrySequencer = try #require(factory.createdSequencers.last)
+        #expect(await waitUntil { sleeper.pendingCount == 1 })
+        sleeper.resumeAll()
+        #expect(await waitUntil { playback.playedStimuli.count == 1 })
+        #expect(playback.playedStimuli.last?.channel == .left)
+        session.heardTone()
+
+        #expect(factory.requestedChannels == [.right, .left, .left])
+        #expect(failedSequencer !== retrySequencer)
+        #expect(session.stage == .completed)
+        sleeper.resumeAll()
     }
 
     @Test

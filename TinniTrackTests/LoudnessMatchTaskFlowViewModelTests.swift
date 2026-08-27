@@ -654,6 +654,63 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func duplicateOrientationStopsCoalesceBeforeQuietReacquisitionAndReplay() async throws {
+        let player = MockCalibratedTonePlayer()
+        let silenceWaiter = ControllablePlaybackSilenceWaiter()
+        player.onWaitForSilence = silenceWaiter.wait
+        let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: environmentGateMonitor
+        )
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.fitSealConfirmed = true
+        viewModel.safetyAcknowledged = true
+        viewModel.refreshGuardrails()
+        viewModel.startContinuousEnvironmentGate()
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+
+        let stimulus = StudyNo1OrientationThresholdStimulus(
+            frequencyHz: 1_000,
+            levelDBHL: 30,
+            channel: .right
+        )
+        try await viewModel.playOrientationThresholdTone(stimulus, duration: 1)
+
+        viewModel.stopOrientationThresholdTone()
+        viewModel.stopOrientationThresholdTone()
+        viewModel.stopOrientationThresholdTone()
+
+        #expect(player.stopCallCount == 1)
+        #expect(try await waitUntil { silenceWaiter.waitCallCount == 1 })
+        silenceWaiter.resumeNext()
+        #expect(try await waitUntil {
+            environmentGateMonitor.reasons.count == 2
+                && viewModel.environmentGateUpdate?.status == .reacquiring(.postResponse)
+        })
+
+        environmentGateMonitor.yield(samplesDBA: [40])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+
+        try await viewModel.playOrientationThresholdTone(stimulus, duration: 1)
+        #expect(player.playedRequests.count == 2)
+
+        viewModel.stopOrientationThresholdTone()
+        #expect(try await waitUntil { silenceWaiter.waitCallCount == 2 })
+        silenceWaiter.resumeNext()
+        #expect(try await waitUntil { environmentGateMonitor.reasons.count == 3 })
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
     func workflowCleanupWaitsForCaptureAndPlayerThenRestoresOnlyOnce() async throws {
         let order = AudioWorkflowCleanupOrderRecorder()
         let player = MockCalibratedTonePlayer()
@@ -1932,6 +1989,7 @@ private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
     var playedRequests: [CalibratedTonePlaybackRequest] = []
     var stopCallCount = 0
     var onStop: () -> Void = {}
+    var onWaitForSilence: () async -> Void = {}
 
     func play(_ request: CalibratedTonePlaybackRequest) throws -> CalibratedTonePlaybackMetadata {
         playedRequests.append(request)
@@ -1956,6 +2014,30 @@ private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
         .metadata
         .started(at: Date(timeIntervalSince1970: 1_800_020_001))
         .stopped(at: Date(timeIntervalSince1970: 1_800_020_002))
+    }
+
+    func waitForSilenceAfterStop() async {
+        await onWaitForSilence()
+    }
+}
+
+@MainActor
+private final class ControllablePlaybackSilenceWaiter {
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+    private(set) var waitCallCount = 0
+
+    func wait() async {
+        waitCallCount += 1
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func resumeNext() {
+        guard !continuations.isEmpty else {
+            return
+        }
+        continuations.removeFirst().resume()
     }
 }
 

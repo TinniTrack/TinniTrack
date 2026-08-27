@@ -891,6 +891,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     ) async throws {
         if let playbackStopTask {
             await playbackStopTask.value
+            try Task.checkCancellation()
         }
         try await waitForEnvironmentReacquisitionIfNeeded()
         guard !isPlaying, !isPreparingPlayback, playbackStopTask == nil else {
@@ -905,6 +906,10 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
             let shouldResume = await suspendPassedEnvironmentGateForPlayback()
             shouldResumeEnvironmentGateAfterPlayback = shouldResume
             isPreparingPlayback = false
+            if Task.isCancelled {
+                resumeEnvironmentGateAfterPlaybackIfNeeded()
+                throw CancellationError()
+            }
         }
 
         guard allowsCalibratedPlayback else {
@@ -942,6 +947,15 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func stopOrientationThresholdTone() {
+        guard playbackStopTask == nil else {
+            return
+        }
+        guard isPlaying || isPreparingPlayback else {
+            return
+        }
+
+        playbackPreparationGeneration &+= 1
+        isPreparingPlayback = false
         guardrailMonitor?.stopMonitoring()
         _ = player?.stop()
         if hasPassedEnvironmentGate {
@@ -953,7 +967,6 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
                 )
             )
         }
-        playbackStopTask?.cancel()
         let stopTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.player?.waitForSilenceAfterStop()

@@ -229,8 +229,17 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         let rampDuration = renderState.beginRampOut()
         scheduledStopCoordinator.invalidatePlayback()
         if rampDuration > 0 {
-            try? await Task.sleep(nanoseconds: UInt64(rampDuration * 1_000_000_000))
+            do {
+                try await Task.sleep(
+                    nanoseconds: UInt64(rampDuration * 1_000_000_000)
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
         }
+        guard !Task.isCancelled else { return }
         stopImmediately()
     }
 
