@@ -162,6 +162,7 @@ nonisolated struct StudyNo1OrientationThresholdPayloadBuilder {
             leftEar: leftEar,
             limitations: [
                 StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
+                "Any headphone identifier and verification provenance in this payload come from guardrail metadata; public iOS APIs do not provide AirPods Pro 2 hardware attestation.",
                 "Orientation threshold is a validation record only; scheduled Study No. 1 loudness tasks use the imported HealthKit audiogram threshold for dB SL.",
                 "No clinical or diagnostic claim is made by this payload."
             ]

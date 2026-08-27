@@ -147,6 +147,9 @@ final class StudyTaskDashboardViewModel: ObservableObject {
 
         do {
             let task = try await studyService.beginStudyNo1OrientationThresholdTask(enrollmentID: enrollment.id)
+            guard !Task.isCancelled else {
+                return nil
+            }
             if task.status == .completed {
                 onboardingThresholdTask = nil
                 taskLoadErrorMessage = nil
@@ -158,6 +161,9 @@ final class StudyTaskDashboardViewModel: ObservableObject {
             taskLoadErrorMessage = nil
             return task
         } catch {
+            guard !Task.isCancelled else {
+                return nil
+            }
             taskLoadErrorMessage = error.localizedDescription
             return nil
         }

@@ -375,7 +375,7 @@ nonisolated struct StudyNo1LoudnessMatchPayloadBuilder {
             refusals: events.compactMap(StudyNo1RefusalContext.init),
             limitations: [
                 StudyNo1LoudnessMatchRunPayload.modelCalibratedOutputLimitation,
-                "AirPods Pro 2 verification uses the recorded research-protocol route confirmation when public iOS APIs cannot expose Apple's private AirPods hearing-test verification.",
+                "Any headphone identifier and verification provenance in this payload come from guardrail metadata; public iOS APIs do not provide AirPods Pro 2 hardware attestation.",
                 "No clinical or diagnostic claim is made by this payload."
             ]
         )

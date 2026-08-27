@@ -524,27 +524,40 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func correctEarGateShowsUnsupportedHeadphonesMessageForNonMatchingBluetoothPlaybackRoute() {
+    func correctEarGateDoesNotAllowConfirmationForGenericBluetoothPlaybackRoute() {
         let routeProvider = MockAudioSessionRouteVolumeProvider(
             outputs: [audioOutput(name: "Bluetooth Speaker", portType: .bluetoothA2DP)],
             outputVolume: 1.0
         )
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
-            guardrailProvider: { CalibratedAudioGuardrailSession().validation },
             headphoneRouteProvider: routeProvider,
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
 
         #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
         #expect(viewModel.message == .unsupportedHeadphones)
-        #expect(viewModel.headphoneRouteAssessment.primaryIssue == .unsupportedBluetoothPlaybackDevice)
+        #expect(viewModel.headphoneRouteAssessment.isCompatibleBluetoothPlaybackRoute)
+        #expect(viewModel.headphoneRouteAssessment.looksLikeAirPodsProRoute == false)
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.currentGuardrailValidation.state == .failed)
+        #expect(
+            viewModel.currentGuardrailValidation.metadata.routeDetails?.outputs.first?
+                .verifiedCalibratedHeadphoneIdentifier == nil
+        )
+        guard case .unverifiedHeadphoneProfile = viewModel.currentGuardrailValidation.error else {
+            Issue.record("Expected a generic Bluetooth route to remain unverified")
+            return
+        }
     }
 
     @Test
-    func correctEarGatePassesForLikelyAirPodsPro2PlaybackRoute() {
+    func correctEarGatePassesForConfirmedDefaultAirPodsProRouteName() {
         let routeProvider = MockAudioSessionRouteVolumeProvider(
-            outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP)],
             outputVolume: 0.5
         )
         let viewModel = LoudnessMatchTaskFlowViewModel(
@@ -554,9 +567,63 @@ struct LoudnessMatchTaskFlowViewModelTests {
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
 
+        #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
+        #expect(viewModel.message == .airPodsPro2ConfirmationRequired)
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+
         #expect(viewModel.validateAirPodsForCorrectEarStep())
         #expect(viewModel.message == nil)
-        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
+        #expect(viewModel.headphoneRouteAssessment.looksLikeAirPodsProRoute)
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed)
+    }
+
+    @Test
+    func participantConfirmationBecomesGuardrailProfileProofForDefaultAirPodsName() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        #expect(viewModel.currentGuardrailValidation.state == .failed)
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+
+        #expect(viewModel.currentGuardrailValidation.state == .passed)
+        #expect(
+            viewModel.currentGuardrailValidation.metadata.routeDetails?.outputs.first?.verificationSource
+                == .researchProtocol
+        )
+    }
+
+    @Test
+    func removingParticipantConfirmationRemovesGuardrailProfileProof() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        #expect(viewModel.currentGuardrailValidation.state == .passed)
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(false)
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.currentGuardrailValidation.state == .failed)
+        guard case .unverifiedHeadphoneProfile = viewModel.currentGuardrailValidation.error else {
+            Issue.record("Expected participant confirmation removal to invalidate profile proof")
+            return
+        }
     }
 
     @Test
@@ -574,8 +641,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
 
         #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
         #expect(viewModel.message == .calibratedPlaybackRouteUnavailable)
-        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
-        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic == false)
+        #expect(viewModel.headphoneRouteAssessment.looksLikeAirPodsProRoute)
+        #expect(viewModel.headphoneRouteAssessment.isCompatibleBluetoothPlaybackRoute == false)
     }
 
     @Test
@@ -595,7 +662,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
         routeProvider.outputs = [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)]
         routeProvider.triggerRouteChange()
         await Task.yield()
-        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
+        #expect(viewModel.headphoneRouteAssessment.looksLikeAirPodsProRoute)
 
         viewModel.stopHeadphoneRouteMonitoring()
         #expect(viewModel.isHeadphoneRouteMonitoring == false)
@@ -614,6 +681,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
 
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
         viewModel.startAirPodsContinuityMonitoring()
         #expect(viewModel.isAirPodsContinuityMonitoring)
         #expect(viewModel.isAirPodsRouteInterrupted == false)
@@ -634,6 +702,124 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func confirmedRouteDoesNotCarryAcrossA2DPRouteUIDChange() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: "route-a")],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.startAirPodsContinuityMonitoring()
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed)
+
+        routeProvider.outputs = [
+            audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: "route-b")
+        ]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.isAirPodsRouteInterrupted)
+    }
+
+    @Test
+    func confirmedRouteRequiresAirPodsFamilySignalAfterSameUIDRename() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: "route-a")],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.startAirPodsContinuityMonitoring()
+        #expect(viewModel.currentGuardrailValidation.state == .passed)
+
+        routeProvider.outputs = [
+            audioOutput(name: "Bluetooth Headphones", portType: .bluetoothA2DP, uid: "route-a")
+        ]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
+        #expect(viewModel.message == .unsupportedHeadphones)
+        #expect(viewModel.currentGuardrailValidation.state == .failed)
+    }
+
+    @Test
+    func missingUIDConfirmationIsClearedAcrossDisconnectAndSameNameReconnect() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: nil)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.startAirPodsContinuityMonitoring()
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed)
+
+        routeProvider.outputs = []
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+        #expect(viewModel.researchProtocolAirPodsPro2Confirmation == nil)
+
+        routeProvider.outputs = [
+            audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: nil)
+        ]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
+        #expect(viewModel.message == .airPodsPro2ConfirmationRequired)
+    }
+
+    @Test
+    func correctEarMonitoringClearsMissingUIDConfirmationAcrossDisconnect() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: nil)],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.startHeadphoneRouteMonitoring()
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed)
+
+        routeProvider.outputs = []
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+        #expect(viewModel.researchProtocolAirPodsPro2Confirmation == nil)
+
+        routeProvider.outputs = [
+            audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: nil)
+        ]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.validateAirPodsForCorrectEarStep() == false)
+        #expect(viewModel.message == .airPodsPro2ConfirmationRequired)
+    }
+
+    @Test
     func airPodsDisconnectDoesNotStopContinuousEnvironmentGate() async throws {
         let routeProvider = MockAudioSessionRouteVolumeProvider(
             outputs: [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)],
@@ -646,6 +832,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             environmentGateMonitor: MockEnvironmentSPLGateMonitor(samplesByUpdate: [[34]], finishAfterUpdates: false)
         )
 
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
         viewModel.startAirPodsContinuityMonitoring()
         viewModel.startContinuousEnvironmentGate()
         #expect(try await waitUntil { viewModel.isRunningEnvironmentGate })
@@ -672,6 +859,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             environmentGateMonitor: MockEnvironmentSPLGateMonitor(samplesByUpdate: [[34]], finishAfterUpdates: false)
         )
 
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
         viewModel.startAirPodsContinuityMonitoring()
         viewModel.startContinuousEnvironmentGate()
         #expect(try await waitUntil { viewModel.isRunningEnvironmentGate })
@@ -698,6 +886,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
         )
 
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
         viewModel.startAirPodsContinuityMonitoring()
         #expect(viewModel.isAirPodsRouteInterrupted == false)
 
@@ -707,14 +896,39 @@ struct LoudnessMatchTaskFlowViewModelTests {
 
         #expect(viewModel.isAirPodsRouteInterrupted)
         #expect(viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp)
-        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2Heuristic)
-        #expect(viewModel.headphoneRouteAssessment.passesAirPodsPro2PlaybackHeuristic == false)
+        #expect(viewModel.headphoneRouteAssessment.looksLikeAirPodsProRoute)
+        #expect(viewModel.headphoneRouteAssessment.isCompatibleBluetoothPlaybackRoute == false)
 
         routeProvider.outputs = [audioOutput(name: "Vasyl's AirPods Pro 2", portType: .bluetoothA2DP)]
         routeProvider.triggerRouteChange()
         await Task.yield()
 
         #expect(viewModel.isAirPodsRouteInterrupted == false)
+        #expect(viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp == false)
+    }
+
+    @Test
+    func unrelatedBluetoothHeadsetIsNotReportedAsConfirmedAirPodsCallAudio() async {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [audioOutput(name: "Basil’s AirPods Pro", portType: .bluetoothA2DP, uid: "route-a")],
+            outputVolume: 1.0
+        )
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.startAirPodsContinuityMonitoring()
+
+        routeProvider.outputs = [
+            audioOutput(name: "Bluetooth Headset", portType: .bluetoothHFP, uid: "route-b")
+        ]
+        routeProvider.triggerRouteChange()
+        await Task.yield()
+
+        #expect(viewModel.isAirPodsRouteInterrupted)
         #expect(viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp == false)
     }
 
@@ -818,6 +1032,28 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func cancelledLateralityResolutionDoesNotPublishRepositoryCancellationError() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35]),
+            audiogramRepository: CancellationAsURLErrorAudiogramRepository()
+        )
+        await completePreflight(viewModel)
+
+        let startTask = Task {
+            await viewModel.startLoudnessMatch(laterality: .left)
+        }
+        #expect(try await waitUntil { viewModel.isResolvingAudiogramThreshold })
+
+        startTask.cancel()
+
+        #expect(await startTask.value == false)
+        #expect(viewModel.message == nil)
+        #expect(viewModel.selectedLaterality == nil)
+    }
+
+    @Test
     func scheduledLoudnessTaskStartsFromAudiogramWithoutManualThresholdEvents() async throws {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
@@ -911,6 +1147,9 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     private func completePreflight(_ viewModel: LoudnessMatchTaskFlowViewModel) async {
+        if !viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed {
+            viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        }
         viewModel.fitSealConfirmed = true
         viewModel.safetyAcknowledged = true
         viewModel.refreshGuardrails()
@@ -1009,7 +1248,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     private func audioOutput(
         name: String,
         portType: AVAudioSession.Port,
-        uid: String = "route-uid"
+        uid: String? = "route-uid"
     ) -> AudioSessionRouteOutputSnapshot {
         AudioSessionRouteOutputSnapshot(
             portName: name,
@@ -1109,6 +1348,19 @@ private struct MockAudiogramRepository: AudiogramRepositoryProtocol {
 
     func fetchLatestAudiogram() async throws -> AudiogramRecord? {
         audiogram
+    }
+
+    func saveHealthKitAudiograms(_ samples: [HealthKitAudiogramSample]) async throws -> Int {
+        samples.count
+    }
+}
+
+private struct CancellationAsURLErrorAudiogramRepository: AudiogramRepositoryProtocol {
+    func fetchLatestAudiogram() async throws -> AudiogramRecord? {
+        while !Task.isCancelled {
+            await Task.yield()
+        }
+        throw URLError(.cancelled)
     }
 
     func saveHealthKitAudiograms(_ samples: [HealthKitAudiogramSample]) async throws -> Int {
