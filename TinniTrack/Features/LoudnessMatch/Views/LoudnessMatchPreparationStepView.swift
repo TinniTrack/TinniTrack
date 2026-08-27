@@ -151,7 +151,7 @@ private struct AirPodsCorrectEarStepView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(LoudnessMatchModalColors.primary)
-            .accessibilityHint("Refreshes the connected audio route after returning from Settings.")
+            .accessibilityHint("Refreshes the connected audio route.")
             .accessibilityIdentifier("loudness_airpods_check_again")
         }
         .padding(14)
@@ -171,7 +171,7 @@ private struct AirPodsCorrectEarStepView: View {
                 .foregroundStyle(LoudnessMatchModalColors.success)
                 .accessibilityHidden(true)
         } else if assessment.isAirPodsProPlaybackRouteCandidate {
-            Image(systemName: "airpodspro")
+            Image(systemName: "link.circle.fill")
                 .font(.title2)
                 .foregroundStyle(LoudnessMatchModalColors.primary)
                 .accessibilityHidden(true)

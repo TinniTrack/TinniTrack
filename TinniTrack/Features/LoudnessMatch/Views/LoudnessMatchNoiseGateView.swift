@@ -230,18 +230,16 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     private var accessibilityLabel: String {
         switch status {
-        case .idle, .warmingUp, .measuringInitialQuietness:
-            return "Quiet surroundings screening in progress"
-        case .suspended, .reacquiring:
-            return "Quiet surroundings screening resuming"
-        case .suspectedLoudness:
-            return "Possible background noise change"
-        case .interruptedByLoudness:
-            return "Sustained background noise interruption"
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
+            return "Determining ambient sound level"
+        case .suspectedLoudness, .interruptedByLoudness:
+            return "Too loud"
         case .quiet:
-            return "Quiet surroundings screening passed"
-        case .routeInvalid, .unavailable:
-            return "Quiet surroundings screening unavailable"
+            return "Quiet check passed"
+        case .routeInvalid:
+            return "Microphone route changed"
+        case .unavailable:
+            return "Check unavailable"
         }
     }
 
