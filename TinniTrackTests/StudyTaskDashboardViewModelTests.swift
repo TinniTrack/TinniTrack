@@ -41,7 +41,7 @@ struct StudyTaskDashboardViewModelTests {
         #expect(viewModel.orientationImportState == .waitingForPermission)
         #expect(viewModel.isAudiogramPrerequisiteMet == false)
 
-        await viewModel.connectAppleHealthForOrientation()
+        await viewModel.importOrSyncAudiograms()
 
         #expect(viewModel.orientationImportState == .success(hearingTestDate: hearingTestDate))
         #expect(viewModel.contentState == .ready(latestAudiogramDate: hearingTestDate))
@@ -62,7 +62,7 @@ struct StudyTaskDashboardViewModelTests {
         )
 
         await viewModel.refresh()
-        await viewModel.connectAppleHealthForOrientation()
+        await viewModel.importOrSyncAudiograms()
 
         #expect(viewModel.orientationImportState == .authorizedNoHearingTest)
         #expect(viewModel.contentState == .blocked(.noAudiogramInHealth))
@@ -101,7 +101,7 @@ struct StudyTaskDashboardViewModelTests {
         )
 
         await viewModel.refresh()
-        await viewModel.connectAppleHealthForOrientation()
+        await viewModel.importOrSyncAudiograms()
 
         #expect(viewModel.orientationImportState == .permissionDenied)
         #expect(viewModel.contentState == .blocked(.permissionDenied))
@@ -270,44 +270,6 @@ struct StudyTaskDashboardViewModelTests {
     }
 
     @Test
-    func preparingOrientationThresholdTaskRequiresImportedAudiogramAndUsesServiceBoundary() async {
-        let hearingTestDate = Date(timeIntervalSince1970: 1_710_000_000)
-        let coordinator = MockAudiogramImportCoordinator()
-        coordinator.enqueuePrerequisite(.needsPermission)
-        coordinator.enqueuePrerequisite(.met(latestMeasuredAt: hearingTestDate))
-
-        let enrollment = sampleEnrollment(onboardingCompletedAt: nil)
-        let service = MockTaskStudyService()
-        let onboardingTask = sampleScheduledTask(
-            enrollmentID: enrollment.id,
-            status: .scheduled,
-            scheduledFor: Date(timeIntervalSince1970: 1_750_000_000),
-            windowStart: Date(timeIntervalSince1970: 1_750_000_000),
-            windowEnd: Date(timeIntervalSince1970: 1_750_043_200),
-            dayIndex: -1,
-            slotIndex: 0
-        )
-        await service.setOnboardingThresholdTask(onboardingTask)
-
-        let viewModel = StudyTaskDashboardViewModel(
-            study: Self.sampleStudyNo1(),
-            enrollment: enrollment,
-            coordinator: coordinator,
-            studyService: service
-        )
-
-        await viewModel.refresh()
-        #expect(await viewModel.prepareStudyOnboardingThresholdTask() == nil)
-
-        await viewModel.checkOrientationImportStatus()
-        let preparedTask = await viewModel.prepareStudyOnboardingThresholdTask()
-
-        #expect(preparedTask == onboardingTask)
-        #expect(viewModel.onboardingThresholdTask == onboardingTask)
-        #expect(await service.beginOnboardingTaskCallCount() == 1)
-    }
-
-    @Test
     func scheduledTasksAreGroupedAndSorted() async {
         let hearingTestDate = Date(timeIntervalSince1970: 1_710_000_000)
         let coordinator = MockAudiogramImportCoordinator()
@@ -472,8 +434,6 @@ private final class MockAudiogramImportCoordinator: AudiogramImportCoordinating 
 private actor MockTaskStudyService: StudyServiceProtocol {
     private var scheduledTasksByEnrollment: [UUID: [ScheduledTask]] = [:]
     private var completeOnboardingCalls: [(enrollmentID: UUID, timezone: String)] = []
-    private var onboardingThresholdTask: ScheduledTask?
-    private var beginOnboardingTaskCalls: [UUID] = []
     private var completeOnboardingError: Error?
 
     func fetchStudies() async throws -> [Study] { [] }
@@ -485,10 +445,6 @@ private actor MockTaskStudyService: StudyServiceProtocol {
     }
 
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
-        beginOnboardingTaskCalls.append(enrollmentID)
-        if let onboardingThresholdTask {
-            return onboardingThresholdTask
-        }
         throw NSError(
             domain: "MockTaskStudyService",
             code: 404,
@@ -519,10 +475,6 @@ private actor MockTaskStudyService: StudyServiceProtocol {
         scheduledTasksByEnrollment[enrollmentID] = tasks
     }
 
-    func setOnboardingThresholdTask(_ task: ScheduledTask) {
-        onboardingThresholdTask = task
-    }
-
     func setCompleteOnboardingError(_ error: Error?) {
         completeOnboardingError = error
     }
@@ -531,7 +483,4 @@ private actor MockTaskStudyService: StudyServiceProtocol {
         completeOnboardingCalls.count
     }
 
-    func beginOnboardingTaskCallCount() -> Int {
-        beginOnboardingTaskCalls.count
-    }
 }

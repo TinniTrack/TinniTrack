@@ -117,7 +117,7 @@ struct StudyOrientationHearingTestView: View {
 
     private func connectAppleHealth() {
         Task {
-            await viewModel.connectAppleHealthForOrientation()
+            await viewModel.importOrSyncAudiograms()
         }
     }
 
