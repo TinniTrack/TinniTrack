@@ -468,7 +468,7 @@ final class TinniTrackUITests: XCTestCase {
         signAndEnrollButton.tap()
 
         XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
         XCTAssertTrue(app.navigationBars["Loudness Matching Study"].waitForExistence(timeout: 3))
@@ -486,7 +486,7 @@ final class TinniTrackUITests: XCTestCase {
 
         XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].exists)
-        XCTAssertFalse(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertFalse(app.otherElements["study_onboarding_welcome_step"].exists)
     }
 
     @MainActor
@@ -590,7 +590,7 @@ final class TinniTrackUITests: XCTestCase {
 
         beginOrientationButton.tap()
         XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
-        XCTAssertFalse(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertFalse(app.otherElements["study_onboarding_welcome_step"].exists)
         XCTAssertFalse(app.otherElements["study_onboarding_loudness_intro_step"].exists)
     }
 
@@ -751,12 +751,18 @@ final class TinniTrackUITests: XCTestCase {
         let beginOrientationButton = app.buttons["study_begin_orientation_button"]
         XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 3))
         XCTAssertEqual(beginOrientationButton.label, "Begin Orientation")
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertTrue(
+            app.staticTexts[
+                "We will set up your hearing-test baseline, then run the same tinnitus loudness-match flow used for every Study No. 1 task."
+            ].exists
+        )
         beginOrientationButton.tap()
 
         XCTAssertTrue(app.navigationBars["Orientation"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].exists)
-        XCTAssertFalse(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertFalse(app.otherElements["study_onboarding_welcome_step"].exists)
         return app
     }
 
@@ -860,7 +866,7 @@ final class TinniTrackUITests: XCTestCase {
     @MainActor
     private func assertStudyTaskDashboardDestination(in app: XCUIApplication) {
         XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
         XCTAssertTrue(app.navigationBars["Loudness Matching Study"].waitForExistence(timeout: 3))

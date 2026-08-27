@@ -118,13 +118,37 @@ struct StudyTaskDashboardView: View {
     }
 
     private var orientationRequiredContent: some View {
-        studyGateContent(
-            title: "Welcome. Thanks for choosing to participate in this study!",
-            message: "Before tasks can start, complete orientation and import your hearing-test baseline.",
-            actionTitle: "Begin Orientation",
-            actionAccessibilityIdentifier: "study_begin_orientation_button",
-            accessibilityIdentifier: "study_orientation_required_content"
-        )
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    Image(systemName: "waveform.path")
+                        .font(.system(size: 92, weight: .medium))
+                        .foregroundStyle(LoudnessMatchModalColors.primary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
+
+                    LoudnessMatchModalTitleBlock(
+                        title: "Welcome to Study No. 1",
+                        bodyText: "We will set up your hearing-test baseline, then run the same tinnitus loudness-match flow used for every Study No. 1 task."
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: max(0, proxy.size.height - 48), alignment: .top)
+                .padding(.horizontal, 34)
+                .padding(.vertical, 24)
+            }
+            .accessibilityIdentifier("study_orientation_required_content")
+        }
+        .background(LoudnessMatchModalColors.background)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            LoudnessMatchModalPrimaryButton(title: "Begin Orientation") {
+                isOrientationPresented = true
+            }
+            .accessibilityIdentifier("study_begin_orientation_button")
+            .padding(.horizontal, 34)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+        }
     }
 
     private var blockedPrerequisiteContent: some View {
