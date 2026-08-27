@@ -6,6 +6,13 @@
 import Foundation
 import Combine
 
+enum StudyOnboardingCompletionOutcome: Equatable {
+    case completed
+    case notRequired
+    case cancelled
+    case failed(message: String)
+}
+
 @MainActor
 final class StudyTaskDashboardViewModel: ObservableObject {
     enum ContentState: Equatable {
@@ -169,19 +176,26 @@ final class StudyTaskDashboardViewModel: ObservableObject {
         }
     }
 
-    func completeStudyOnboarding() async {
+    @discardableResult
+    func completeStudyOnboarding() async -> StudyOnboardingCompletionOutcome {
         guard requiresStudyOnboardingCompletion else {
-            return
+            return .notRequired
         }
 
         guard isAudiogramPrerequisiteMet else {
-            taskLoadErrorMessage = "Complete audiogram import before finishing orientation."
-            return
+            let message = "Complete audiogram import before finishing orientation."
+            taskLoadErrorMessage = message
+            return .failed(message: message)
         }
 
         guard let enrollment else {
-            taskLoadErrorMessage = "Unable to find enrollment for this study."
-            return
+            let message = "Unable to find enrollment for this study."
+            taskLoadErrorMessage = message
+            return .failed(message: message)
+        }
+
+        guard !Task.isCancelled else {
+            return .cancelled
         }
 
         isCompletingStudyOnboarding = true
@@ -192,6 +206,10 @@ final class StudyTaskDashboardViewModel: ObservableObject {
                 enrollmentID: enrollment.id,
                 timezone: resolvedTimezoneIdentifier
             )
+
+            guard !Task.isCancelled else {
+                return .cancelled
+            }
 
             self.enrollment = StudyEnrollment(
                 id: enrollment.id,
@@ -206,8 +224,12 @@ final class StudyTaskDashboardViewModel: ObservableObject {
             taskLoadErrorMessage = nil
             onboardingThresholdTask = nil
             await reloadScheduledTasksIfReady(force: true)
+            return .completed
+        } catch is CancellationError {
+            return .cancelled
         } catch {
             taskLoadErrorMessage = error.localizedDescription
+            return .failed(message: error.localizedDescription)
         }
     }
 

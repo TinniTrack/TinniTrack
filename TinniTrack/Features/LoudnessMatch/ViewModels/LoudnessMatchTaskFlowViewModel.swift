@@ -998,13 +998,28 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         )
     }
 
+    func makeOrientationThresholdSubmission(
+        result: StudyNo1OrientationThresholdResearchKitResult,
+        scheduledTask: ScheduledTask,
+        enrollment: StudyEnrollment
+    ) throws -> StudyNo1OrientationThresholdSubmission {
+        let submittedAt = dateProvider()
+        let payload = try makeOrientationThresholdPayload(
+            result: result,
+            scheduledTask: scheduledTask,
+            enrollment: enrollment,
+            submittedAt: submittedAt
+        )
+        return try orientationThresholdExporter.makeSubmission(from: payload)
+    }
+
     func submitOrientationThreshold(
         result: StudyNo1OrientationThresholdResearchKitResult,
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment,
         studyService: StudyServiceProtocol
     ) async -> Bool {
-        guard !isSubmitting else {
+        guard !isSubmitting, !hasSubmitted else {
             return false
         }
 
@@ -1012,14 +1027,11 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         defer { isSubmitting = false }
 
         do {
-            let submittedAt = dateProvider()
-            let payload = try makeOrientationThresholdPayload(
+            let submission = try makeOrientationThresholdSubmission(
                 result: result,
                 scheduledTask: scheduledTask,
-                enrollment: enrollment,
-                submittedAt: submittedAt
+                enrollment: enrollment
             )
-            let submission = try orientationThresholdExporter.makeSubmission(from: payload)
             try await studyService.submitStudyNo1OrientationThreshold(
                 scheduledTaskID: scheduledTask.id,
                 enrollmentID: enrollment.id,
@@ -1099,6 +1111,8 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         return false
     }
 }
+
+extension LoudnessMatchTaskFlowViewModel: StudyOrientationThresholdSubmissionBuilding {}
 
 private extension StudyNo1OrientationThresholdEarResult {
     var studyNo1Context: StudyNo1OrientationThresholdEarContext? {

@@ -227,10 +227,45 @@ struct StudyTaskDashboardViewModelTests {
         #expect(viewModel.requiresStudyOnboardingCompletion)
         #expect(viewModel.futureTasks.isEmpty)
 
-        await viewModel.completeStudyOnboarding()
+        let outcome = await viewModel.completeStudyOnboarding()
 
+        #expect(outcome == .completed)
         #expect(viewModel.requiresStudyOnboardingCompletion == false)
         #expect(viewModel.futureTasks.count == 1)
+        #expect(await service.completeOnboardingCallCount() == 1)
+    }
+
+    @Test
+    func onboardingCompletionFailureReturnsMeaningfulOutcome() async {
+        let coordinator = MockAudiogramImportCoordinator()
+        coordinator.enqueuePrerequisite(.met(latestMeasuredAt: Date()))
+
+        let enrollment = sampleEnrollment(onboardingCompletedAt: nil)
+        let service = MockTaskStudyService()
+        await service.setCompleteOnboardingError(
+            NSError(
+                domain: "StudyTaskDashboardViewModelTests",
+                code: 503,
+                userInfo: [NSLocalizedDescriptionKey: "Onboarding is temporarily unavailable."]
+            )
+        )
+        let viewModel = StudyTaskDashboardViewModel(
+            study: Self.sampleStudyNo1(),
+            enrollment: enrollment,
+            coordinator: coordinator,
+            studyService: service
+        )
+
+        await viewModel.refresh()
+        let outcome = await viewModel.completeStudyOnboarding()
+
+        #expect(
+            outcome == .failed(
+                message: "Onboarding is temporarily unavailable."
+            )
+        )
+        #expect(viewModel.requiresStudyOnboardingCompletion)
+        #expect(viewModel.taskLoadErrorMessage == "Onboarding is temporarily unavailable.")
         #expect(await service.completeOnboardingCallCount() == 1)
     }
 
@@ -439,6 +474,7 @@ private actor MockTaskStudyService: StudyServiceProtocol {
     private var completeOnboardingCalls: [(enrollmentID: UUID, timezone: String)] = []
     private var onboardingThresholdTask: ScheduledTask?
     private var beginOnboardingTaskCalls: [UUID] = []
+    private var completeOnboardingError: Error?
 
     func fetchStudies() async throws -> [Study] { [] }
 
@@ -462,6 +498,9 @@ private actor MockTaskStudyService: StudyServiceProtocol {
 
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {
         completeOnboardingCalls.append((enrollmentID: enrollmentID, timezone: timezone))
+        if let completeOnboardingError {
+            throw completeOnboardingError
+        }
     }
 
     func submitLoudnessMatch(
@@ -482,6 +521,10 @@ private actor MockTaskStudyService: StudyServiceProtocol {
 
     func setOnboardingThresholdTask(_ task: ScheduledTask) {
         onboardingThresholdTask = task
+    }
+
+    func setCompleteOnboardingError(_ error: Error?) {
+        completeOnboardingError = error
     }
 
     func completeOnboardingCallCount() -> Int {
