@@ -17,6 +17,7 @@ struct StudyOrientationThresholdTestView: View {
         ) {
             stageContent
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("study_onboarding_threshold_test_step")
         }
         .navigationBarBackButtonHidden(true)

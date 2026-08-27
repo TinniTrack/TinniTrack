@@ -27,6 +27,7 @@ enum StudyTestLayout {
     static let regularHorizontalGutter: CGFloat = 34
     static let compactHorizontalGutter: CGFloat = 26
     static let accessibilityHorizontalGutter: CGFloat = 20
+    static let pageVerticalPadding: CGFloat = 24
     static let maximumContentWidth: CGFloat = 680
 
     static func horizontalGutter(
@@ -106,6 +107,7 @@ struct StudyTestPage<Content: View>: View {
     let content: Content
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var primaryActionBarHeight: CGFloat = 0
 
     init(
         navigationTitle: String,
@@ -125,6 +127,17 @@ struct StudyTestPage<Content: View>: View {
                 for: proxy.size.width,
                 dynamicTypeSize: dynamicTypeSize
             )
+            let reservedActionBarHeight = primaryAction == nil
+                ? 0
+                : primaryActionBarHeight
+            let minimumContentHeight = max(
+                0,
+                proxy.size.height
+                    - reservedActionBarHeight
+                    - proxy.safeAreaInsets.top
+                    - proxy.safeAreaInsets.bottom
+                    - StudyTestLayout.pageVerticalPadding * 2
+            )
 
             ScrollView {
                 content
@@ -133,9 +146,12 @@ struct StudyTestPage<Content: View>: View {
                         alignment: .topLeading
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(
+                        minHeight: minimumContentHeight,
+                        alignment: .topLeading
+                    )
                     .padding(.horizontal, horizontalGutter)
-                    .padding(.top, 24)
-                    .padding(.bottom, 24)
+                    .padding(.vertical, StudyTestLayout.pageVerticalPadding)
             }
             .scrollBounceBehavior(.basedOnSize)
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -144,7 +160,18 @@ struct StudyTestPage<Content: View>: View {
                         primaryAction,
                         horizontalGutter: horizontalGutter
                     )
+                    .background {
+                        GeometryReader { actionBarProxy in
+                            Color.clear.preference(
+                                key: StudyTestPrimaryActionBarHeightKey.self,
+                                value: actionBarProxy.size.height
+                            )
+                        }
+                    }
                 }
+            }
+            .onPreferenceChange(StudyTestPrimaryActionBarHeightKey.self) {
+                primaryActionBarHeight = $0
             }
         }
         .background(StudyTestColors.background)
@@ -200,6 +227,14 @@ struct StudyTestPage<Content: View>: View {
         .accessibilityLabel(Text(closeAction.accessibilityLabel))
         .studyTestAccessibilityHint(closeAction.accessibilityHint)
         .studyTestAccessibilityIdentifier(closeAction.accessibilityIdentifier)
+    }
+}
+
+private struct StudyTestPrimaryActionBarHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

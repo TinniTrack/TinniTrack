@@ -10,9 +10,8 @@ struct LoudnessMatchTaskModalFlowView: View {
 
     @StateObject private var viewModel: LoudnessMatchTaskFlowViewModel
     @StateObject private var preflightSession: CalibratedAudioPreflightSession
-    @State private var navigationPath: [LoudnessMatchPreparationRoute] = []
+    @State private var navigationPath: [LoudnessMatchTaskRoute] = []
     @State private var selectedLaterality: TinnitusLaterality?
-    @State private var isActiveTestPresented = false
     @State private var isCloseConfirmationPresented = false
     @State private var isNoiseSuggestionsPresented = false
     @State private var startLoudnessMatchTask: Task<Void, Never>?
@@ -37,20 +36,12 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            LoudnessMatchModalColors.background
+        ZStack {
+            StudyTestColors.background
                 .ignoresSafeArea()
 
-            if isActiveTestPresented {
-                activeTestContent
-                    .accessibilityHidden(isInterruptionOverlayPresented)
-
-                activeTestCloseControl
-                    .accessibilityHidden(isInterruptionOverlayPresented)
-            } else {
-                preparationNavigation
-                    .accessibilityHidden(isInterruptionOverlayPresented)
-            }
+            taskNavigation
+                .accessibilityHidden(isInterruptionOverlayPresented)
 
             if let interruptionConfiguration {
                 CalibratedAudioInterruptionOverlay(
@@ -66,7 +57,7 @@ struct LoudnessMatchTaskModalFlowView: View {
                 .zIndex(2)
             }
         }
-        .foregroundStyle(LoudnessMatchModalColors.text)
+        .foregroundStyle(StudyTestColors.text)
         .interactiveDismissDisabled(true)
         .onChange(of: navigationPath) { oldPath, newPath in
             handleNavigationPathChange(from: oldPath, to: newPath)
@@ -104,45 +95,35 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
     }
 
-    private var preparationNavigation: some View {
+    private var taskNavigation: some View {
         NavigationStack(path: $navigationPath) {
             preparationPage(for: .intro)
-                .navigationDestination(for: LoudnessMatchPreparationRoute.self) { route in
-                    preparationPage(for: route.step)
+                .navigationDestination(for: LoudnessMatchTaskRoute.self) { route in
+                    switch route {
+                    case .activeTest:
+                        activeTestPage
+                    case .correctEar, .quietRoom, .fit, .maxVolume, .tinnitusLocation:
+                        if let step = route.preparationStep {
+                            preparationPage(for: step)
+                        }
+                    }
                 }
         }
-        .tint(LoudnessMatchModalColors.primary)
-    }
-
-    private var activeTestContent: some View {
-        LoudnessMatchActiveTestView(
-            viewModel: viewModel,
-            scheduledTask: scheduledTask,
-            enrollment: enrollment,
-            studyService: studyService
-        ) { @MainActor in
-            onSubmitted()
-            dismiss()
-        }
-    }
-
-    private var activeTestCloseControl: some View {
-        HStack {
-            Spacer()
-
-            LoudnessMatchModalIconButton(
-                systemName: "xmark",
-                accessibilityLabel: "Close",
-                accessibilityIdentifier: "loudness_modal_close_button",
-                action: requestClose
-            )
-        }
-        .padding(.horizontal, 26)
-        .padding(.top, 18)
+        .tint(StudyTestColors.accent)
     }
 
     private func preparationPage(for step: LoudnessMatchModalStep) -> some View {
-        VStack(spacing: 0) {
+        StudyTestPage(
+            navigationTitle: "Loudness Match",
+            closeAction: closeAction,
+            primaryAction: StudyTestPageAction(
+                title: primaryButtonTitle(for: step),
+                isEnabled: isPrimaryButtonEnabled(for: step),
+                isLoading: step == .tinnitusLocation && startLoudnessMatchTask != nil,
+                accessibilityIdentifier: "loudness_modal_primary_button",
+                action: { advance(from: step) }
+            )
+        ) {
             LoudnessMatchPreparationStepView(
                 step: step,
                 viewModel: viewModel,
@@ -150,33 +131,56 @@ struct LoudnessMatchTaskModalFlowView: View {
                 showNoiseSuggestions: showNoiseSuggestions,
                 selectLaterality: selectLaterality
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(.horizontal, 34)
-        .padding(.vertical, 24)
-        .background(LoudnessMatchModalColors.background)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            LoudnessMatchModalPrimaryButton(
-                title: primaryButtonTitle(for: step),
-                isEnabled: isPrimaryButtonEnabled(for: step)
-            ) {
-                advance(from: step)
-            }
-            .padding(.horizontal, 34)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+    }
+
+    private var activeTestPage: some View {
+        StudyTestPage(
+            navigationTitle: "Loudness Match",
+            closeAction: closeAction,
+            primaryAction: activeTestPrimaryAction
+        ) {
+            LoudnessMatchActiveTestView(viewModel: viewModel)
         }
-        .navigationTitle("Loudness Match")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: requestClose) {
-                    Image(systemName: "xmark")
-                }
-                .accessibilityLabel("Close")
-                .accessibilityIdentifier("loudness_modal_close_button")
-            }
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private var activeTestPrimaryAction: StudyTestPageAction? {
+        switch viewModel.protocolState {
+        case .readyForTrial:
+            return StudyTestPageAction(
+                title: "Same Loudness",
+                isEnabled: viewModel.preflightReady,
+                accessibilityLabel: "Same loudness",
+                accessibilityHint: "Accepts the current tone level and continues to confidence rating.",
+                accessibilityIdentifier: "loudness_modal_primary_button",
+                action: viewModel.acceptCurrentLevel
+            )
+
+        case .completed:
+            return StudyTestPageAction(
+                title: viewModel.isSubmitting ? "Submitting" : "Submit",
+                isEnabled: viewModel.canSubmit,
+                isLoading: viewModel.isSubmitting,
+                accessibilityIdentifier: "loudness_modal_primary_button",
+                action: submitCompletedRun
+            )
+
+        case .collectingLaterality,
+             .awaitingThreshold,
+             .awaitingConfidence,
+             .aborted,
+             .restartRequired:
+            return nil
         }
+    }
+
+    private var closeAction: StudyTestCloseAction {
+        StudyTestCloseAction(
+            accessibilityIdentifier: "loudness_modal_close_button",
+            action: requestClose
+        )
     }
 
     private func primaryButtonTitle(for step: LoudnessMatchModalStep) -> String {
@@ -188,7 +192,7 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .maxVolume:
             return "Continue"
         case .tinnitusLocation:
-            return "Start Test"
+            return startLoudnessMatchTask == nil ? "Start Test" : "Starting"
         }
     }
 
@@ -272,14 +276,28 @@ struct LoudnessMatchTaskModalFlowView: View {
             }
 
             preflightSession.transition(to: .activeTest)
-            isActiveTestPresented = true
             clearStartTaskIfCurrent(generation)
+            navigationPath.append(.activeTest)
+        }
+    }
+
+    private func submitCompletedRun() {
+        Task { @MainActor in
+            await viewModel.submitCompletedRun(
+                scheduledTask: scheduledTask,
+                enrollment: enrollment,
+                studyService: studyService
+            )
+            if viewModel.hasSubmitted {
+                onSubmitted()
+                dismiss()
+            }
         }
     }
 
     private func handleNavigationPathChange(
-        from oldPath: [LoudnessMatchPreparationRoute],
-        to newPath: [LoudnessMatchPreparationRoute]
+        from oldPath: [LoudnessMatchTaskRoute],
+        to newPath: [LoudnessMatchTaskRoute]
     ) {
         let oldRoute = oldPath.last
         let newRoute = newPath.last
@@ -287,16 +305,19 @@ struct LoudnessMatchTaskModalFlowView: View {
             return
         }
 
-        if oldRoute == .tinnitusLocation, newRoute != .tinnitusLocation {
+        if oldRoute == .tinnitusLocation,
+           newRoute != .tinnitusLocation,
+           newRoute != .activeTest {
             cancelStartLoudnessMatch()
         }
 
-        if newPath.count < oldPath.count, viewModel.isPlaying {
+        if oldRoute == .activeTest, newRoute != .activeTest {
+            viewModel.abort()
+        } else if newPath.count < oldPath.count, viewModel.isPlaying {
             viewModel.stopTone()
         }
 
-        let newStep = newRoute?.step ?? .intro
-        preflightSession.transition(to: phase(for: newStep))
+        preflightSession.transition(to: phase(for: newRoute))
     }
 
     private func handleRequestedFallback(
@@ -307,16 +328,21 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
 
         cancelStartLoudnessMatch()
+        if navigationPath.last == .activeTest {
+            viewModel.abort()
+        }
         navigationPath = [.correctEar]
         preflightSession.consumeRequestedFallback()
     }
 
     private func phase(
-        for step: LoudnessMatchModalStep
+        for route: LoudnessMatchTaskRoute?
     ) -> CalibratedAudioPreflightSession.Phase? {
-        switch step {
-        case .intro:
+        guard let route else {
             return nil
+        }
+
+        switch route {
         case .correctEar:
             return .airPods
         case .quietRoom:
@@ -327,11 +353,16 @@ struct LoudnessMatchTaskModalFlowView: View {
             return .maximumVolume
         case .tinnitusLocation:
             return .postPreflight
+        case .activeTest:
+            return .activeTest
         }
     }
 
-    private var currentPreparationStep: LoudnessMatchModalStep {
-        navigationPath.last?.step ?? .intro
+    private var currentPreparationStep: LoudnessMatchModalStep? {
+        guard let route = navigationPath.last else {
+            return .intro
+        }
+        return route.preparationStep
     }
 
     private var participantMessagePresentation: Binding<Bool> {
@@ -385,7 +416,7 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     private var hasStartedTest: Bool {
-        isActiveTestPresented || viewModel.events.count > 1
+        navigationPath.last == .activeTest || viewModel.events.count > 1
     }
 
     private func selectLaterality(_ laterality: TinnitusLaterality) {
@@ -397,6 +428,9 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     private func requestClose() {
+        if navigationPath.last == .activeTest, viewModel.isPlaying {
+            viewModel.stopTone()
+        }
         isCloseConfirmationPresented = true
     }
 
@@ -436,14 +470,15 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 }
 
-private enum LoudnessMatchPreparationRoute: Hashable {
+private enum LoudnessMatchTaskRoute: Hashable {
     case correctEar
     case quietRoom
     case fit
     case maxVolume
     case tinnitusLocation
+    case activeTest
 
-    var step: LoudnessMatchModalStep {
+    var preparationStep: LoudnessMatchModalStep? {
         switch self {
         case .correctEar:
             return .correctEar
@@ -455,6 +490,8 @@ private enum LoudnessMatchPreparationRoute: Hashable {
             return .maxVolume
         case .tinnitusLocation:
             return .tinnitusLocation
+        case .activeTest:
+            return nil
         }
     }
 }

@@ -85,37 +85,34 @@ private struct AirPodsCorrectEarStepView: View {
     let refreshRoute: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                HStack(spacing: 52) {
-                    airPodGlyph(label: "L")
-                    airPodGlyph(label: "R")
-                }
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
-
-                LoudnessMatchModalTitleBlock(
-                    title: "Place your AirPods in the correct ear.",
-                    bodyText: "Having your right AirPod in your right ear and left in your left ear can help with test quality.\n\nIf you wear hearing aids, be sure to remove them first.",
-                    titleLineLimit: nil,
-                    bodyLineLimit: nil
-                )
-
-                Text(statusText)
-                    .font(.callout)
-                    .foregroundStyle(statusColor)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("loudness_airpods_status_label")
-
-                confirmationControl
-
-                #if DEBUG
-                diagnosticsDisclosure
-                #endif
+        VStack(alignment: .leading, spacing: 28) {
+            HStack(spacing: 52) {
+                airPodGlyph(label: "L")
+                airPodGlyph(label: "R")
             }
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+
+            LoudnessMatchModalTitleBlock(
+                title: "Place your AirPods in the correct ear.",
+                bodyText: "Having your right AirPod in your right ear and left in your left ear can help with test quality.\n\nIf you wear hearing aids, be sure to remove them first.",
+                titleLineLimit: nil,
+                bodyLineLimit: nil
+            )
+
+            Text(statusText)
+                .font(.callout)
+                .foregroundStyle(statusColor)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("loudness_airpods_status_label")
+
+            confirmationControl
+
+            #if DEBUG
+            diagnosticsDisclosure
+            #endif
         }
-        .scrollIndicators(.hidden)
+        .padding(.vertical, 8)
         .accessibilityIdentifier("loudness_airpods_step")
     }
 
@@ -373,35 +370,28 @@ private struct TinnitusLocationStepView: View {
     let isResolvingSelection: Bool
     let selectLaterality: (TinnitusLaterality) -> Void
 
-    var body: some View {
-        GeometryReader { proxy in
-            content(layout: LayoutMetrics(availableHeight: proxy.size.height))
-        }
-    }
+    @ScaledMetric(relativeTo: .largeTitle) private var iconSize: CGFloat = 84
 
-    private func content(layout: LayoutMetrics) -> some View {
-        VStack(alignment: .leading, spacing: layout.verticalSpacing) {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 28) {
             Image(systemName: "ear.badge.waveform")
-                .font(.system(size: layout.iconSize, weight: .regular))
+                .font(.system(size: min(max(iconSize, 68), 108), weight: .regular))
                 .foregroundStyle(LoudnessMatchModalColors.graphic, LoudnessMatchModalColors.primary)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
 
             LoudnessMatchModalTitleBlock(
                 title: "Where do you hear your tinnitus?",
-                bodyText: "Choose the option that best matches where the sound is most noticeable right now.",
-                bodyFont: layout.bodyFont,
-                bodyLineSpacing: layout.bodyLineSpacing
+                bodyText: "Choose the option that best matches where the sound is most noticeable right now."
             )
             .layoutPriority(1)
 
-            VStack(spacing: layout.choiceSpacing) {
+            VStack(spacing: 12) {
                 ForEach(TinnitusLaterality.allCases, id: \.self) { laterality in
                     LoudnessMatchLateralityChoiceButton(
                         title: lateralityTitle(laterality),
                         isSelected: selectedLaterality == laterality,
-                        isEnabled: !isSelectionCommitted && !isResolvingSelection,
-                        minHeight: layout.choiceMinHeight
+                        isEnabled: !isSelectionCommitted && !isResolvingSelection
                     ) {
                         selectLaterality(laterality)
                     }
@@ -416,10 +406,7 @@ private struct TinnitusLocationStepView: View {
                         .foregroundStyle(LoudnessMatchModalColors.secondaryText)
                 }
             }
-
-            Spacer(minLength: 0)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private func lateralityTitle(_ laterality: TinnitusLaterality) -> String {
@@ -437,39 +424,6 @@ private struct TinnitusLocationStepView: View {
         }
     }
 
-    private struct LayoutMetrics {
-        let iconSize: CGFloat
-        let verticalSpacing: CGFloat
-        let choiceSpacing: CGFloat
-        let choiceMinHeight: CGFloat
-        let bodyFont: Font
-        let bodyLineSpacing: CGFloat
-
-        init(availableHeight: CGFloat) {
-            if availableHeight < 540 {
-                iconSize = 62
-                verticalSpacing = 12
-                choiceSpacing = 8
-                choiceMinHeight = 46
-                bodyFont = .title3
-                bodyLineSpacing = 3
-            } else if availableHeight < 620 {
-                iconSize = 74
-                verticalSpacing = 16
-                choiceSpacing = 10
-                choiceMinHeight = 48
-                bodyFont = .title3
-                bodyLineSpacing = 3
-            } else {
-                iconSize = 92
-                verticalSpacing = 28
-                choiceSpacing = 12
-                choiceMinHeight = 52
-                bodyFont = .title2
-                bodyLineSpacing = 5
-            }
-        }
-    }
 }
 
 private struct LoudnessMatchLateralityChoiceButton: View {
@@ -496,13 +450,13 @@ private struct LoudnessMatchLateralityChoiceButton: View {
             .frame(minHeight: minHeight)
             .padding(.horizontal, 16)
             .background(isSelected ? LoudnessMatchModalColors.primary.opacity(0.12) : LoudnessMatchModalColors.controlBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(isSelected ? LoudnessMatchModalColors.primary : LoudnessMatchModalColors.controlStroke, lineWidth: isSelected ? 1.6 : 1)
             }
         }
-        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 8))
+        .buttonStyle(AppRoundedButtonStyle(cornerRadius: 16))
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.62)
         .accessibilityLabel(title)

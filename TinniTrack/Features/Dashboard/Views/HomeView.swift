@@ -511,11 +511,7 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
     }
 
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
-        throw NSError(
-            domain: "UITestEnrollmentServices",
-            code: 404,
-            userInfo: [NSLocalizedDescriptionKey: "No orientation threshold task configured for UI tests."]
-        )
+        orientationThresholdTask
     }
 
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
@@ -558,6 +554,23 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
             windowEnd: now.addingTimeInterval(3_600),
             status: .scheduled,
             dayIndex: 0,
+            slotIndex: 0,
+            completedAt: nil
+        )
+    }
+
+    private var orientationThresholdTask: ScheduledTask {
+        let scheduledAt = Date(timeIntervalSince1970: 1_725_000_000)
+        return ScheduledTask(
+            id: UUID(uuidString: "66666666-6666-6666-6666-666666666666")!,
+            enrollmentID: enrollmentID,
+            taskKey: "threshold_1khz_orientation_v1",
+            taskVersion: 1,
+            scheduledFor: scheduledAt,
+            windowStart: scheduledAt.addingTimeInterval(-300),
+            windowEnd: scheduledAt.addingTimeInterval(3_600),
+            status: .scheduled,
+            dayIndex: -1,
             slotIndex: 0,
             completedAt: nil
         )
