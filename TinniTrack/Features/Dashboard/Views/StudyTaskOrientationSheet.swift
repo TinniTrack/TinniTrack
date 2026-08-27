@@ -130,16 +130,18 @@ struct StudyTaskOrientationSheet: View {
     }
 
     private func orientationPage(for pageStep: StudyTaskOrientationStep) -> some View {
-        ScrollView {
-            currentStepContent(for: pageStep)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 34)
-                .padding(.top, 24)
-                .padding(.bottom, 24)
+        GeometryReader { proxy in
+            ScrollView {
+                currentStepContent(for: pageStep)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minHeight: max(0, proxy.size.height - 48), alignment: .top)
+                    .padding(.horizontal, 34)
+                    .padding(.vertical, 24)
+            }
         }
         .background(LoudnessMatchModalColors.background)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            orientationActionBar(for: pageStep)
+            orientationPrimaryAction(for: pageStep)
         }
         .navigationTitle("Orientation")
         .navigationBarTitleDisplayMode(.inline)
@@ -154,24 +156,19 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
-    private func orientationActionBar(for pageStep: StudyTaskOrientationStep) -> some View {
-        VStack(spacing: 0) {
-            Divider()
-
-            LoudnessMatchModalPrimaryButton(
-                title: primaryButtonTitle(for: pageStep),
-                isEnabled: isPrimaryButtonEnabled(for: pageStep),
-                isInteractionEnabled: isPrimaryButtonInteractionEnabled(for: pageStep),
-                isLoading: isPrimaryButtonLoading(for: pageStep)
-            ) {
-                advance(from: pageStep)
-            }
-            .accessibilityIdentifier("study_onboarding_primary_button")
-            .padding(.horizontal, 34)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+    private func orientationPrimaryAction(for pageStep: StudyTaskOrientationStep) -> some View {
+        LoudnessMatchModalPrimaryButton(
+            title: primaryButtonTitle(for: pageStep),
+            isEnabled: isPrimaryButtonEnabled(for: pageStep),
+            isInteractionEnabled: isPrimaryButtonInteractionEnabled(for: pageStep),
+            isLoading: isPrimaryButtonLoading(for: pageStep)
+        ) {
+            advance(from: pageStep)
         }
-        .background(LoudnessMatchModalColors.background)
+        .accessibilityIdentifier("study_onboarding_primary_button")
+        .padding(.horizontal, 34)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
