@@ -11,52 +11,55 @@ enum StudyConsentReadableColors {
 }
 
 enum StudyConsentRoute: Hashable {
-    case landing
     case review
     case signature
 
-    var presentsReview: Bool {
-        self != .landing
-    }
-
-    var presentsSignature: Bool {
-        self == .signature
-    }
-
-    mutating func setReviewPresented(_ isPresented: Bool) {
-        if isPresented {
-            if self == .landing {
-                self = .review
-            }
-        } else {
-            self = .landing
+    var depthFromLanding: Int {
+        switch self {
+        case .review:
+            return 1
+        case .signature:
+            return 2
         }
     }
+}
 
-    mutating func setSignaturePresented(_ isPresented: Bool) {
-        if isPresented {
-            if self == .review {
-                self = .signature
-            }
-        } else if self == .signature {
-            self = .review
-        }
+struct StudyConsentNavigationContext: Equatable {
+    let landingPathCount: Int
+
+    init(landingPathCount: Int) {
+        self.landingPathCount = max(0, landingPathCount)
+    }
+
+    func canPresent(_ route: StudyConsentRoute, at currentPathCount: Int) -> Bool {
+        currentPathCount == landingPathCount + route.depthFromLanding - 1
+    }
+
+    func presentedStepCount(at currentPathCount: Int) -> Int? {
+        guard currentPathCount >= landingPathCount else { return nil }
+        return currentPathCount - landingPathCount
     }
 }
 
 struct StudyConsentFlowView: View {
     let onCompleted: @MainActor (StudyEnrollment) -> Void
 
+    @Binding private var navigationPath: NavigationPath
     @StateObject private var viewModel: StudyConsentFlowViewModel
-    @State private var route: StudyConsentRoute = .landing
+    @State private var navigationContext: StudyConsentNavigationContext
 
     init(
         study: Study,
         definition: StudyConsentDefinition,
         consentService: ConsentServiceProtocol,
+        navigationPath: Binding<NavigationPath>,
         onCompleted: @escaping @MainActor (StudyEnrollment) -> Void
     ) {
         self.onCompleted = onCompleted
+        _navigationPath = navigationPath
+        _navigationContext = State(initialValue: StudyConsentNavigationContext(
+            landingPathCount: navigationPath.wrappedValue.count
+        ))
         _viewModel = StateObject(wrappedValue: StudyConsentFlowViewModel(
             study: study,
             definition: definition,
@@ -79,49 +82,9 @@ struct StudyConsentFlowView: View {
             }
         )
         .foregroundStyle(LoudnessMatchModalColors.text)
-        .background(LoudnessMatchModalColors.background)
-        .navigationDestination(isPresented: reviewPresentation) {
-            StudyConsentReaderView(
-                definition: viewModel.definition,
-                visibleSections: viewModel.visibleSections,
-                canContinueToSignature: viewModel.canContinueToSignature,
-                markConsentReviewed: viewModel.markConsentScrolledToEnd,
-                continueToSignature: presentSignature,
-                declineConsent: exitConsentToLanding
-            )
-            .navigationTitle("Informed Consent")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .tabBar)
-            .foregroundStyle(LoudnessMatchModalColors.text)
-            .background(LoudnessMatchModalColors.background)
-            .navigationDestination(isPresented: signaturePresentation) {
-                StudyConsentSignatureView(
-                    definition: viewModel.definition,
-                    firstName: $viewModel.firstName,
-                    lastName: $viewModel.lastName,
-                    signatureImageData: $viewModel.signatureImageData,
-                    canSignAndEnroll: viewModel.canSignAndEnroll,
-                    isFinalizingEnrollment: viewModel.isFinalizingSignedConsent,
-                    clearSignature: viewModel.clearSignature,
-                    signAndEnroll: { completeEnrollment(using: .signedConsent) },
-                    declineConsent: exitConsentToLanding
-                )
-                .navigationTitle("Sign Consent")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar(.hidden, for: .tabBar)
-                .foregroundStyle(LoudnessMatchModalColors.text)
-                .background(LoudnessMatchModalColors.background)
-                .alert("Unable to Finish Enrollment", isPresented: signedEnrollmentErrorPresentation) {
-                    Button("Try Again") {
-                        viewModel.dismissEnrollmentError()
-                    }
-                    Button("Cancel", role: .cancel) {
-                        exitConsentToLanding()
-                    }
-                } message: {
-                    Text(viewModel.errorMessage ?? "")
-                }
-            }
+        .background(LoudnessMatchModalColors.background.ignoresSafeArea())
+        .navigationDestination(for: StudyConsentRoute.self) { route in
+            consentDestination(for: route)
         }
         .task {
             await viewModel.probeEnrollmentRecoveryIfNeeded()
@@ -138,18 +101,45 @@ struct StudyConsentFlowView: View {
         }
     }
 
-    private var reviewPresentation: Binding<Bool> {
-        Binding(
-            get: { route.presentsReview },
-            set: { route.setReviewPresented($0) }
-        )
-    }
+    @ViewBuilder
+    private func consentDestination(for route: StudyConsentRoute) -> some View {
+        switch route {
+        case .review:
+            StudyConsentReaderView(
+                definition: viewModel.definition,
+                visibleSections: viewModel.visibleSections,
+                canContinueToSignature: viewModel.canContinueToSignature,
+                markConsentReviewed: viewModel.markConsentScrolledToEnd,
+                continueToSignature: presentSignature,
+                declineConsent: { exitConsentToLanding(from: .review) }
+            )
+            .consentStepChrome(title: "Informed Consent")
 
-    private var signaturePresentation: Binding<Bool> {
-        Binding(
-            get: { route.presentsSignature },
-            set: { route.setSignaturePresented($0) }
-        )
+        case .signature:
+            StudyConsentSignatureView(
+                definition: viewModel.definition,
+                firstName: $viewModel.firstName,
+                lastName: $viewModel.lastName,
+                signatureImageData: $viewModel.signatureImageData,
+                canSignAndEnroll: viewModel.canSignAndEnroll,
+                isFinalizingEnrollment: viewModel.isFinalizingSignedConsent,
+                clearSignature: viewModel.clearSignature,
+                signAndEnroll: { completeEnrollment(using: .signedConsent) },
+                declineConsent: { exitConsentToLanding(from: .signature) }
+            )
+            .consentStepChrome(title: "Sign Consent")
+            .alert("Unable to Finish Enrollment", isPresented: signedEnrollmentErrorPresentation) {
+                Button("Try Again") {
+                    viewModel.dismissEnrollmentError()
+                }
+                Button("Cancel", role: .cancel) {
+                    exitConsentToLanding(from: .signature)
+                }
+            } message: {
+                Text(viewModel.errorMessage ?? "")
+            }
+            .navigationBarBackButtonHidden(viewModel.isFinalizingSignedConsent)
+        }
     }
 
     private var recoveryEnrollmentErrorPresentation: Binding<Bool> {
@@ -174,31 +164,55 @@ struct StudyConsentFlowView: View {
 
     @MainActor
     private func presentConsentReview() {
-        guard viewModel.canReviewConsent else { return }
+        guard viewModel.canReviewConsent,
+              navigationContext.canPresent(.review, at: navigationPath.count) else { return }
         viewModel.prepareConsentReview()
-        route = .review
+        navigationPath.append(StudyConsentRoute.review)
     }
 
     @MainActor
     private func presentSignature() {
-        guard route == .review, viewModel.canContinueToSignature else { return }
-        route = .signature
+        guard viewModel.canContinueToSignature,
+              navigationContext.canPresent(.signature, at: navigationPath.count) else { return }
+        navigationPath.append(StudyConsentRoute.signature)
     }
 
     @MainActor
-    private func exitConsentToLanding() {
+    private func exitConsentToLanding(from _: StudyConsentRoute) {
         guard !viewModel.isEnrollmentInProgress else { return }
-        viewModel.abandonConsentAttempt()
-        route = .landing
+        popToConsentLanding()
+    }
+
+    @MainActor
+    private func popToConsentLanding() {
+        guard let count = navigationContext.presentedStepCount(at: navigationPath.count),
+              count > 0 else { return }
+        navigationPath.removeLast(count)
     }
 
     @MainActor
     private func completeEnrollment(using source: StudyConsentFlowViewModel.EnrollmentSource) {
         Task { @MainActor in
             guard let enrollment = await viewModel.completeEnrollment(using: source) else { return }
-            route = .landing
+            if source == .signedConsent {
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    popToConsentLanding()
+                }
+            }
             onCompleted(enrollment)
         }
+    }
+}
+
+private extension View {
+    func consentStepChrome(title: String) -> some View {
+        navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
+            .foregroundStyle(LoudnessMatchModalColors.text)
+            .background(LoudnessMatchModalColors.background.ignoresSafeArea())
     }
 }
 

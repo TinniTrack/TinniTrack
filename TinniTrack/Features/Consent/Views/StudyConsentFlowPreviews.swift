@@ -31,20 +31,25 @@ import SwiftUI
 }
 
 private struct StudyConsentFlowPreview: View {
+    @State private var navigationPath = NavigationPath()
+
     var body: some View {
-        StudyConsentFlowView(
-            study: Study(
-                id: UUID(),
-                slug: "study-no-1",
-                title: "Study No. 1",
-                description: "Baseline tinnitus study",
-                status: .recruiting,
-                createdAt: nil
-            ),
-            definition: StudyConsentCatalog.studyNo1,
-            consentService: PreviewConsentService(),
-            onCompleted: { _ in }
-        )
+        NavigationStack(path: $navigationPath) {
+            StudyConsentFlowView(
+                study: Study(
+                    id: UUID(),
+                    slug: "study-no-1",
+                    title: "Study No. 1",
+                    description: "Baseline tinnitus study",
+                    status: .recruiting,
+                    createdAt: nil
+                ),
+                definition: StudyConsentCatalog.studyNo1,
+                consentService: PreviewConsentService(),
+                navigationPath: $navigationPath,
+                onCompleted: { _ in }
+            )
+        }
     }
 }
 

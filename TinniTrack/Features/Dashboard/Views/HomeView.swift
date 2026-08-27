@@ -9,6 +9,7 @@ struct HomeView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @StateObject private var dashboardViewModel: HomeDashboardViewModel
     @State private var selectedTab: Tab = .dashboard
+    @State private var dashboardNavigationPath = NavigationPath()
     private let studyService: StudyServiceProtocol
     private let consentService: ConsentServiceProtocol
 
@@ -46,13 +47,14 @@ struct HomeView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack {
+            NavigationStack(path: $dashboardNavigationPath) {
                 DashboardTabView(
                     firstName: displayFirstName,
                     profileTimezone: sessionStore.state.profile?.timezone,
                     viewModel: dashboardViewModel,
                     studyService: studyService,
-                    consentService: consentService
+                    consentService: consentService,
+                    navigationPath: $dashboardNavigationPath
                 )
             }
             .tabItem {
@@ -81,6 +83,18 @@ private enum Tab {
     case profile
 }
 
+struct DashboardStudyDetailsRoute: Hashable {
+    let studyCard: DashboardStudyCard
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.studyCard.id == rhs.studyCard.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(studyCard.id)
+    }
+}
+
 private struct DashboardTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     let firstName: String
@@ -88,6 +102,7 @@ private struct DashboardTabView: View {
     @ObservedObject var viewModel: HomeDashboardViewModel
     let studyService: StudyServiceProtocol
     let consentService: ConsentServiceProtocol
+    @Binding var navigationPath: NavigationPath
 
     var body: some View {
         ScrollView {
@@ -108,6 +123,9 @@ private struct DashboardTabView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: DashboardStudyDetailsRoute.self) { route in
+            destination(for: route)
+        }
         .task {
             await viewModel.loadIfNeeded()
         }
@@ -165,9 +183,7 @@ private struct DashboardTabView: View {
         case .loaded:
             LazyVStack(spacing: 16) {
                 ForEach(viewModel.studies) { studyCard in
-                    NavigationLink {
-                        destination(for: studyCard)
-                    } label: {
+                    NavigationLink(value: DashboardStudyDetailsRoute(studyCard: studyCard)) {
                         StudyCardView(studyCard: studyCard)
                     }
                     .buttonStyle(.plain)
@@ -177,12 +193,14 @@ private struct DashboardTabView: View {
         }
     }
 
-    private func destination(for studyCard: DashboardStudyCard) -> some View {
+    @ViewBuilder
+    private func destination(for route: DashboardStudyDetailsRoute) -> some View {
         StudyDetailView(
-            studyCard: studyCard,
+            studyCard: route.studyCard,
             profileTimezone: profileTimezone,
             studyService: studyService,
-            consentService: consentService
+            consentService: consentService,
+            navigationPath: $navigationPath
         ) { enrollment in
             viewModel.confirmEnrollment(enrollment)
             Task { @MainActor in
@@ -272,6 +290,7 @@ private struct StudyDetailView: View {
     let consentService: ConsentServiceProtocol
     let onEnrollmentConfirmed: @MainActor (StudyEnrollment) -> Void
 
+    @Binding private var navigationPath: NavigationPath
     @State private var confirmedEnrollment: StudyEnrollment?
     @State private var beganWithActiveEnrollment: Bool
 
@@ -280,6 +299,7 @@ private struct StudyDetailView: View {
         profileTimezone: String?,
         studyService: StudyServiceProtocol,
         consentService: ConsentServiceProtocol,
+        navigationPath: Binding<NavigationPath>,
         onEnrollmentConfirmed: @escaping @MainActor (StudyEnrollment) -> Void
     ) {
         self.studyCard = studyCard
@@ -287,6 +307,7 @@ private struct StudyDetailView: View {
         self.studyService = studyService
         self.consentService = consentService
         self.onEnrollmentConfirmed = onEnrollmentConfirmed
+        _navigationPath = navigationPath
         _confirmedEnrollment = State(
             initialValue: studyCard.isEnrolledActive ? studyCard.enrollment : nil
         )
@@ -307,7 +328,8 @@ private struct StudyDetailView: View {
                     StudyConsentFlowView(
                         study: studyCard.study,
                         definition: definition,
-                        consentService: consentService
+                        consentService: consentService,
+                        navigationPath: $navigationPath
                     ) { enrollment in
                         var transaction = Transaction(animation: nil)
                         transaction.disablesAnimations = true
