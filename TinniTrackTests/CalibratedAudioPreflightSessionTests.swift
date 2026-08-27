@@ -60,6 +60,32 @@ struct CalibratedAudioPreflightSessionTests {
     }
 
     @Test
+    func backwardTransitionsTearDownOnlyTheMonitorsOwnedByThePoppedPhase() {
+        let controller = makeController()
+        let session = CalibratedAudioPreflightSession(controller: controller)
+
+        session.transition(to: .maximumVolume)
+        session.transition(to: .fit)
+
+        #expect(controller.stopVolumeGateMonitoringCallCount == 1)
+        #expect(controller.isVolumeGateMonitoring == false)
+        #expect(controller.isAirPodsContinuityMonitoring)
+        #expect(controller.isRunningEnvironmentGate)
+
+        session.transition(to: .airPods)
+
+        #expect(controller.stopAirPodsContinuityMonitoringCallCount == 1)
+        #expect(controller.cancelEnvironmentGateCallCount == 1)
+        #expect(controller.startHeadphoneRouteMonitoringCallCount == 1)
+        #expect(controller.isHeadphoneRouteMonitoring)
+
+        session.transition(to: nil)
+
+        #expect(controller.stopHeadphoneRouteMonitoringCallCount == 1)
+        #expect(controller.isHeadphoneRouteMonitoring == false)
+    }
+
+    @Test
     func stopIsIdempotentAndCleansUpEveryActiveMonitorOnce() {
         let controller = makeController()
         let session = CalibratedAudioPreflightSession(controller: controller)
@@ -193,6 +219,28 @@ struct CalibratedAudioPreflightSessionTests {
             controller.startContinuousEnvironmentGateCallCount == 1
                 && controller.startVolumeGateMonitoringCallCount == 1
         })
+        #expect(session.phase == .maximumVolume)
+    }
+
+    @Test
+    func unrelatedControllerChangesDoNotRestartAStoppedEnvironmentMonitor() async {
+        let controller = makeController()
+        controller.isCurrentAirPodsPro2PlaybackRouteConfirmed = true
+        let session = CalibratedAudioPreflightSession(controller: controller)
+        session.transition(to: .maximumVolume)
+
+        #expect(controller.startContinuousEnvironmentGateCallCount == 1)
+        #expect(controller.startVolumeGateMonitoringCallCount == 1)
+
+        controller.isRunningEnvironmentGate = false
+        controller.environmentGateResult = nil
+        controller.publishChange()
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        #expect(controller.startContinuousEnvironmentGateCallCount == 1)
+        #expect(controller.startVolumeGateMonitoringCallCount == 1)
         #expect(session.phase == .maximumVolume)
     }
 

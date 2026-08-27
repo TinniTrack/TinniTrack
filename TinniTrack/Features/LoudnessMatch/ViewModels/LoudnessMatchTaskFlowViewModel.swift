@@ -660,8 +660,13 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 
         environmentGateTask = nil
         isRunningEnvironmentGate = false
+        environmentGateResult = nil
         if let error {
             message = .environmentGateUnavailable(error.localizedDescription)
+        } else {
+            message = .environmentGateUnavailable(
+                "Quiet-room monitoring ended unexpectedly. Return to the quiet-room step and try again."
+            )
         }
     }
 

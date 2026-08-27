@@ -76,6 +76,41 @@ struct StudyOrientationThresholdCoordinatorTests {
     }
 
     @Test
+    func independentlyCancelledFinalizationBecomesRetryableWithoutResubmitting() async throws {
+        let service = CoordinatorStudyService(
+            beginBehavior: .immediate(orientationTask())
+        )
+        let builder = CoordinatorSubmissionBuilder()
+        let completion = OnboardingCompletionStub(outcomes: [.cancelled, .completed])
+        let coordinator = makeCoordinator(
+            service: service,
+            builder: builder,
+            completion: completion
+        )
+
+        coordinator.begin()
+        let presentation = try await requirePresentation(from: coordinator)
+        coordinator.accept(completedSummary(), for: presentation)
+
+        #expect(await waitUntil {
+            isFinalizationFailure(
+                coordinator.state,
+                message: "Finishing orientation was interrupted. Your hearing check was saved. Try again to complete setup."
+            )
+        })
+        #expect(await service.submissionCallCount() == 1)
+        #expect(builder.callCount == 1)
+        #expect(completion.callCount == 1)
+
+        coordinator.retryFinalization()
+
+        #expect(await waitUntil { isCompleted(coordinator.state) })
+        #expect(await service.submissionCallCount() == 1)
+        #expect(builder.callCount == 1)
+        #expect(completion.callCount == 2)
+    }
+
+    @Test
     func duplicateResearchKitCompletionSubmitsAndFinalizesExactlyOnce() async throws {
         let service = CoordinatorStudyService(
             beginBehavior: .immediate(orientationTask()),

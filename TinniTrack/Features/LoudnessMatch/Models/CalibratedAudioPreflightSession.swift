@@ -55,9 +55,11 @@ final class CalibratedAudioPreflightSession: ObservableObject {
     private let controller: CalibratedAudioPreflightControlling
     private var controllerObservation: AnyCancellable?
     private var hasStarted = false
+    private var wasAirPodsRouteInterrupted: Bool
 
     init(controller: CalibratedAudioPreflightControlling) {
         self.controller = controller
+        wasAirPodsRouteInterrupted = controller.isAirPodsRouteInterrupted
         controllerObservation = controller.objectWillChange.sink { [weak self] in
             Task { @MainActor in
                 await Task.yield()
@@ -200,7 +202,12 @@ final class CalibratedAudioPreflightSession: ObservableObject {
 
     private func controllerDidChange() {
         objectWillChange.send()
-        resumePhaseAfterAirPodsReconnect()
+        let didReconnectAirPods = wasAirPodsRouteInterrupted
+            && !controller.isAirPodsRouteInterrupted
+        wasAirPodsRouteInterrupted = controller.isAirPodsRouteInterrupted
+        if didReconnectAirPods {
+            resumePhaseAfterAirPodsReconnect()
+        }
 
         guard let phase,
               phase.allowsAirPodsFallback,

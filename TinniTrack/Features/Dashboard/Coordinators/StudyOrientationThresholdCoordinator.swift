@@ -90,10 +90,6 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
         state == .preparing
     }
 
-    var isFinishing: Bool {
-        state == .submitting || state == .finalizing
-    }
-
     func begin() {
         guard canBegin,
               operation == nil,
@@ -307,7 +303,9 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
         case .completed, .notRequired:
             state = .completed
         case .cancelled:
-            break
+            state = .finalizationFailure(
+                message: "Finishing orientation was interrupted. Your hearing check was saved. Try again to complete setup."
+            )
         case .failed(let message):
             state = .finalizationFailure(message: message)
         }

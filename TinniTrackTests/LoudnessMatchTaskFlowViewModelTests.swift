@@ -260,7 +260,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func continuousEnvironmentGateStreamsTooLoudThenPasses() async throws {
+    func continuousEnvironmentGateInvalidatesPassWhenMonitorFinishes() async throws {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
@@ -275,14 +275,45 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.startContinuousEnvironmentGate()
         #expect(try await waitUntil {
             viewModel.isRunningEnvironmentGate == false
-                && viewModel.environmentGateResult?.passed == true
+                && viewModel.message != nil
         })
 
         #expect(viewModel.isRunningEnvironmentGate == false)
         #expect(viewModel.environmentGateUpdate?.status == .passed)
-        #expect(viewModel.environmentGateResult?.passed == true)
-        #expect(viewModel.environmentGateResult?.samplesDBA == [44, 46, 40, 41, 42, 43, 44])
+        #expect(viewModel.environmentGateResult == nil)
         #expect(viewModel.hasPassedEnvironmentGate)
+        #expect(
+            viewModel.message
+                == .environmentGateUnavailable(
+                    "Quiet-room monitoring ended unexpectedly. Return to the quiet-room step and try again."
+                )
+        )
+    }
+
+    @Test
+    func continuousEnvironmentGateInvalidatesPassWhenMonitorFails() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
+                samplesByUpdate: [[40, 41, 42, 43, 44]],
+                failureMessageAfterUpdates: "Quiet monitor failed."
+            )
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil {
+            viewModel.isRunningEnvironmentGate == false
+                && viewModel.message != nil
+        })
+
+        #expect(viewModel.environmentGateResult == nil)
+        #expect(viewModel.hasPassedEnvironmentGate)
+        #expect(
+            viewModel.message
+                == .environmentGateUnavailable("Quiet monitor failed.")
+        )
     }
 
     @Test
@@ -1379,6 +1410,7 @@ private struct MockEnvironmentSPLMeter: EnvironmentSPLMeasuring {
 private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
     let samplesByUpdate: [[Double]]
     var finishAfterUpdates = true
+    var failureMessageAfterUpdates: String? = nil
 
     func monitorGate(
         configuration: TinnitusEnvironmentSPLGateConfiguration
@@ -1395,7 +1427,17 @@ private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
                     await Task.yield()
                 }
 
-                if finishAfterUpdates {
+                if let failureMessageAfterUpdates {
+                    continuation.finish(
+                        throwing: NSError(
+                            domain: "MockEnvironmentSPLGateMonitor",
+                            code: 1,
+                            userInfo: [
+                                NSLocalizedDescriptionKey: failureMessageAfterUpdates
+                            ]
+                        )
+                    )
+                } else if finishAfterUpdates {
                     continuation.finish()
                 }
             }
