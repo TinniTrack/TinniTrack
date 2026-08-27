@@ -279,6 +279,8 @@ final class TinniTrackUITests: XCTestCase {
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Consent reviewed. You can continue."].exists)
+        XCTAssertTrue(waitForEnabledState(true, of: signatureButton))
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 2))
@@ -289,7 +291,7 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
-    func testStudyConsentBackNavigationPreservesDraftAcrossReentry() throws {
+    func testStudyConsentBackNavigationPreservesReviewAndDraftUntilFreshReentry() throws {
         let app = makeMockedStudyApp(scenario: .success)
         app.launch()
 
@@ -303,10 +305,27 @@ final class TinniTrackUITests: XCTestCase {
         nativeBackButton.tap()
         XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
 
+        let signatureButton = app.buttons["study_consent_signature_button"]
+        XCTAssertTrue(app.staticTexts["Consent reviewed. You can continue."].exists)
+        XCTAssertTrue(waitForEnabledState(true, of: signatureButton))
+        signatureButton.tap()
+        XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.textFields["study_consent_first_name_field"].value as? String, "Alex")
+        XCTAssertEqual(app.textFields["study_consent_last_name_field"].value as? String, "Rivers")
+        XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
+
+        swipeBack(in: app)
+        XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Consent reviewed. You can continue."].exists)
+        XCTAssertTrue(waitForEnabledState(true, of: signatureButton))
+
         swipeBack(in: app)
         assertStudyConsentLanding(in: app)
 
         openStudyConsentReaderFromLanding(in: app)
+        XCTAssertTrue(signatureButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Scroll to the bottom of the consent form to continue."].exists)
+        XCTAssertTrue(waitForEnabledState(false, of: signatureButton))
         continueToStudyConsentSignature(in: app)
 
         XCTAssertEqual(app.textFields["study_consent_first_name_field"].value as? String, "Alex")
