@@ -9,47 +9,38 @@ struct StudyConsentReaderView: View {
     let continueToSignature: () -> Void
     let declineConsent: () -> Void
     @State private var isDeclineConfirmationPresented = false
-    private let topAnchorID = "study_consent_reader_top"
     private let scrollCoordinateSpaceName = "study_consent_reader_scroll_space"
 
     var body: some View {
         GeometryReader { viewportProxy in
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        StudyConsentProgressHeader(
-                            stepText: "Step 1 of 2",
-                            progress: 0.5,
-                            title: "Informed Consent",
-                            subtitle: definition.landing.title
-                        )
-                        .id(topAnchorID)
-
-                        StudyConsentKeyInfoCard(keyInformation: definition.keyInformation)
-
-                        ForEach(visibleSections) { section in
-                            StudyConsentSectionView(section: section)
-                                .id(section.id)
-                        }
-
-                        StudyConsentBottomSentinel()
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 34)
-                }
-                .coordinateSpace(name: scrollCoordinateSpaceName)
-                .accessibilityIdentifier("study_consent_reader_scroll")
-                .onPreferenceChange(StudyConsentBottomSentinelPreferenceKey.self) { bottomY in
-                    markConsentReviewedIfBottomIsVisible(
-                        bottomY: bottomY,
-                        viewportHeight: viewportProxy.size.height
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    StudyConsentProgressHeader(
+                        stepText: "Step 1 of 2",
+                        progress: 0.5,
+                        title: "Informed Consent",
+                        subtitle: definition.landing.title
                     )
-                }
-                .onAppear {
-                    DispatchQueue.main.async {
-                        proxy.scrollTo(topAnchorID, anchor: .top)
+
+                    StudyConsentKeyInfoCard(keyInformation: definition.keyInformation)
+
+                    ForEach(visibleSections) { section in
+                        StudyConsentSectionView(section: section)
+                            .id(section.id)
                     }
+
+                    StudyConsentBottomSentinel()
                 }
+                .padding(.horizontal, 32)
+                .padding(.bottom, 34)
+            }
+            .coordinateSpace(name: scrollCoordinateSpaceName)
+            .accessibilityIdentifier("study_consent_reader_scroll")
+            .onPreferenceChange(StudyConsentBottomSentinelPreferenceKey.self) { bottomY in
+                markConsentReviewedIfBottomIsVisible(
+                    bottomY: bottomY,
+                    viewportHeight: viewportProxy.size.height
+                )
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

@@ -5,7 +5,7 @@ struct LoudnessMatchNoiseGateView: View {
     let showSuggestions: () -> Void
 
     private var status: TinnitusEnvironmentSPLGateStatus {
-        update?.status ?? .measuring
+        update?.status ?? .idle
     }
 
     var body: some View {
@@ -16,29 +16,23 @@ struct LoudnessMatchNoiseGateView: View {
                 LoudnessMatchNoiseGateMeter(
                     status: status,
                     levelRatio: levelRatio,
-                    passingProgress: passingProgress,
                     isCompact: false
                 )
 
-                HStack(spacing: 10) {
-                    statusIcon
-                    Text(statusText)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .textCase(.uppercase)
-                        .foregroundStyle(statusColor)
-                        .accessibilityIdentifier("loudness_noise_status_label")
-                }
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .combine)
+                Text(statusText)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(statusColor)
+                    .accessibilityIdentifier("loudness_noise_status_label")
+                    .frame(maxWidth: .infinity)
             }
 
             Spacer(minLength: 0)
 
             VStack(alignment: .leading, spacing: 12) {
                 LoudnessMatchModalTitleBlock(
-                    title: "Find a quiet place where you can focus and take the test.",
-                    bodyText: "Too much background noise can cause inaccurate results in your test."
+                    title: "Find a quiet place where you can focus and take the test",
+                    bodyText: "The app is checking whether your surroundings are quiet enough."
                 )
 
                 Button(action: showSuggestions) {
@@ -58,63 +52,42 @@ struct LoudnessMatchNoiseGateView: View {
         .accessibilityIdentifier("loudness_noise_gate_step")
     }
 
-    private var statusIcon: Image {
-        switch status {
-        case .measuring:
-            return Image(systemName: "ellipsis")
-        case .tooLoud:
-            return Image(systemName: "exclamationmark.circle.fill")
-        case .passed:
-            return Image(systemName: "checkmark.circle.fill")
-        }
-    }
-
     private var statusText: String {
         switch status {
-        case .measuring:
-            return "In Progress..."
-        case .tooLoud:
-            return "Too much noise"
-        case .passed:
-            return "Noise Ok"
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
+            return "Determining ambient sound level"
+        case .suspectedLoudness, .interruptedByLoudness:
+            return "Too loud"
+        case .quiet:
+            return "Quiet check passed"
+        case .routeInvalid:
+            return "Microphone route changed"
+        case .unavailable:
+            return "Check unavailable"
         }
     }
 
     private var statusColor: Color {
         switch status {
-        case .measuring:
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring, .routeInvalid, .unavailable:
             return LoudnessMatchModalColors.secondaryText
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return LoudnessMatchModalColors.warning
-        case .passed:
+        case .quiet:
             return LoudnessMatchModalColors.success
         }
     }
 
-    private var levelRatio: Double {
-        guard let latestSampleDBA = update?.latestSampleDBA else {
-            return 0.66
+    private var levelRatio: Double? {
+        update?.latestSampleDBA.map {
+            $0 / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
         }
-
-        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
-    }
-
-    private var passingProgress: Double {
-        guard let update else {
-            return 0
-        }
-
-        return min(
-            1,
-            Double(update.contiguousPassingSamples) / Double(TinnitusEnvironmentSPLGateConfiguration.studyNo1.requiredContiguousSamples)
-        )
     }
 }
 
 struct LoudnessMatchNoiseGateMeter: View {
     let status: TinnitusEnvironmentSPLGateStatus
-    let levelRatio: Double
-    var passingProgress: Double?
+    let levelRatio: Double?
     var isCompact = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -123,25 +96,7 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     var body: some View {
         VStack(spacing: isCompact ? 12 : 18) {
-            ZStack {
-                Circle()
-                    .stroke(ringBackgroundColor, lineWidth: ringLineWidth)
-
-                Circle()
-                    .trim(from: 0, to: ringProgress)
-                    .stroke(
-                        ringColor,
-                        style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-
-                Image(systemName: ringSymbolName)
-                    .font(.system(size: isCompact ? 18 : 20, weight: .bold))
-                    .foregroundStyle(ringColor)
-            }
-            .frame(width: isCompact ? 44 : 54, height: isCompact ? 44 : 54)
-            .animation(.easeInOut(duration: 0.22), value: status)
-            .animation(.easeInOut(duration: 0.22), value: ringProgress)
+            statusRing
 
             GeometryReader { proxy in
                 let columnCount = columnCount(for: proxy.size.width)
@@ -185,50 +140,86 @@ struct LoudnessMatchNoiseGateMeter: View {
     private static let barHeight: CGFloat = 44
     private static let animationFrameDuration: UInt64 = 33_000_000
 
-    private var clampedLevelRatio: Double {
-        min(1.5, max(0, levelRatio))
+    @ViewBuilder
+    private var statusRing: some View {
+        if isDeterminingSoundLevel {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(isCompact ? .regular : .large)
+                .tint(ringColor)
+                .frame(width: isCompact ? 44 : 54, height: isCompact ? 44 : 54)
+        } else {
+            ZStack {
+                Circle()
+                    .stroke(ringBackgroundColor, lineWidth: ringLineWidth)
+
+                Circle()
+                    .stroke(
+                        ringColor,
+                        style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round)
+                    )
+
+                Image(systemName: ringSymbolName)
+                    .font(.system(size: isCompact ? 18 : 20, weight: .bold))
+                    .foregroundStyle(ringColor)
+            }
+            .frame(width: isCompact ? 44 : 54, height: isCompact ? 44 : 54)
+            .transition(.opacity)
+        }
     }
 
-    private var ringProgress: CGFloat {
+    private var isDeterminingSoundLevel: Bool {
         switch status {
-        case .passed:
-            return 1
-        case .tooLoud:
-            return 1
-        case .measuring:
-            return min(0.94, max(0.08, passingProgress ?? 0))
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
+            return true
+        case .suspectedLoudness, .interruptedByLoudness, .quiet, .routeInvalid, .unavailable:
+            return false
         }
+    }
+
+    private var clampedLevelRatio: Double {
+        min(1.5, max(0, levelRatio ?? 0))
     }
 
     private var ringSymbolName: String {
         switch status {
-        case .measuring:
-            return "ellipsis"
-        case .tooLoud:
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
+            return "waveform"
+        case .suspectedLoudness, .interruptedByLoudness:
             return "xmark"
-        case .passed:
+        case .quiet:
             return "checkmark"
+        case .routeInvalid, .unavailable:
+            return "questionmark"
         }
     }
 
     private var ringColor: Color {
         switch status {
-        case .measuring:
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
             return LoudnessMatchModalColors.primary
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return LoudnessMatchModalColors.warning
-        case .passed:
+        case .quiet:
             return LoudnessMatchModalColors.success
+        case .routeInvalid, .unavailable:
+            return LoudnessMatchModalColors.secondaryText
         }
     }
 
     private var ringBackgroundColor: Color {
         switch status {
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return LoudnessMatchModalColors.warning.opacity(0.22)
-        case .passed:
+        case .quiet:
             return LoudnessMatchModalColors.success.opacity(0.22)
-        case .measuring:
+        case .idle,
+             .warmingUp,
+             .measuringInitialQuietness,
+             .suspended,
+             .reacquiring,
+             .routeInvalid,
+             .unavailable:
             return LoudnessMatchModalColors.meterInactive.opacity(0.34)
         }
     }
@@ -239,12 +230,16 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     private var accessibilityLabel: String {
         switch status {
-        case .measuring:
-            return "Quiet-room meter measuring"
-        case .tooLoud:
-            return "Quiet-room meter too loud"
-        case .passed:
-            return "Quiet-room meter passed"
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
+            return "Determining ambient sound level"
+        case .suspectedLoudness, .interruptedByLoudness:
+            return "Too loud"
+        case .quiet:
+            return "Quiet check passed"
+        case .routeInvalid:
+            return "Microphone route changed"
+        case .unavailable:
+            return "Check unavailable"
         }
     }
 
@@ -303,11 +298,18 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     private func targetIndex(columnCount: Int) -> Int {
         switch status {
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             let minimumLoudIndex = greenIndexLimit(columnCount: columnCount) + 2
             let currentLevelIndex = Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1
             return min(columnCount - 1, max(minimumLoudIndex, currentLevelIndex))
-        case .measuring, .passed:
+        case .idle,
+             .warmingUp,
+             .measuringInitialQuietness,
+             .quiet,
+             .suspended,
+             .reacquiring,
+             .routeInvalid,
+             .unavailable:
             return min(columnCount - 1, max(0, Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1))
         }
     }
@@ -357,6 +359,9 @@ struct LoudnessMatchNoiseGateMeter: View {
     }
 
     private func activeOpacity(for index: Int) -> Double {
+        guard levelRatio != nil else {
+            return 0
+        }
         let position = Double(index)
         let distance = position - displayedPosition
         let phase = phaseMultiplier(for: index)

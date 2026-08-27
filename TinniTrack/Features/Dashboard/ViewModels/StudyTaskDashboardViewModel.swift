@@ -6,6 +6,13 @@
 import Foundation
 import Combine
 
+enum StudyOnboardingCompletionOutcome: Equatable {
+    case completed
+    case notRequired
+    case cancelled
+    case failed(message: String)
+}
+
 @MainActor
 final class StudyTaskDashboardViewModel: ObservableObject {
     enum ContentState: Equatable {
@@ -36,9 +43,6 @@ final class StudyTaskDashboardViewModel: ObservableObject {
     @Published private(set) var scheduledTasks: [ScheduledTask] = []
     @Published private(set) var isLoadingTasks = false
     @Published private(set) var taskLoadErrorMessage: String?
-    @Published private(set) var isCompletingStudyOnboarding = false
-    @Published private(set) var onboardingThresholdTask: ScheduledTask?
-    @Published private(set) var isPreparingOnboardingThresholdTask = false
 
     private let study: Study
     private var enrollment: StudyEnrollment?
@@ -115,83 +119,41 @@ final class StudyTaskDashboardViewModel: ObservableObject {
         await requestImportThenReevaluate()
     }
 
-    func connectAppleHealthForOrientation() async {
-        await requestImportThenReevaluate()
-    }
-
     func checkOrientationImportStatus() async {
         await evaluatePrerequisite(showLoadingState: false)
     }
 
-    func prepareStudyOnboardingThresholdTask() async -> ScheduledTask? {
+    @discardableResult
+    func completeStudyOnboarding() async -> StudyOnboardingCompletionOutcome {
         guard requiresStudyOnboardingCompletion else {
-            return onboardingThresholdTask
+            return .notRequired
         }
 
         guard isAudiogramPrerequisiteMet else {
-            taskLoadErrorMessage = "Import your Apple hearing test before starting the onboarding loudness task."
-            return nil
+            let message = "Complete audiogram import before finishing orientation."
+            taskLoadErrorMessage = message
+            return .failed(message: message)
         }
 
         guard let enrollment else {
-            taskLoadErrorMessage = "Unable to find enrollment for this study."
-            return nil
+            let message = "Unable to find enrollment for this study."
+            taskLoadErrorMessage = message
+            return .failed(message: message)
         }
 
-        if let onboardingThresholdTask, onboardingThresholdTask.status == .scheduled {
-            return onboardingThresholdTask
+        guard !Task.isCancelled else {
+            return .cancelled
         }
-
-        isPreparingOnboardingThresholdTask = true
-        defer { isPreparingOnboardingThresholdTask = false }
-
-        do {
-            let task = try await studyService.beginStudyNo1OrientationThresholdTask(enrollmentID: enrollment.id)
-            guard !Task.isCancelled else {
-                return nil
-            }
-            if task.status == .completed {
-                onboardingThresholdTask = nil
-                taskLoadErrorMessage = nil
-                await completeStudyOnboarding()
-                return nil
-            }
-
-            onboardingThresholdTask = task
-            taskLoadErrorMessage = nil
-            return task
-        } catch {
-            guard !Task.isCancelled else {
-                return nil
-            }
-            taskLoadErrorMessage = error.localizedDescription
-            return nil
-        }
-    }
-
-    func completeStudyOnboarding() async {
-        guard requiresStudyOnboardingCompletion else {
-            return
-        }
-
-        guard isAudiogramPrerequisiteMet else {
-            taskLoadErrorMessage = "Complete audiogram import before finishing orientation."
-            return
-        }
-
-        guard let enrollment else {
-            taskLoadErrorMessage = "Unable to find enrollment for this study."
-            return
-        }
-
-        isCompletingStudyOnboarding = true
-        defer { isCompletingStudyOnboarding = false }
 
         do {
             try await studyService.completeStudyNo1Onboarding(
                 enrollmentID: enrollment.id,
                 timezone: resolvedTimezoneIdentifier
             )
+
+            guard !Task.isCancelled else {
+                return .cancelled
+            }
 
             self.enrollment = StudyEnrollment(
                 id: enrollment.id,
@@ -204,10 +166,13 @@ final class StudyTaskDashboardViewModel: ObservableObject {
             )
 
             taskLoadErrorMessage = nil
-            onboardingThresholdTask = nil
             await reloadScheduledTasksIfReady(force: true)
+            return .completed
+        } catch is CancellationError {
+            return .cancelled
         } catch {
             taskLoadErrorMessage = error.localizedDescription
+            return .failed(message: error.localizedDescription)
         }
     }
 

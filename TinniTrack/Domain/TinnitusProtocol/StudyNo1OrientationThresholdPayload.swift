@@ -6,7 +6,8 @@ nonisolated enum StudyNo1OrientationThresholdPayloadValidationError: Error, Equa
 }
 
 nonisolated struct StudyNo1OrientationThresholdRunPayload: Codable, Equatable {
-    static let payloadVersion = "study-no-1-orientation-threshold-v1"
+    static let payloadVersion = "study-no-1-orientation-threshold-v2"
+    static let legacyPayloadVersion = "study-no-1-orientation-threshold-v1"
     static let protocolVersion = "orientation_threshold_v1"
 
     let payloadVersion: String
@@ -53,6 +54,17 @@ nonisolated struct StudyNo1OrientationThresholdRunPayload: Codable, Equatable {
         }
         if environment.gateResult != .passed {
             missing.append("environment.gateResult")
+        }
+        if payloadVersion == Self.payloadVersion {
+            if environment.measurementSchemaVersion == nil {
+                missing.append("environment.measurementSchemaVersion")
+            }
+            if environment.levelSemantics != StudyNo1EnvironmentSPLContext.currentLevelSemantics {
+                missing.append("environment.levelSemantics")
+            }
+            if environment.measurements?.isEmpty != false {
+                missing.append("environment.measurements")
+            }
         }
         if lifecycle.completedAt == nil {
             missing.append("lifecycle.completedAt")

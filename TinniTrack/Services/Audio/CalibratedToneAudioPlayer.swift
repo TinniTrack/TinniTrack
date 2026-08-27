@@ -9,6 +9,23 @@ protocol CalibratedTonePlaying: AnyObject {
 
     @discardableResult
     func stop() -> CalibratedTonePlaybackMetadata?
+
+    @discardableResult
+    func stopAndWaitForSilence() async -> CalibratedTonePlaybackMetadata?
+
+    func waitForSilenceAfterStop() async
+}
+
+extension CalibratedTonePlaying {
+    @discardableResult
+    func stopAndWaitForSilence() async -> CalibratedTonePlaybackMetadata? {
+        let metadata = stop()
+        await waitForSilenceAfterStop()
+        return metadata
+    }
+
+    func waitForSilenceAfterStop() async {
+    }
 }
 
 @MainActor
@@ -54,6 +71,7 @@ final class CalibratedToneScheduledStopCoordinator {
 @MainActor
 final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
     private let audioSession: AVAudioSession
+    private let audioSessionCoordinator: StudyAudioSessionCoordinating
     private let guardrailMonitor: CalibratedAudioSessionGuardrailMonitor?
     private let converter: CalibratedAudioConverter
     private let dateProvider: () -> Date
@@ -68,6 +86,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
 
     init(
         audioSession: AVAudioSession = .sharedInstance(),
+        audioSessionCoordinator: StudyAudioSessionCoordinating? = nil,
         guardrailMonitor: CalibratedAudioSessionGuardrailMonitor? = nil,
         converter: CalibratedAudioConverter? = nil,
         preferredSampleRate: Double? = nil,
@@ -76,6 +95,7 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         dateProvider: @escaping () -> Date = Date.init
     ) {
         self.audioSession = audioSession
+        self.audioSessionCoordinator = audioSessionCoordinator ?? StudyAudioSessionCoordinator.shared
         self.guardrailMonitor = guardrailMonitor
         self.converter = converter ?? CalibratedAudioConverter()
         self.preferredSampleRate = preferredSampleRate
@@ -197,13 +217,37 @@ final class CalibratedToneAudioPlayer: CalibratedTonePlaying {
         return stoppedMetadata
     }
 
+    @discardableResult
+    func stopAndWaitForSilence() async -> CalibratedTonePlaybackMetadata? {
+        let metadata = stop()
+        await waitForSilenceAfterStop()
+        return metadata
+    }
+
+    func waitForSilenceAfterStop() async {
+        guard let renderState else { return }
+        let rampDuration = renderState.beginRampOut()
+        scheduledStopCoordinator.invalidatePlayback()
+        if rampDuration > 0 {
+            do {
+                try await Task.sleep(
+                    nanoseconds: UInt64(rampDuration * 1_000_000_000)
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+        }
+        guard !Task.isCancelled else { return }
+        stopImmediately()
+    }
+
     private func configureAudioSession() throws {
-        try audioSession.setCategory(.playback, mode: .default, options: [])
-        try audioSession.setPreferredSampleRate(preferredSampleRate)
-        try audioSession.setPreferredIOBufferDuration(
-            Double(preferredBufferFrameCount) / preferredSampleRate
+        try audioSessionCoordinator.configureForPlayback(
+            preferredSampleRate: preferredSampleRate,
+            preferredBufferFrameCount: preferredBufferFrameCount
         )
-        try audioSession.setActive(true)
     }
 
     private func startGuardrailMonitoring() {

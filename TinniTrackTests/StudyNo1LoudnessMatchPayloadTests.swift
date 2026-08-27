@@ -9,7 +9,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
     func studyNo1PayloadCapturesRequiredContextAndEncodes() throws {
         let payload = try makeCompletedPayload()
 
-        #expect(payload.payloadVersion == "study-no-1-loudness-match-v2")
+        #expect(payload.payloadVersion == "study-no-1-loudness-match-v3")
         #expect(payload.protocolKind == "studyNo1FixedOneKilohertz")
         #expect(payload.identifiers.enrollmentId == enrollmentID.uuidString)
         #expect(payload.identifiers.scheduledTaskId == scheduledTaskID.uuidString)
@@ -23,6 +23,10 @@ struct StudyNo1LoudnessMatchPayloadTests {
         #expect(payload.volume.bucketedOutputVolume == 1.0)
         #expect(payload.environment.gateResult == .passed)
         #expect(payload.environment.samplesDBA == [34.0, 35.0, 36.0, 37.0, 38.0])
+        #expect(payload.environment.measurementSchemaVersion == 2)
+        #expect(payload.environment.levelSemantics == "provisional_estimated_dba_screening")
+        #expect(payload.environment.measurements?.count == 5)
+        #expect(abs((payload.environment.measurements?.first?.aWeightedDigitalLevelDBFS ?? 0) - -83.3) < 0.000_001)
         #expect(payload.fitSeal.status == .confirmedPassed)
         #expect(payload.safety.stopControlVisibleBeforePlayback)
         #expect(payload.stimulus.frequencyHz == 1_000)
@@ -43,6 +47,66 @@ struct StudyNo1LoudnessMatchPayloadTests {
         let data = try JSONEncoder().encode(payload)
         let decoded = try JSONDecoder().decode(StudyNo1LoudnessMatchRunPayload.self, from: data)
         #expect(decoded == payload)
+    }
+
+    @Test
+    func legacyV2PayloadWithoutVersionedEnvironmentMeasurementsStillDecodes() throws {
+        let current = try makeCompletedPayload()
+        let data = try legacyV2PayloadData(from: current)
+
+        let decoded = try JSONDecoder().decode(StudyNo1LoudnessMatchRunPayload.self, from: data)
+
+        #expect(decoded.payloadVersion == StudyNo1LoudnessMatchRunPayload.legacyPayloadVersion)
+        #expect(decoded.environment.samplesDBA == [34, 35, 36, 37, 38])
+        #expect(decoded.environment.measurementSchemaVersion == nil)
+        #expect(decoded.environment.levelSemantics == nil)
+        #expect(decoded.environment.measurements == nil)
+    }
+
+    @Test
+    func currentDigitalOnlyMeasurementsNeverPopulateLegacySamplesDBA() {
+        let input = TinnitusEnvironmentInputConfiguration(
+            route: .builtInMicrophone,
+            dataSourceOrientation: .bottom,
+            sampleRate: 48_000,
+            channelCount: 1,
+            inputGain: 1,
+            isInputGainSettable: false
+        )
+        let calibration = TinnitusEnvironmentCalibrationProfile(
+            identifier: "uncalibrated-digital-only",
+            status: .unavailable,
+            estimatedDBAOffset: nil,
+            referenceSensitivityOffsetDB: nil,
+            provenance: "No acoustic estimate available",
+            uncertaintyDB: nil
+        )
+        let measurement = TinnitusEnvironmentSPLMeasurement(
+            schemaVersion: TinnitusEnvironmentSPLMeasurement.currentSchemaVersion,
+            windowStartedAt: timestamp,
+            windowEndedAt: timestamp.addingTimeInterval(1),
+            duration: 1,
+            aWeightedDigitalLevelDBFS: -84,
+            provisionalEstimatedDBA: nil,
+            validity: .valid,
+            input: input,
+            algorithmVersion: TinnitusEnvironmentSPLMeasurement.currentAlgorithmVersion,
+            calibration: calibration
+        )
+
+        let context = StudyNo1EnvironmentSPLContext(
+            thresholdDBA: 45,
+            requiredContiguousSamples: 5,
+            samplingInterval: 1,
+            sensitivityOffsetDB: nil,
+            samplesDBA: [-84],
+            gateResult: .failed,
+            measurements: [measurement]
+        )
+
+        #expect(context.samplesDBA.isEmpty)
+        #expect(context.measurements?.first?.aWeightedDigitalLevelDBFS == -84)
+        #expect(context.measurements?.first?.provisionalEstimatedDBA == nil)
     }
 
     @Test
@@ -296,13 +360,9 @@ struct StudyNo1LoudnessMatchPayloadTests {
                 sampleRate: 44_100,
                 bufferSize: 512
             ),
-            environment: StudyNo1EnvironmentSPLContext(
-                thresholdDBA: 45,
-                requiredContiguousSamples: 5,
-                samplingInterval: 1.0,
-                sensitivityOffsetDB: -23.3,
-                samplesDBA: [34.0, 35.0, 36.0, 37.0, 38.0],
-                gateResult: .passed
+            environment: StudyNo1EnvironmentPayloadTestFixture.currentContext(
+                timestamp: timestamp,
+                provisionalEstimatesDBA: [34, 35, 36, 37, 38]
             ),
             fitSeal: StudyNo1FitSealContext(
                 status: .confirmedPassed,
@@ -340,7 +400,71 @@ struct StudyNo1LoudnessMatchPayloadTests {
         ])
     }
 
+    private func legacyV2PayloadData(
+        from payload: StudyNo1LoudnessMatchRunPayload
+    ) throws -> Data {
+        let encoded = try JSONEncoder().encode(payload)
+        guard var object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any],
+              var environment = object["environment"] as? [String: Any]
+        else {
+            throw StudyNo1PayloadValidationError.incompleteStudyNo1(
+                reason: "Could not construct legacy payload fixture."
+            )
+        }
+
+        object["payloadVersion"] = StudyNo1LoudnessMatchRunPayload.legacyPayloadVersion
+        environment.removeValue(forKey: "measurementSchemaVersion")
+        environment.removeValue(forKey: "levelSemantics")
+        environment.removeValue(forKey: "measurements")
+        object["environment"] = environment
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
     private let participantID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
     private let enrollmentID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
     private let scheduledTaskID = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+}
+
+nonisolated enum StudyNo1EnvironmentPayloadTestFixture {
+    static func currentContext(
+        timestamp: Date,
+        provisionalEstimatesDBA: [Double]
+    ) -> StudyNo1EnvironmentSPLContext {
+        let calibration = TinnitusEnvironmentCalibrationProfile.provisionalBuiltInMicrophone
+        let input = TinnitusEnvironmentInputConfiguration(
+            route: .builtInMicrophone,
+            dataSourceOrientation: .bottom,
+            sampleRate: 48_000,
+            channelCount: 1,
+            inputGain: 1,
+            isInputGainSettable: false
+        )
+        let measurements = provisionalEstimatesDBA.enumerated().map { index, estimate in
+            let startedAt = timestamp.addingTimeInterval(Double(index))
+            return TinnitusEnvironmentSPLMeasurement(
+                schemaVersion: TinnitusEnvironmentSPLMeasurement.currentSchemaVersion,
+                windowStartedAt: startedAt,
+                windowEndedAt: startedAt.addingTimeInterval(1),
+                duration: 1,
+                aWeightedDigitalLevelDBFS: estimate - 117.3,
+                provisionalEstimatedDBA: estimate,
+                validity: .valid,
+                input: input,
+                algorithmVersion: TinnitusEnvironmentSPLMeasurement.currentAlgorithmVersion,
+                calibration: calibration
+            )
+        }
+
+        return StudyNo1EnvironmentSPLContext(
+            thresholdDBA: 45,
+            requiredContiguousSamples: 5,
+            samplingInterval: 1,
+            sensitivityOffsetDB: calibration.referenceSensitivityOffsetDB,
+            // A sentinel proves current records derive this legacy field only
+            // from provisional estimates, never from digital dBFS input.
+            samplesDBA: measurements.compactMap(\.aWeightedDigitalLevelDBFS),
+            gateResult: .passed,
+            measurements: measurements
+        )
+    }
 }

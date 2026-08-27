@@ -260,7 +260,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func continuousEnvironmentGateStreamsTooLoudThenPasses() async throws {
+    func continuousEnvironmentGateRetainsPassWhenMonitorFinishesUnavailable() async throws {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
@@ -275,14 +275,45 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.startContinuousEnvironmentGate()
         #expect(try await waitUntil {
             viewModel.isRunningEnvironmentGate == false
-                && viewModel.environmentGateResult?.passed == true
+                && viewModel.message != nil
         })
 
         #expect(viewModel.isRunningEnvironmentGate == false)
-        #expect(viewModel.environmentGateUpdate?.status == .passed)
+        #expect(viewModel.environmentGateUpdate?.status == .unavailable(.unavailable))
         #expect(viewModel.environmentGateResult?.passed == true)
-        #expect(viewModel.environmentGateResult?.samplesDBA == [44, 46, 40, 41, 42, 43, 44])
         #expect(viewModel.hasPassedEnvironmentGate)
+        #expect(
+            viewModel.message
+                == .environmentGateUnavailable(
+                    "Quiet-room monitoring ended unexpectedly. Return to the quiet-room step and try again."
+                )
+        )
+    }
+
+    @Test
+    func continuousEnvironmentGateRetainsPassWhenMonitorFails() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
+                samplesByUpdate: [[40, 41, 42, 43, 44]],
+                failureMessageAfterUpdates: "Quiet monitor failed."
+            )
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil {
+            viewModel.isRunningEnvironmentGate == false
+                && viewModel.message != nil
+        })
+
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.hasPassedEnvironmentGate)
+        #expect(
+            viewModel.message
+                == .environmentGateUnavailable("Quiet monitor failed.")
+        )
     }
 
     @Test
@@ -329,14 +360,14 @@ struct LoudnessMatchTaskFlowViewModelTests {
         viewModel.prepareEnvironmentGateForQuietRoomStep()
 
         #expect(viewModel.environmentGateResult == nil)
-        #expect(viewModel.environmentGateUpdate?.status == .measuring)
+        #expect(viewModel.environmentGateUpdate?.status == .idle)
         #expect(viewModel.environmentGateUpdate?.contiguousPassingSamples == 0)
         #expect(viewModel.hasPassedEnvironmentGate == false)
         #expect(viewModel.isRunningEnvironmentGate == false)
     }
 
     @Test
-    func continuousEnvironmentGateClearsCurrentPassWhenRoomGetsLoudAgain() async throws {
+    func oneLoudWindowIsSuspectedWithoutPopupOrPassErasure() async throws {
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             guardrailProvider: { passedGuardrails() },
@@ -352,14 +383,42 @@ struct LoudnessMatchTaskFlowViewModelTests {
 
         viewModel.startContinuousEnvironmentGate()
         #expect(try await waitUntil {
-            viewModel.environmentGateUpdate?.status == .tooLoud
+            viewModel.environmentGateUpdate?.status == .suspectedLoudness
                 && viewModel.hasPassedEnvironmentGate
         })
 
         #expect(viewModel.hasPassedEnvironmentGate)
-        #expect(viewModel.environmentGateUpdate?.status == .tooLoud)
-        #expect(viewModel.environmentGateResult == nil)
+        #expect(viewModel.environmentGateUpdate?.status == .suspectedLoudness)
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+        #expect(viewModel.preflightReady == false)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func twoConsecutiveLoudWindowsCreateExplicitInterruption() async throws {
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
+                samplesByUpdate: [
+                    [40, 41, 42, 43, 44],
+                    [40, 41, 42, 43, 44, 50],
+                    [40, 41, 42, 43, 44, 50, 51]
+                ],
+                finishAfterUpdates: false
+            )
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .interruptedByLoudness
+        })
+
+        #expect(viewModel.environmentGateResult?.passed == true)
         #expect(viewModel.isEnvironmentQuietnessInterrupted)
+        #expect(viewModel.preflightReady == false)
         viewModel.cancelEnvironmentGate()
     }
 
@@ -462,26 +521,218 @@ struct LoudnessMatchTaskFlowViewModelTests {
         })
         #expect(viewModel.isPlaying)
         #expect(viewModel.environmentGateResult?.passed == true)
-        #expect(viewModel.preflightReady)
+        #expect(viewModel.preflightReady == false)
+        #expect(viewModel.environmentGateUpdate?.status == .suspended(.tonePlayback))
 
         viewModel.stopTone()
         #expect(try await waitUntil {
             viewModel.isRunningEnvironmentGate
-                && viewModel.environmentGateResult == nil
+                && viewModel.environmentGateUpdate?.status == .reacquiring(.postResponse)
         })
 
         #expect(player.stopCallCount == 1)
-        #expect(viewModel.isEnvironmentQuietnessInterrupted)
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+        #expect(viewModel.preflightReady == false)
 
-        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44, 50])
+        environmentGateMonitor.yield(samplesDBA: [40])
         #expect(try await waitUntil {
-            viewModel.environmentGateUpdate?.status == .tooLoud
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+        #expect(viewModel.preflightReady)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+
+        environmentGateMonitor.yield(samplesDBA: [40, 50])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .suspectedLoudness
+        })
+        #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+        environmentGateMonitor.yield(samplesDBA: [40, 50, 51])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .interruptedByLoudness
         })
 
-        #expect(viewModel.environmentGateResult == nil)
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted)
         #expect(viewModel.preflightReady == false)
         #expect(viewModel.canPlayTone == false)
         viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func appInactivitySuspendsWithoutPopupAndReacquiresAfterMonitorTeardown() async throws {
+        let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: environmentGateMonitor
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+
+        viewModel.suspendEnvironmentGateForAppInactivity()
+
+        #expect(viewModel.environmentGateUpdate?.status == .suspended(.appInactive))
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+        #expect(viewModel.isRunningEnvironmentGate == false)
+
+        viewModel.resumeEnvironmentGateAfterAppActivity()
+        #expect(try await waitUntil {
+            environmentGateMonitor.reasons == [.initial, .manualRestart]
+                && viewModel.environmentGateUpdate?.status == .reacquiring(.manualRestart)
+        })
+        #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+        #expect(viewModel.preflightReady == false)
+
+        environmentGateMonitor.yield(samplesDBA: [40])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+        #expect(viewModel.environmentGateResult?.passed == true)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func repeatedOrientationHeardAndTimeoutStopsReacquireWithoutPopup() async throws {
+        let player = MockCalibratedTonePlayer()
+        let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: environmentGateMonitor
+        )
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.fitSealConfirmed = true
+        viewModel.safetyAcknowledged = true
+        viewModel.refreshGuardrails()
+        viewModel.startContinuousEnvironmentGate()
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+
+        let stimulus = StudyNo1OrientationThresholdStimulus(
+            frequencyHz: 1_000,
+            levelDBHL: 30,
+            channel: .right
+        )
+        // Heard taps and unheard timeouts both terminate a stimulus through the
+        // same stop callback, so alternate the semantic response across cycles.
+        let responseWasHeard = [true, false, true, false]
+        for (index, _) in responseWasHeard.enumerated() {
+            try await viewModel.playOrientationThresholdTone(stimulus, duration: 1)
+            #expect(viewModel.environmentGateUpdate?.status == .suspended(.tonePlayback))
+            #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+
+            viewModel.stopOrientationThresholdTone()
+            #expect(try await waitUntil {
+                environmentGateMonitor.reasons.count == index + 2
+                    && viewModel.environmentGateUpdate?.status == .reacquiring(.postResponse)
+            })
+            #expect(viewModel.environmentGateResult?.passed == true)
+            #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+
+            environmentGateMonitor.yield(samplesDBA: [40])
+            #expect(try await waitUntil {
+                viewModel.environmentGateUpdate?.status == .quiet
+            })
+            #expect(viewModel.isEnvironmentQuietnessInterrupted == false)
+        }
+
+        #expect(player.playedRequests.count == responseWasHeard.count)
+        #expect(player.stopCallCount == responseWasHeard.count)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func duplicateOrientationStopsCoalesceBeforeQuietReacquisitionAndReplay() async throws {
+        let player = MockCalibratedTonePlayer()
+        let silenceWaiter = ControllablePlaybackSilenceWaiter()
+        player.onWaitForSilence = silenceWaiter.wait
+        let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: environmentGateMonitor
+        )
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        viewModel.fitSealConfirmed = true
+        viewModel.safetyAcknowledged = true
+        viewModel.refreshGuardrails()
+        viewModel.startContinuousEnvironmentGate()
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+
+        let stimulus = StudyNo1OrientationThresholdStimulus(
+            frequencyHz: 1_000,
+            levelDBHL: 30,
+            channel: .right
+        )
+        try await viewModel.playOrientationThresholdTone(stimulus, duration: 1)
+
+        viewModel.stopOrientationThresholdTone()
+        viewModel.stopOrientationThresholdTone()
+        viewModel.stopOrientationThresholdTone()
+
+        #expect(player.stopCallCount == 1)
+        #expect(try await waitUntil { silenceWaiter.waitCallCount == 1 })
+        silenceWaiter.resumeNext()
+        #expect(try await waitUntil {
+            environmentGateMonitor.reasons.count == 2
+                && viewModel.environmentGateUpdate?.status == .reacquiring(.postResponse)
+        })
+
+        environmentGateMonitor.yield(samplesDBA: [40])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .quiet
+        })
+
+        try await viewModel.playOrientationThresholdTone(stimulus, duration: 1)
+        #expect(player.playedRequests.count == 2)
+
+        viewModel.stopOrientationThresholdTone()
+        #expect(try await waitUntil { silenceWaiter.waitCallCount == 2 })
+        silenceWaiter.resumeNext()
+        #expect(try await waitUntil { environmentGateMonitor.reasons.count == 3 })
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func workflowCleanupWaitsForCaptureAndPlayerThenRestoresOnlyOnce() async throws {
+        let order = AudioWorkflowCleanupOrderRecorder()
+        let player = MockCalibratedTonePlayer()
+        player.onStop = { order.record("player") }
+        let meter = WorkflowTrackingEnvironmentSPLMeter(order: order)
+        let monitor = TeardownTrackingEnvironmentSPLGateMonitor(order: order)
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: meter,
+            environmentGateMonitor: monitor
+        )
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil { viewModel.isRunningEnvironmentGate })
+
+        viewModel.endAudioSessionWorkflow()
+        viewModel.endAudioSessionWorkflow()
+
+        #expect(try await waitUntil { meter.endWorkflowCallCount == 1 })
+        #expect(order.values == ["monitor", "player", "workflow"])
+        #expect(player.stopCallCount == 1)
     }
 
     @Test
@@ -576,6 +827,36 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(viewModel.message == nil)
         #expect(viewModel.headphoneRouteAssessment.looksLikeAirPodsProRoute)
         #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed)
+    }
+
+    @Test
+    func correctEarConfirmationSurvivesPassedGuardrailAssessmentSync() {
+        let routeProvider = MockAudioSessionRouteVolumeProvider(
+            outputs: [
+                audioOutput(
+                    name: "Verified AirPods Pro 2",
+                    portType: .bluetoothA2DP,
+                    uid: "verified-airpods-pro-2"
+                )
+            ],
+            outputVolume: 1.0
+        )
+        let validation = passedGuardrails(verificationSource: .appCalibrationProfile)
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { validation },
+            headphoneRouteProvider: routeProvider,
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: [31, 32, 33, 34, 35])
+        )
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed == false)
+        #expect(viewModel.headphoneRouteAssessment.portTypeRawValue == nil)
+
+        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+
+        #expect(viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed)
+        #expect(viewModel.validateAirPodsForCorrectEarStep())
+        #expect(viewModel.message == nil)
     }
 
     @Test
@@ -1007,7 +1288,10 @@ struct LoudnessMatchTaskFlowViewModelTests {
         #expect(service.submissions.first?.scheduledTaskID == task.id)
         #expect(service.submissions.first?.enrollmentID == currentEnrollment.id)
         #expect(service.submissions.first?.submission.matchedLevel == 46)
-        #expect(service.submissions.first?.submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v2"))
+        #expect(
+            service.submissions.first?.submission.rawPayload["payloadVersion"]
+                == .string(StudyNo1LoudnessMatchRunPayload.payloadVersion)
+        )
     }
 
     @Test
@@ -1224,15 +1508,19 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
     }
 
-    private func passedGuardrails() -> CalibratedAudioGuardrailValidation {
+    private func passedGuardrails(
+        verificationSource: CalibratedHeadphoneVerificationSource = .researchProtocol
+    ) -> CalibratedAudioGuardrailValidation {
         CalibratedAudioGuardrailPolicy().validate(
-            route: supportedRoute(),
+            route: supportedRoute(verificationSource: verificationSource),
             outputVolume: 1.0,
             timestamp: timestamp
         )
     }
 
-    private func supportedRoute() -> CalibratedAudioRouteDetails {
+    private func supportedRoute(
+        verificationSource: CalibratedHeadphoneVerificationSource = .researchProtocol
+    ) -> CalibratedAudioRouteDetails {
         CalibratedAudioRouteDetails(outputs: [
             CalibratedAudioRouteOutput(
                 portName: "Verified AirPods Pro 2",
@@ -1240,7 +1528,7 @@ struct LoudnessMatchTaskFlowViewModelTests {
                 portUID: "verified-airpods-pro-2",
                 channelNames: ["left", "right"],
                 verifiedCalibratedHeadphoneIdentifier: "AIRPODSPROV2",
-                verificationSource: .researchProtocol
+                verificationSource: verificationSource
             )
         ])
     }
@@ -1274,8 +1562,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
     }
 
-    private func orientationThresholdResult() -> StudyNo1OrientationThresholdResearchKitResult {
-        StudyNo1OrientationThresholdResearchKitResult(
+    private func orientationThresholdResult() -> StudyNo1OrientationThresholdResult {
+        StudyNo1OrientationThresholdResult(
             taskIdentifier: "study-no-1-orientation-threshold",
             rightEar: orientationEar(channel: .right, threshold: 18),
             leftEar: orientationEar(channel: .left, threshold: 12),
@@ -1376,70 +1664,138 @@ private struct MockEnvironmentSPLMeter: EnvironmentSPLMeasuring {
     }
 }
 
-private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
-    let samplesByUpdate: [[Double]]
-    var finishAfterUpdates = true
+@MainActor
+private final class WorkflowTrackingEnvironmentSPLMeter:
+    EnvironmentSPLMeasuring,
+    EnvironmentSPLWorkflowManaging
+{
+    private let order: AudioWorkflowCleanupOrderRecorder
+    private(set) var endWorkflowCallCount = 0
 
-    func monitorGate(
-        configuration: TinnitusEnvironmentSPLGateConfiguration
-    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                for samples in samplesByUpdate {
-                    continuation.yield(
-                        TinnitusEnvironmentSPLGateEvaluator().update(
-                            samplesDBA: samples,
-                            configuration: configuration
-                        )
-                    )
-                    await Task.yield()
-                }
-
-                if finishAfterUpdates {
-                    continuation.finish()
-                }
-            }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
-        }
-    }
-}
-
-private final class ControllableEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
-    private var continuation: AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error>.Continuation?
-    private var configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
-
-    func monitorGate(
-        configuration: TinnitusEnvironmentSPLGateConfiguration
-    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
-        self.configuration = configuration
-        return AsyncThrowingStream { continuation in
-            self.continuation = continuation
-        }
+    init(order: AudioWorkflowCleanupOrderRecorder) {
+        self.order = order
     }
 
-    func yield(samplesDBA: [Double]) {
-        continuation?.yield(
-            TinnitusEnvironmentSPLGateEvaluator().update(
-                samplesDBA: samplesDBA,
-                configuration: configuration
-            )
+    func runGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) async throws -> TinnitusEnvironmentSPLGateResult {
+        TinnitusEnvironmentSPLGateEvaluator().evaluate(
+            samplesDBA: [],
+            configuration: configuration
         )
     }
 
-    func finish() {
-        continuation?.finish()
+    func endAudioWorkflow() {
+        endWorkflowCallCount += 1
+        order.record("workflow")
     }
 }
 
-private final class RestartTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring, @unchecked Sendable {
-    private typealias Continuation = AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error>.Continuation
+@MainActor
+private final class TeardownTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    private let order: AudioWorkflowCleanupOrderRecorder
 
+    init(order: AudioWorkflowCleanupOrderRecorder) {
+        self.order = order
+    }
+
+    func makeMonitor(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) -> any EnvironmentSPLMonitorSession {
+        TeardownTrackingEnvironmentSPLMonitorSession(order: order, reason: reason)
+    }
+}
+
+@MainActor
+private final class TeardownTrackingEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSession {
+    let events: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>
+    private let continuation: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation
+    private let order: AudioWorkflowCleanupOrderRecorder
+    private var didStop = false
+
+    init(
+        order: AudioWorkflowCleanupOrderRecorder,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) {
+        var captured: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation!
+        events = AsyncThrowingStream { captured = $0 }
+        continuation = captured
+        self.order = order
+        continuation.yield(.warmingUp(reason))
+    }
+
+    func stop() async {
+        guard !didStop else { return }
+        didStop = true
+        order.record("monitor")
+        continuation.finish()
+    }
+}
+
+@MainActor
+private final class AudioWorkflowCleanupOrderRecorder {
+    private(set) var values: [String] = []
+
+    func record(_ value: String) {
+        values.append(value)
+    }
+}
+
+@MainActor
+private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    let samplesByUpdate: [[Double]]
+    var finishAfterUpdates = true
+    var failureMessageAfterUpdates: String? = nil
+
+    func makeMonitor(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) -> any EnvironmentSPLMonitorSession {
+        ScriptedEnvironmentSPLMonitorSession(
+            configuration: configuration,
+            reason: reason,
+            samplesByUpdate: samplesByUpdate,
+            finishAfterUpdates: finishAfterUpdates,
+            failureMessageAfterUpdates: failureMessageAfterUpdates
+        )
+    }
+}
+
+@MainActor
+private final class ControllableEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    private var session: ControllableEnvironmentSPLMonitorSession?
+    private var configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
+    private(set) var reasons: [TinnitusEnvironmentSPLReacquisitionReason] = []
+
+    func makeMonitor(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) -> any EnvironmentSPLMonitorSession {
+        self.configuration = configuration
+        reasons.append(reason)
+        let session = ControllableEnvironmentSPLMonitorSession(
+            configuration: configuration,
+            reason: reason
+        )
+        self.session = session
+        return session
+    }
+
+    func yield(samplesDBA: [Double]) {
+        session?.yield(samplesDBA: samplesDBA)
+    }
+
+    func finish() {
+        session?.finish()
+    }
+}
+
+@MainActor
+private final class RestartTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring, @unchecked Sendable {
     private let lock = NSLock()
     private var nextStreamID = 0
-    private var continuations: [Int: Continuation] = [:]
+    private var sessions: [Int: ControllableEnvironmentSPLMonitorSession] = [:]
     private var configurations: [Int: TinnitusEnvironmentSPLGateConfiguration] = [:]
     private var terminatedStreamIDs: Set<Int> = []
 
@@ -1449,24 +1805,24 @@ private final class RestartTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGate
         return nextStreamID
     }
 
-    func monitorGate(
-        configuration: TinnitusEnvironmentSPLGateConfiguration
-    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+    func makeMonitor(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) -> any EnvironmentSPLMonitorSession {
         lock.lock()
         let streamID = nextStreamID
         nextStreamID += 1
         configurations[streamID] = configuration
-        lock.unlock()
-
-        return AsyncThrowingStream { continuation in
-            lock.lock()
-            continuations[streamID] = continuation
-            lock.unlock()
-
-            continuation.onTermination = { [weak self] _ in
+        let session = ControllableEnvironmentSPLMonitorSession(
+            configuration: configuration,
+            reason: reason,
+            onStop: { [weak self] in
                 self?.recordTermination(streamID: streamID)
             }
-        }
+        )
+        sessions[streamID] = session
+        lock.unlock()
+        return session
     }
 
     func hasTerminated(streamID: Int) -> Bool {
@@ -1478,24 +1834,121 @@ private final class RestartTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGate
     func yieldToLatest(samplesDBA: [Double]) {
         lock.lock()
         let streamID = nextStreamID - 1
-        let continuation = continuations[streamID]
-        let configuration = configurations[streamID] ?? .studyNo1
+        let session = sessions[streamID]
         lock.unlock()
-
-        continuation?.yield(
-            TinnitusEnvironmentSPLGateEvaluator().update(
-                samplesDBA: samplesDBA,
-                configuration: configuration
-            )
-        )
+        session?.yield(samplesDBA: samplesDBA)
     }
 
     private func recordTermination(streamID: Int) {
         lock.lock()
         terminatedStreamIDs.insert(streamID)
-        continuations[streamID] = nil
+        sessions[streamID] = nil
         configurations[streamID] = nil
         lock.unlock()
+    }
+}
+
+@MainActor
+private final class ScriptedEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSession {
+    let events: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>
+    private let continuation: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation
+    private var task: Task<Void, Never>?
+
+    init(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason,
+        samplesByUpdate: [[Double]],
+        finishAfterUpdates: Bool,
+        failureMessageAfterUpdates: String?
+    ) {
+        var captured: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation!
+        events = AsyncThrowingStream { captured = $0 }
+        continuation = captured
+        task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.continuation.yield(.warmingUp(reason))
+            self.continuation.yield(.ready)
+            var emittedCount = 0
+            for samples in samplesByUpdate {
+                let newSamples = samples.dropFirst(min(emittedCount, samples.count))
+                for (offset, sample) in newSamples.enumerated() where sample.isFinite {
+                    self.continuation.yield(.measurement(
+                        TinnitusEnvironmentSPLGateEvaluator().legacyMeasurement(
+                            levelDBA: sample,
+                            index: emittedCount + offset,
+                            configuration: configuration
+                        )
+                    ))
+                }
+                emittedCount = samples.count
+                await Task.yield()
+            }
+
+            if let failureMessageAfterUpdates {
+                self.continuation.finish(throwing: NSError(
+                    domain: "MockEnvironmentSPLGateMonitor",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: failureMessageAfterUpdates]
+                ))
+            } else if finishAfterUpdates {
+                self.continuation.finish()
+            }
+        }
+    }
+
+    func stop() async {
+        task?.cancel()
+        task = nil
+        continuation.finish()
+    }
+}
+
+@MainActor
+private final class ControllableEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSession {
+    let events: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>
+    private let continuation: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation
+    private let configuration: TinnitusEnvironmentSPLGateConfiguration
+    private let onStop: () -> Void
+    private var emittedCount = 0
+    private var didStop = false
+
+    init(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason,
+        onStop: @escaping () -> Void = {}
+    ) {
+        var captured: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation!
+        events = AsyncThrowingStream { captured = $0 }
+        continuation = captured
+        self.configuration = configuration
+        self.onStop = onStop
+        continuation.yield(.warmingUp(reason))
+        continuation.yield(.ready)
+    }
+
+    func yield(samplesDBA: [Double]) {
+        let newSamples = samplesDBA.dropFirst(min(emittedCount, samplesDBA.count))
+        for (offset, sample) in newSamples.enumerated() where sample.isFinite {
+            continuation.yield(.measurement(
+                TinnitusEnvironmentSPLGateEvaluator().legacyMeasurement(
+                    levelDBA: sample,
+                    index: emittedCount + offset,
+                    configuration: configuration
+                )
+            ))
+        }
+        emittedCount = samplesDBA.count
+    }
+
+    func finish() {
+        continuation.finish()
+    }
+
+    func stop() async {
+        guard !didStop else { return }
+        didStop = true
+        continuation.finish()
+        onStop()
     }
 }
 
@@ -1569,6 +2022,8 @@ private final class MockAudioSessionObservation: AudioSessionObservation {
 private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
     var playedRequests: [CalibratedTonePlaybackRequest] = []
     var stopCallCount = 0
+    var onStop: () -> Void = {}
+    var onWaitForSilence: () async -> Void = {}
 
     func play(_ request: CalibratedTonePlaybackRequest) throws -> CalibratedTonePlaybackMetadata {
         playedRequests.append(request)
@@ -1582,6 +2037,7 @@ private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
 
     func stop() -> CalibratedTonePlaybackMetadata? {
         stopCallCount += 1
+        onStop()
         guard let request = playedRequests.last else {
             return nil
         }
@@ -1592,6 +2048,30 @@ private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
         .metadata
         .started(at: Date(timeIntervalSince1970: 1_800_020_001))
         .stopped(at: Date(timeIntervalSince1970: 1_800_020_002))
+    }
+
+    func waitForSilenceAfterStop() async {
+        await onWaitForSilence()
+    }
+}
+
+@MainActor
+private final class ControllablePlaybackSilenceWaiter {
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+    private(set) var waitCallCount = 0
+
+    func wait() async {
+        waitCallCount += 1
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    func resumeNext() {
+        guard !continuations.isEmpty else {
+            return
+        }
+        continuations.removeFirst().resume()
     }
 }
 

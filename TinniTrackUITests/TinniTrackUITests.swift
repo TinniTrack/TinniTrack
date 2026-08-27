@@ -279,6 +279,8 @@ final class TinniTrackUITests: XCTestCase {
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Consent reviewed. You can continue."].exists)
+        XCTAssertTrue(waitForEnabledState(true, of: signatureButton))
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 2))
@@ -289,7 +291,7 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
-    func testStudyConsentBackNavigationPreservesDraftAcrossReentry() throws {
+    func testStudyConsentBackNavigationPreservesReviewAndDraftUntilFreshReentry() throws {
         let app = makeMockedStudyApp(scenario: .success)
         app.launch()
 
@@ -303,10 +305,27 @@ final class TinniTrackUITests: XCTestCase {
         nativeBackButton.tap()
         XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
 
+        let signatureButton = app.buttons["study_consent_signature_button"]
+        XCTAssertTrue(app.staticTexts["Consent reviewed. You can continue."].exists)
+        XCTAssertTrue(waitForEnabledState(true, of: signatureButton))
+        signatureButton.tap()
+        XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
+        XCTAssertEqual(app.textFields["study_consent_first_name_field"].value as? String, "Alex")
+        XCTAssertEqual(app.textFields["study_consent_last_name_field"].value as? String, "Rivers")
+        XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
+
+        swipeBack(in: app)
+        XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Consent reviewed. You can continue."].exists)
+        XCTAssertTrue(waitForEnabledState(true, of: signatureButton))
+
         swipeBack(in: app)
         assertStudyConsentLanding(in: app)
 
         openStudyConsentReaderFromLanding(in: app)
+        XCTAssertTrue(signatureButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Scroll to the bottom of the consent form to continue."].exists)
+        XCTAssertTrue(waitForEnabledState(false, of: signatureButton))
         continueToStudyConsentSignature(in: app)
 
         XCTAssertEqual(app.textFields["study_consent_first_name_field"].value as? String, "Alex")
@@ -449,7 +468,7 @@ final class TinniTrackUITests: XCTestCase {
         signAndEnrollButton.tap()
 
         XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
         XCTAssertTrue(app.navigationBars["Loudness Matching Study"].waitForExistence(timeout: 3))
@@ -462,16 +481,326 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
-    func testStudyNo1OrientationUsesNativeNavigation() throws {
+    func testStudyNo1OrientationBeginsOnHearingSetup() throws {
         let app = launchEnrolledStudyOrientation()
-        let orientationContinueButton = app.buttons["study_onboarding_primary_button"]
-        XCTAssertTrue(orientationContinueButton.waitForExistence(timeout: 2))
-        XCTAssertEqual(orientationContinueButton.label, "Continue")
-        orientationContinueButton.tap()
 
-        XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].exists)
+        XCTAssertFalse(app.otherElements["study_onboarding_welcome_step"].exists)
+    }
+
+    @MainActor
+    func testStudyNo1OrientationForwardNavigationSupportsNativeEdgeSwipe() throws {
+        let app = launchEnrolledStudyOrientation(audioPreflightReady: true)
+        let primaryButton = app.buttons["study_onboarding_primary_button"]
+
+        XCTAssertTrue(primaryButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Continue")
+        primaryButton.tap()
+
+        let introTitle = app.staticTexts["Test Your Tinnitus"]
+        XCTAssertTrue(introTitle.waitForExistence(timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Get Started")
+        primaryButton.tap()
+
+        let airPodsStep = app.descendants(matching: .any)["loudness_airpods_step"]
+        XCTAssertTrue(airPodsStep.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["AirPods Pro 2 confirmed"].exists)
+
         swipeBack(in: app)
-        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].waitForExistence(timeout: 3))
+
+        XCTAssertTrue(introTitle.waitForExistence(timeout: 3))
+        XCTAssertTrue(airPodsStep.waitForNonExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testStudyNo1AirPodsConfirmationUsesSimpleConnectedStateAndAdvances() throws {
+        let app = launchEnrolledStudyOrientation(
+            audioPreflightReady: true,
+            requiresAirPodsConfirmation: true
+        )
+        let primaryButton = advanceToAirPodsStep(in: app)
+
+        XCTAssertTrue(app.staticTexts["Place your AirPods in the correct ear"].exists)
+        XCTAssertFalse(app.staticTexts["Place your AirPods in the correct ear."].exists)
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_left_image")
+                .count,
+            1
+        )
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_right_image")
+                .count,
+            1
+        )
+        XCTAssertTrue(app.staticTexts["AirPods connected"].exists)
+        XCTAssertTrue(app.staticTexts["Please confirm these are AirPods Pro 2"].exists)
+        XCTAssertEqual(primaryButton.label, "Confirm AirPods Pro 2")
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        XCTAssertFalse(app.switches["loudness_airpods_pro2_confirmation"].exists)
+        let removedGenerationBlurb = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@",
+                "iOS cannot identify the AirPods generation. Open Settings, choose Bluetooth, then tap the Info button beside your AirPods. If these are AirPods Pro 2 but the connected name does not include “AirPods Pro,” restore that name there or contact the study team."
+            )
+        ).firstMatch
+        XCTAssertFalse(
+            removedGenerationBlurb.exists
+        )
+
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_noise_gate_step"]
+                .waitForExistence(timeout: 3)
+        )
+    }
+
+    @MainActor
+    func testStudyNo1AirPodsWaitingStateShowsTroubleshooting() throws {
+        let app = launchEnrolledStudyOrientation(
+            audioPreflightReady: true,
+            waitingForAirPods: true
+        )
+        let primaryButton = advanceToAirPodsStep(in: app)
+
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_left_image")
+                .count,
+            1
+        )
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(identifier: "loudness_airpod_right_image")
+                .count,
+            1
+        )
+        let status = app.descendants(matching: .any)["loudness_airpods_status_label"]
+        XCTAssertTrue(status.exists)
+        XCTAssertTrue(status.label.contains("Waiting for AirPods"))
+        XCTAssertTrue(status.label.contains("Connect both AirPods to this iPhone."))
+        let troubleshooting = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@",
+                "Make sure your AirPods are not connected to another device. If your iPhone does not detect them, take them out and put them back in."
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            troubleshooting.exists
+        )
+        XCTAssertEqual(primaryButton.label, "Confirm AirPods Pro 2")
+        XCTAssertTrue(waitForEnabledState(false, of: primaryButton, timeout: 3))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_airpods_diagnostics"].exists
+        )
+        XCTAssertFalse(
+            app.staticTexts["Waiting for your AirPods Pro 2 playback route."].exists
+        )
+    }
+
+    @MainActor
+    func testNativeOrientationThresholdContinuesInOrientationChrome() throws {
+        let app = launchEnrolledStudyOrientation(audioPreflightReady: true)
+        let primaryButton = app.buttons["study_onboarding_primary_button"]
+
+        XCTAssertTrue(primaryButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Test Your Tinnitus"].waitForExistence(timeout: 3))
+        primaryButton.tap()
+
+        let airPodsStep = app.descendants(matching: .any)["loudness_airpods_step"]
+        XCTAssertTrue(airPodsStep.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(app.otherElements["loudness_noise_gate_step"].waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.staticTexts[
+                "Adjust the position and depth of each AirPod until the fit is snug but comfortable."
+            ].waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.staticTexts[
+                "Please use the volume buttons on your iPhone to set the volume to maximum."
+            ].waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Start Test")
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.otherElements["study_onboarding_threshold_test_step"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.navigationBars["Orientation"].exists)
+        XCTAssertTrue(app.buttons["study_onboarding_close_button"].exists)
+
+        let beginRightEarButton = app.buttons["study_threshold_begin_right_ear_button"]
+        XCTAssertTrue(beginRightEarButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts[
+                "You’ll hear a series of tones through one AirPod. Tap as soon as you hear a tone."
+            ].exists
+        )
+        XCTAssertFalse(app.staticTexts["Quiet tones are expected"].exists)
+        beginRightEarButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["study_threshold_heard_button"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(app.staticTexts["Listen carefully"].exists)
+        XCTAssertTrue(app.staticTexts["Tap the button whenever you hear a tone"].exists)
+        XCTAssertTrue(app.staticTexts["Don’t tap during silence"].exists)
+        XCTAssertFalse(app.staticTexts["Keep your phone still and your AirPods in place."].exists)
+        XCTAssertFalse(app.staticTexts["0 responses recorded"].exists)
+        XCTAssertTrue(app.navigationBars["Orientation"].exists)
+        XCTAssertTrue(app.buttons["study_onboarding_close_button"].exists)
+    }
+
+    @MainActor
+    func testRecurringLoudnessPreflightSupportsNativeEdgeSwipe() throws {
+        let app = makeAuthenticatedStudyApp()
+        app.launchEnvironment["UITEST_MOCK_AUDIO_PREFLIGHT_READY"] = "1"
+        app.launchEnvironment["UITEST_MOCK_RECURRING_LOUDNESS_TASK"] = "1"
+        app.launch()
+
+        let studyCard = app.buttons["study_card_study-no-1"]
+        XCTAssertTrue(studyCard.waitForExistence(timeout: 5))
+        studyCard.tap()
+
+        let startTaskButton = app.buttons["study_start_loudness_task_button"]
+        XCTAssertTrue(startTaskButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(startTaskButton.isEnabled)
+        startTaskButton.tap()
+
+        let introTitle = app.staticTexts["Test Your Tinnitus"]
+        let primaryButton = app.buttons["loudness_modal_primary_button"]
+        XCTAssertTrue(introTitle.waitForExistence(timeout: 3))
+        XCTAssertTrue(primaryButton.waitForExistence(timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Get Started")
+        XCTAssertFalse(app.alerts["Unable to Continue"].exists)
+
+        app.buttons["loudness_modal_close_button"].tap()
+        let exitConfirmation = app.alerts["Exit this task?"]
+        XCTAssertTrue(exitConfirmation.waitForExistence(timeout: 2))
+        exitConfirmation.buttons["Keep Going"].tap()
+        XCTAssertTrue(introTitle.waitForExistence(timeout: 2))
+
+        primaryButton.tap()
+
+        let airPodsStep = app.descendants(matching: .any)["loudness_airpods_step"]
+        XCTAssertTrue(airPodsStep.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        let quietRoomStep = app.otherElements["loudness_noise_gate_step"]
+        XCTAssertTrue(quietRoomStep.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        let fitTitle = app.staticTexts[
+            "Adjust the position and depth of each AirPod until the fit is snug but comfortable."
+        ]
+        XCTAssertTrue(fitTitle.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        let maxVolumeTitle = app.staticTexts[
+            "Please use the volume buttons on your iPhone to set the volume to maximum."
+        ]
+        XCTAssertTrue(maxVolumeTitle.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+
+        swipeBack(in: app)
+
+        XCTAssertTrue(fitTitle.waitForExistence(timeout: 3))
+        XCTAssertTrue(maxVolumeTitle.waitForNonExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testRecurringActiveTestContinuesInLoudnessMatchChrome() throws {
+        let app = makeAuthenticatedStudyApp()
+        app.launchEnvironment["UITEST_MOCK_AUDIO_PREFLIGHT_READY"] = "1"
+        app.launchEnvironment["UITEST_MOCK_RECURRING_LOUDNESS_TASK"] = "1"
+        app.launch()
+
+        let studyCard = app.buttons["study_card_study-no-1"]
+        XCTAssertTrue(studyCard.waitForExistence(timeout: 5))
+        studyCard.tap()
+
+        let startTaskButton = app.buttons["study_start_loudness_task_button"]
+        XCTAssertTrue(startTaskButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(startTaskButton.isEnabled)
+        startTaskButton.tap()
+
+        let primaryButton = app.buttons["loudness_modal_primary_button"]
+        XCTAssertTrue(primaryButton.waitForExistence(timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Get Started")
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_airpods_step"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(app.otherElements["loudness_noise_gate_step"].waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.staticTexts[
+                "Adjust the position and depth of each AirPod until the fit is snug but comfortable."
+            ].waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_volume_gate_step"]
+                .waitForExistence(timeout: 3)
+        )
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Continue")
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_tinnitus_location_step"]
+                .waitForExistence(timeout: 3)
+        )
+        let leftLateralityButton = app.buttons["Left"]
+        XCTAssertTrue(leftLateralityButton.waitForExistence(timeout: 3))
+        leftLateralityButton.tap()
+
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Start Test")
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_active_test_step"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.navigationBars["Loudness Match"].exists)
+        XCTAssertTrue(app.buttons["loudness_modal_close_button"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["loudness_play_button"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["loudness_louder_button"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["loudness_softer_button"].exists)
+        XCTAssertTrue(app.buttons["Play Tone"].exists)
+        XCTAssertEqual(primaryButton.label, "Same loudness")
     }
 
     @MainActor
@@ -485,7 +814,13 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(exitAlert.waitForExistence(timeout: 2))
         XCTAssertTrue(exitAlert.staticTexts["Your current Study No. 1 onboarding progress will be discarded."].exists)
         exitAlert.buttons["Exit Orientation"].tap()
-        XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 3))
+        let beginOrientationButton = app.buttons["study_begin_orientation_button"]
+        XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 3))
+
+        beginOrientationButton.tap()
+        XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.otherElements["study_onboarding_welcome_step"].exists)
+        XCTAssertFalse(app.otherElements["study_onboarding_loudness_intro_step"].exists)
     }
 
     @MainActor
@@ -628,9 +963,22 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
-    private func launchEnrolledStudyOrientation() -> XCUIApplication {
+    private func launchEnrolledStudyOrientation(
+        audioPreflightReady: Bool = false,
+        requiresAirPodsConfirmation: Bool = false,
+        waitingForAirPods: Bool = false
+    ) -> XCUIApplication {
         let app = makeAuthenticatedStudyApp()
         app.launchEnvironment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] = "1"
+        if audioPreflightReady {
+            app.launchEnvironment["UITEST_MOCK_AUDIO_PREFLIGHT_READY"] = "1"
+        }
+        if requiresAirPodsConfirmation {
+            app.launchEnvironment["UITEST_MOCK_AIRPODS_CONFIRMATION_REQUIRED"] = "1"
+        }
+        if waitingForAirPods {
+            app.launchEnvironment["UITEST_MOCK_WAITING_FOR_AIRPODS"] = "1"
+        }
         app.launch()
 
         let studyCard = app.buttons["study_card_study-no-1"]
@@ -640,11 +988,37 @@ final class TinniTrackUITests: XCTestCase {
         let beginOrientationButton = app.buttons["study_begin_orientation_button"]
         XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 3))
         XCTAssertEqual(beginOrientationButton.label, "Begin Orientation")
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertTrue(
+            app.staticTexts[
+                "We will set up your hearing-test baseline, then run the same tinnitus loudness-match flow used for every Study No. 1 task."
+            ].exists
+        )
         beginOrientationButton.tap()
 
         XCTAssertTrue(app.navigationBars["Orientation"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].exists)
+        XCTAssertFalse(app.otherElements["study_onboarding_welcome_step"].exists)
         return app
+    }
+
+    @MainActor
+    private func advanceToAirPodsStep(in app: XCUIApplication) -> XCUIElement {
+        let primaryButton = app.buttons["study_onboarding_primary_button"]
+        XCTAssertTrue(primaryButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Test Your Tinnitus"].waitForExistence(timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Get Started")
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_airpods_step"]
+                .waitForExistence(timeout: 3)
+        )
+        return primaryButton
     }
 
     @MainActor
@@ -747,7 +1121,7 @@ final class TinniTrackUITests: XCTestCase {
     @MainActor
     private func assertStudyTaskDashboardDestination(in app: XCUIApplication) {
         XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
         XCTAssertTrue(app.navigationBars["Loudness Matching Study"].waitForExistence(timeout: 3))

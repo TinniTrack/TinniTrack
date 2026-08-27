@@ -1,104 +1,85 @@
 import SwiftUI
 
 struct LoudnessMatchTaskModalFlowView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+
     let scheduledTask: ScheduledTask
     let enrollment: StudyEnrollment
     let studyService: StudyServiceProtocol
     let onSubmitted: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: LoudnessMatchTaskFlowViewModel
-    @State private var step: LoudnessMatchModalStep = .intro
+    @StateObject private var preflightSession: CalibratedAudioPreflightSession
+    @State private var navigationPath: [LoudnessMatchTaskRoute] = []
     @State private var selectedLaterality: TinnitusLaterality?
     @State private var isCloseConfirmationPresented = false
     @State private var isNoiseSuggestionsPresented = false
     @State private var startLoudnessMatchTask: Task<Void, Never>?
-    @AccessibilityFocusState private var isInterruptionPopupFocused: Bool
+    @State private var startLoudnessMatchGeneration: UUID?
 
     init(
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment,
         studyService: StudyServiceProtocol,
+        viewModel: LoudnessMatchTaskFlowViewModel? = nil,
         onSubmitted: @escaping () -> Void
     ) {
+        let resolvedViewModel = viewModel ?? LoudnessMatchTaskFlowViewModel()
         self.scheduledTask = scheduledTask
         self.enrollment = enrollment
         self.studyService = studyService
         self.onSubmitted = onSubmitted
-        _viewModel = StateObject(wrappedValue: LoudnessMatchTaskFlowViewModel())
+        _viewModel = StateObject(wrappedValue: resolvedViewModel)
+        _preflightSession = StateObject(
+            wrappedValue: CalibratedAudioPreflightSession(controller: resolvedViewModel)
+        )
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            LoudnessMatchModalColors.background
+        ZStack {
+            StudyTestColors.background
                 .ignoresSafeArea()
 
-            if step == .activeTest {
-                LoudnessMatchActiveTestView(
-                    viewModel: viewModel,
-                    scheduledTask: scheduledTask,
-                    enrollment: enrollment,
-                    studyService: studyService
-                ) { @MainActor in
-                    onSubmitted()
-                    dismiss()
-                }
-                .accessibilityHidden(isInterruptionOverlayPresented)
-            } else {
-                LoudnessMatchModalContentLayout {
-                    LoudnessMatchPreparationStepView(
-                        step: step,
-                        viewModel: viewModel,
-                        selectedLaterality: selectedLaterality,
-                        showNoiseSuggestions: { isNoiseSuggestionsPresented = true }
-                    ) { laterality in
-                        selectedLaterality = laterality
-                    }
-                } footer: {
-                    LoudnessMatchModalPrimaryButton(
-                        title: primaryButtonTitle,
-                        isEnabled: isPrimaryButtonEnabled,
-                        isInteractionEnabled: isPrimaryButtonInteractionEnabled
-                    ) {
-                        advance()
-                    }
-                }
-                .accessibilityHidden(isInterruptionOverlayPresented)
-            }
-
-            topControls
+            taskNavigation
                 .accessibilityHidden(isInterruptionOverlayPresented)
 
-            if shouldShowAirPodsInterruptionOverlay {
-                airPodsInterruptionPopup
-                    .transition(.opacity)
-                    .zIndex(2)
-            } else if shouldShowQuietRoomInterruptionPopup {
-                quietRoomInterruptionPopup
-                    .transition(.opacity)
-                    .zIndex(2)
+            if let interruptionConfiguration {
+                CalibratedAudioInterruptionOverlay(
+                    systemName: interruptionConfiguration.systemName,
+                    title: interruptionConfiguration.title,
+                    bodyText: interruptionConfiguration.bodyText,
+                    accessibilityIdentifier: interruptionConfiguration.accessibilityIdentifier,
+                    quietRoomLevelRatio: interruptionConfiguration.quietRoomLevelRatio,
+                    actionTitle: "Exit Task",
+                    action: exitTask
+                )
+                .transition(.opacity)
+                .zIndex(2)
             }
         }
-        .foregroundStyle(LoudnessMatchModalColors.text)
+        .foregroundStyle(StudyTestColors.text)
         .interactiveDismissDisabled(true)
-        .onAppear {
-            handleStepEntered(step)
+        .onChange(of: navigationPath) { oldPath, newPath in
+            handleNavigationPathChange(from: oldPath, to: newPath)
         }
-        .onChange(of: step) { _, newStep in
-            handleStepEntered(newStep)
+        .onChange(of: preflightSession.requestedFallback) { _, fallback in
+            handleRequestedFallback(fallback)
         }
-        .onChange(of: viewModel.isAirPodsRouteInterrupted) { _, isInterrupted in
-            if !isInterrupted {
-                resumeCurrentStepAfterAirPodsReconnect()
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                viewModel.resumeEnvironmentGateAfterAppActivity()
+            } else {
+                viewModel.suspendEnvironmentGateForAppInactivity()
+                if viewModel.isPlaying {
+                    viewModel.stopTone()
+                }
             }
-        }
-        .onChange(of: viewModel.headphoneRouteAssessment) { _, assessment in
-            returnToAirPodsConfirmationIfNeeded(for: assessment)
-        }
-        .onChange(of: isInterruptionOverlayPresented) { _, isPresented in
-            isInterruptionPopupFocused = isPresented
         }
         .onDisappear {
+            guard !isNoiseSuggestionsPresented else {
+                return
+            }
             cleanupForDismiss(abortActiveTest: false)
         }
         .fullScreenCover(isPresented: $isNoiseSuggestionsPresented) {
@@ -108,25 +89,16 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
         .alert(
             "Unable to Continue",
-            isPresented: Binding(
-                get: { viewModel.message != nil },
-                set: { shouldShow in
-                    if !shouldShow {
-                        viewModel.clearMessage()
-                    }
-                }
-            )
+            isPresented: participantMessagePresentation
         ) {
-            Button("OK", role: .cancel) {
-                viewModel.clearMessage()
-            }
+            Button("OK", role: .cancel, action: preflightSession.clearMessage)
         } message: {
-            Text(messageText)
+            Text(preflightSession.participantMessage ?? "")
         }
-        .alert("Stop this test?", isPresented: $isCloseConfirmationPresented) {
-            Button("Keep Testing", role: .cancel) {}
-            Button("Stop Test", role: .destructive) {
-                cleanupForDismiss(abortActiveTest: true)
+        .alert(closeConfirmationTitle, isPresented: $isCloseConfirmationPresented) {
+            Button(hasStartedTest ? "Keep Testing" : "Keep Going", role: .cancel) {}
+            Button(hasStartedTest ? "Stop Test" : "Exit Task", role: .destructive) {
+                cleanupForDismiss(abortActiveTest: hasStartedTest)
                 dismiss()
             }
         } message: {
@@ -134,285 +106,357 @@ struct LoudnessMatchTaskModalFlowView: View {
         }
     }
 
-    private var topControls: some View {
-        HStack {
-            if step != .intro, step != .activeTest {
-                LoudnessMatchModalIconButton(
-                    systemName: "chevron.left",
-                    accessibilityLabel: "Back",
-                    accessibilityIdentifier: "loudness_modal_back_button",
-                    action: goBack
-                )
-            }
-
-            Spacer()
-
-            LoudnessMatchModalIconButton(
-                systemName: "xmark",
-                accessibilityLabel: "Close",
-                accessibilityIdentifier: "loudness_modal_close_button",
-                action: requestClose
-            )
-        }
-        .padding(.horizontal, 26)
-        .padding(.top, 18)
-    }
-
-    private var shouldShowAirPodsInterruptionOverlay: Bool {
-        viewModel.isAirPodsRouteInterrupted && step != .intro && step != .correctEar
-    }
-
-    private var shouldShowQuietRoomInterruptionPopup: Bool {
-        viewModel.isEnvironmentQuietnessInterrupted
-            && step != .intro
-            && step != .correctEar
-            && step != .quietRoom
-    }
-
-    private var airPodsInterruptionPopup: some View {
-        interruptionPopup(
-            systemName: "airpodspro",
-            title: airPodsInterruptionTitle,
-            bodyText: airPodsInterruptionBodyText,
-            accessibilityIdentifier: "loudness_airpods_interruption_popup"
-        )
-    }
-
-    private var airPodsInterruptionTitle: String {
-        if isCurrentA2DPRouteUnconfirmed {
-            return "AirPods Output Changed"
-        }
-
-        return viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp
-            ? "Calibrated Audio Blocked"
-            : "Reconnect Your AirPods"
-    }
-
-    private var airPodsInterruptionBodyText: String {
-        if isCurrentA2DPRouteUnconfirmed {
-            return "The audio output changed after confirmation. Exit and restart this task to confirm the current AirPods before continuing."
-        }
-
-        if viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp {
-            return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones. The task will resume once AirPods return to calibrated playback."
-        }
-
-        return "Please put both AirPods in your ears and reconnect to continue the task. The task will automatically resume once your AirPods are connected and in both ears."
-    }
-
-    private var quietRoomInterruptionPopup: some View {
-        interruptionPopup(
-            systemName: "ear.badge.waveform",
-            title: "Find a Quiet Place",
-            bodyText: "The room is too loud for this task. The task will automatically resume once the room is quiet enough.",
-            accessibilityIdentifier: "loudness_quiet_room_interruption_popup",
-            quietRoomLevelRatio: quietRoomInterruptionLevelRatio
-        )
-    }
-
-    private func interruptionPopup(
-        systemName: String,
-        title: String,
-        bodyText: String,
-        accessibilityIdentifier: String,
-        quietRoomLevelRatio: Double? = nil
-    ) -> some View {
-        ZStack {
-            Color.black.opacity(0.32)
-                .ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if let quietRoomLevelRatio {
-                        LoudnessMatchNoiseGateMeter(
-                            status: .tooLoud,
-                            levelRatio: quietRoomLevelRatio,
-                            isCompact: true
-                        )
-                        .padding(.horizontal, 6)
-                        .accessibilityHidden(true)
-                    } else {
-                        Image(systemName: systemName)
-                            .font(.system(size: 58, weight: .regular))
-                            .foregroundStyle(LoudnessMatchModalColors.primary)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityHidden(true)
-                    }
-
-                    Text(title)
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundStyle(LoudnessMatchModalColors.text)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .multilineTextAlignment(.center)
-                        .accessibilityAddTraits(.isHeader)
-                        .accessibilityFocused($isInterruptionPopupFocused)
-
-                    Text(bodyText)
-                        .font(.callout)
-                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    LoudnessMatchModalPrimaryButton(
-                        title: "Exit Task",
-                        isEnabled: true
-                    ) {
-                        exitTask()
+    private var taskNavigation: some View {
+        NavigationStack(path: $navigationPath) {
+            preparationPage(for: .intro)
+                .navigationDestination(for: LoudnessMatchTaskRoute.self) { route in
+                    switch route {
+                    case .activeTest:
+                        activeTestPage
+                    case .correctEar, .quietRoom, .fit, .maxVolume, .tinnitusLocation:
+                        if let step = route.preparationStep {
+                            preparationPage(for: step)
+                        }
                     }
                 }
-                .padding(24)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(LoudnessMatchModalColors.background)
-                        .shadow(color: .black.opacity(0.18), radius: 22, x: 0, y: 12)
-                )
-                .padding(.horizontal, 30)
-                .padding(.vertical, 32)
-            }
-            .scrollIndicators(.hidden)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isModal)
-        .accessibilityIdentifier(accessibilityIdentifier)
+        .tint(StudyTestColors.accent)
     }
 
-    private var quietRoomInterruptionLevelRatio: Double {
-        guard let latestSampleDBA = viewModel.environmentGateUpdate?.latestSampleDBA else {
-            return 1.2
+    private func preparationPage(for step: LoudnessMatchModalStep) -> some View {
+        StudyTestPage(
+            navigationTitle: "Loudness Match",
+            closeAction: closeAction,
+            primaryAction: StudyTestPageAction(
+                title: primaryButtonTitle(for: step),
+                isEnabled: isPrimaryButtonEnabled(for: step),
+                isLoading: step == .tinnitusLocation && startLoudnessMatchTask != nil,
+                accessibilityIdentifier: "loudness_modal_primary_button",
+                action: { advance(from: step) }
+            )
+        ) {
+            LoudnessMatchPreparationStepView(
+                step: step,
+                viewModel: viewModel,
+                selectedLaterality: selectedLaterality,
+                showNoiseSuggestions: showNoiseSuggestions,
+                selectLaterality: selectLaterality
+            )
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-
-        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
     }
 
-    private var primaryButtonTitle: String {
+    private var activeTestPage: some View {
+        StudyTestPage(
+            navigationTitle: "Loudness Match",
+            closeAction: closeAction,
+            primaryAction: activeTestPrimaryAction
+        ) {
+            LoudnessMatchActiveTestView(viewModel: viewModel)
+        }
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private var activeTestPrimaryAction: StudyTestPageAction? {
+        switch viewModel.protocolState {
+        case .readyForTrial:
+            return StudyTestPageAction(
+                title: "Same Loudness",
+                isEnabled: viewModel.preflightReady,
+                accessibilityLabel: "Same loudness",
+                accessibilityHint: "Accepts the current tone level and continues to confidence rating.",
+                accessibilityIdentifier: "loudness_modal_primary_button",
+                action: viewModel.acceptCurrentLevel
+            )
+
+        case .completed:
+            return StudyTestPageAction(
+                title: viewModel.isSubmitting ? "Submitting" : "Submit",
+                isEnabled: viewModel.canSubmit,
+                isLoading: viewModel.isSubmitting,
+                accessibilityIdentifier: "loudness_modal_primary_button",
+                action: submitCompletedRun
+            )
+
+        case .collectingLaterality,
+             .awaitingThreshold,
+             .awaitingConfidence,
+             .aborted,
+             .restartRequired:
+            return nil
+        }
+    }
+
+    private var closeAction: StudyTestCloseAction {
+        StudyTestCloseAction(
+            accessibilityIdentifier: "loudness_modal_close_button",
+            action: requestClose
+        )
+    }
+
+    private func primaryButtonTitle(for step: LoudnessMatchModalStep) -> String {
         switch step {
         case .intro:
             return "Get Started"
-        case .quietRoom, .correctEar, .fit:
+        case .correctEar:
+            return viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
+                ? "Continue"
+                : "Confirm AirPods Pro 2"
+        case .quietRoom, .fit:
             return "Next"
         case .maxVolume:
             return "Continue"
         case .tinnitusLocation:
-            return "Start Test"
-        case .activeTest:
-            return ""
+            return startLoudnessMatchTask == nil ? "Start Test" : "Starting"
         }
     }
 
-    private var isPrimaryButtonEnabled: Bool {
-        switch step {
-        case .intro, .fit:
-            return true
-        case .correctEar:
-            return viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
-        case .quietRoom:
-            return viewModel.environmentGateResult?.passed == true
-        case .maxVolume:
-            return viewModel.currentGuardrailValidation.state == .passed
-        case .tinnitusLocation:
-            return selectedLaterality != nil && !viewModel.isResolvingAudiogramThreshold
-        case .activeTest:
-            return false
-        }
-    }
-
-    private var isPrimaryButtonInteractionEnabled: Bool {
-        isPrimaryButtonEnabled
-    }
-
-    private var hasStartedTest: Bool {
-        step == .activeTest || viewModel.events.count > 1
-    }
-
-    private func advance() {
+    private func isPrimaryButtonEnabled(for step: LoudnessMatchModalStep) -> Bool {
         switch step {
         case .intro:
-            step = .correctEar
+            return true
         case .correctEar:
-            guard viewModel.validateAirPodsForCorrectEarStep() else {
-                return
-            }
-            viewModel.stopHeadphoneRouteMonitoring()
-            viewModel.startAirPodsContinuityMonitoring()
-            viewModel.prepareEnvironmentGateForQuietRoomStep()
-            step = .quietRoom
-        case .quietRoom:
-            guard viewModel.environmentGateResult?.passed == true else {
-                return
-            }
-            step = .fit
-        case .fit:
-            viewModel.completeFitConfirmation()
-            step = .maxVolume
-        case .maxVolume:
-            guard viewModel.acknowledgeSafetyAndStartTest() else {
-                return
-            }
-            viewModel.stopVolumeGateMonitoring()
-            selectedLaterality = viewModel.selectedLaterality ?? selectedLaterality
-            step = .tinnitusLocation
+            return viewModel.headphoneRouteAssessment
+                .isAirPodsProPlaybackRouteCandidate
+        case .quietRoom, .fit, .maxVolume:
+            return preflightSession.canCommitCurrentPhase
         case .tinnitusLocation:
-            guard let selectedLaterality else {
-                return
-            }
-            startLoudnessMatchTask?.cancel()
-            startLoudnessMatchTask = Task { @MainActor in
-                let didStart = await viewModel.startLoudnessMatch(laterality: selectedLaterality)
-                guard !Task.isCancelled,
-                      step == .tinnitusLocation,
-                      viewModel.preflightReady,
-                      viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed,
-                      !viewModel.isAirPodsRouteInterrupted,
-                      didStart
-                else {
-                    return
-                }
-                step = .activeTest
-            }
-        case .activeTest:
-            break
+            return selectedLaterality != nil
+                && !viewModel.isResolvingAudiogramThreshold
+                && startLoudnessMatchTask == nil
+                && viewModel.preflightReady
         }
     }
 
-    private func goBack() {
-        guard step != .activeTest else {
+    private func advance(from step: LoudnessMatchModalStep) {
+        guard step == currentPreparationStep else {
             return
         }
 
-        if viewModel.isPlaying {
-            viewModel.stopTone()
-        }
-
         switch step {
         case .intro:
-            break
-        case .quietRoom:
-            viewModel.cancelEnvironmentGate()
-            viewModel.stopAirPodsContinuityMonitoring()
-            step = .correctEar
+            navigationPath.append(.correctEar)
+
         case .correctEar:
-            viewModel.stopHeadphoneRouteMonitoring()
-            step = .intro
+            if !viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed {
+                viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+            }
+            guard preflightSession.commitCurrentPhase() else {
+                return
+            }
+            navigationPath.append(.quietRoom)
+
+        case .quietRoom:
+            guard preflightSession.commitCurrentPhase() else {
+                return
+            }
+            navigationPath.append(.fit)
+
         case .fit:
-            step = .quietRoom
+            guard preflightSession.commitCurrentPhase() else {
+                return
+            }
+            navigationPath.append(.maxVolume)
+
         case .maxVolume:
-            viewModel.stopVolumeGateMonitoring()
-            step = .fit
+            guard preflightSession.commitCurrentPhase() else {
+                return
+            }
+            selectedLaterality = viewModel.selectedLaterality ?? selectedLaterality
+            navigationPath.append(.tinnitusLocation)
+
         case .tinnitusLocation:
-            step = .maxVolume
-        case .activeTest:
-            break
+            guard preflightSession.commitCurrentPhase(),
+                  let selectedLaterality
+            else {
+                return
+            }
+            startLoudnessMatch(for: selectedLaterality)
         }
     }
 
-    private func requestClose() {
-        if hasStartedTest {
-            isCloseConfirmationPresented = true
-        } else {
-            cleanupForDismiss(abortActiveTest: false)
-            dismiss()
+    private func startLoudnessMatch(for laterality: TinnitusLaterality) {
+        guard startLoudnessMatchTask == nil else {
+            return
         }
+
+        let generation = UUID()
+        startLoudnessMatchGeneration = generation
+        startLoudnessMatchTask = Task { @MainActor in
+            let didStart = await viewModel.startLoudnessMatch(laterality: laterality)
+            guard !Task.isCancelled,
+                  startLoudnessMatchGeneration == generation,
+                  currentPreparationStep == .tinnitusLocation,
+                  viewModel.preflightReady,
+                  viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed,
+                  !viewModel.isAirPodsRouteInterrupted,
+                  didStart
+            else {
+                clearStartTaskIfCurrent(generation)
+                return
+            }
+
+            preflightSession.transition(to: .activeTest)
+            clearStartTaskIfCurrent(generation)
+            navigationPath.append(.activeTest)
+        }
+    }
+
+    private func submitCompletedRun() {
+        Task { @MainActor in
+            await viewModel.submitCompletedRun(
+                scheduledTask: scheduledTask,
+                enrollment: enrollment,
+                studyService: studyService
+            )
+            if viewModel.hasSubmitted {
+                onSubmitted()
+                dismiss()
+            }
+        }
+    }
+
+    private func handleNavigationPathChange(
+        from oldPath: [LoudnessMatchTaskRoute],
+        to newPath: [LoudnessMatchTaskRoute]
+    ) {
+        let oldRoute = oldPath.last
+        let newRoute = newPath.last
+        guard oldRoute != newRoute else {
+            return
+        }
+
+        if oldRoute == .tinnitusLocation,
+           newRoute != .tinnitusLocation,
+           newRoute != .activeTest {
+            cancelStartLoudnessMatch()
+        }
+
+        if oldRoute == .activeTest, newRoute != .activeTest {
+            viewModel.abort()
+        } else if newPath.count < oldPath.count, viewModel.isPlaying {
+            viewModel.stopTone()
+        }
+
+        preflightSession.transition(to: phase(for: newRoute))
+    }
+
+    private func handleRequestedFallback(
+        _ fallback: CalibratedAudioPreflightSession.Phase?
+    ) {
+        guard fallback == .airPods else {
+            return
+        }
+
+        cancelStartLoudnessMatch()
+        if navigationPath.last == .activeTest {
+            viewModel.abort()
+        }
+        navigationPath = [.correctEar]
+        preflightSession.consumeRequestedFallback()
+    }
+
+    private func phase(
+        for route: LoudnessMatchTaskRoute?
+    ) -> CalibratedAudioPreflightSession.Phase? {
+        guard let route else {
+            return nil
+        }
+
+        switch route {
+        case .correctEar:
+            return .airPods
+        case .quietRoom:
+            return .quietRoom
+        case .fit:
+            return .fit
+        case .maxVolume:
+            return .maximumVolume
+        case .tinnitusLocation:
+            return .postPreflight
+        case .activeTest:
+            return .activeTest
+        }
+    }
+
+    private var currentPreparationStep: LoudnessMatchModalStep? {
+        guard let route = navigationPath.last else {
+            return .intro
+        }
+        return route.preparationStep
+    }
+
+    private var participantMessagePresentation: Binding<Bool> {
+        Binding(
+            get: { preflightSession.participantMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    preflightSession.clearMessage()
+                }
+            }
+        )
+    }
+
+    private var interruptionConfiguration: LoudnessMatchInterruptionConfiguration? {
+        switch preflightSession.interruption {
+        case .airPods(let routeUnconfirmed, let blockedByAnotherApp):
+            if routeUnconfirmed {
+                return LoudnessMatchInterruptionConfiguration(
+                    systemName: "airpodspro",
+                    title: "AirPods Output Changed",
+                    bodyText: "The audio output changed after confirmation. Exit and restart this task to confirm the current AirPods before continuing.",
+                    accessibilityIdentifier: "loudness_airpods_interruption_popup"
+                )
+            }
+
+            return LoudnessMatchInterruptionConfiguration(
+                systemName: "airpodspro",
+                title: blockedByAnotherApp ? "Calibrated Audio Blocked" : "Reconnect Your AirPods",
+                bodyText: blockedByAnotherApp
+                    ? "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones. The task will resume once AirPods return to calibrated playback."
+                    : "Please put both AirPods in your ears and reconnect to continue the task. The task will automatically resume once your AirPods are connected and in both ears.",
+                accessibilityIdentifier: "loudness_airpods_interruption_popup"
+            )
+
+        case .quietRoom(let levelRatio):
+            return LoudnessMatchInterruptionConfiguration(
+                systemName: "ear.badge.waveform",
+                title: "Find a quiet place",
+                bodyText: "The room is too loud for this task. The task will automatically resume once the room is quiet enough.",
+                accessibilityIdentifier: "loudness_quiet_room_interruption_popup",
+                quietRoomLevelRatio: levelRatio
+            )
+
+        case nil:
+            return nil
+        }
+    }
+
+    private var isInterruptionOverlayPresented: Bool {
+        interruptionConfiguration != nil
+    }
+
+    private var hasStartedTest: Bool {
+        navigationPath.last == .activeTest || viewModel.events.count > 1
+    }
+
+    private func selectLaterality(_ laterality: TinnitusLaterality) {
+        selectedLaterality = laterality
+    }
+
+    private func showNoiseSuggestions() {
+        isNoiseSuggestionsPresented = true
+    }
+
+    private func requestClose() {
+        if navigationPath.last == .activeTest, viewModel.isPlaying {
+            viewModel.stopTone()
+        }
+        isCloseConfirmationPresented = true
+    }
+
+    private var closeConfirmationTitle: String {
+        hasStartedTest ? "Stop this test?" : "Exit this task?"
     }
 
     private func exitTask() {
@@ -420,113 +464,65 @@ struct LoudnessMatchTaskModalFlowView: View {
         dismiss()
     }
 
-    private func handleStepEntered(_ newStep: LoudnessMatchModalStep) {
-        if newStep != .tinnitusLocation {
-            startLoudnessMatchTask?.cancel()
-            startLoudnessMatchTask = nil
-        }
-
-        switch newStep {
-        case .correctEar:
-            viewModel.stopAirPodsContinuityMonitoring()
-            viewModel.stopVolumeGateMonitoring()
-            viewModel.cancelEnvironmentGate()
-            viewModel.startHeadphoneRouteMonitoring()
-        case .quietRoom:
-            viewModel.stopHeadphoneRouteMonitoring()
-            if viewModel.environmentGateResult?.passed != true {
-                viewModel.startContinuousEnvironmentGate()
-            }
-        case .maxVolume:
-            viewModel.stopHeadphoneRouteMonitoring()
-            viewModel.startVolumeGateMonitoring()
-        default:
-            break
-        }
+    private func cancelStartLoudnessMatch() {
+        startLoudnessMatchGeneration = nil
+        startLoudnessMatchTask?.cancel()
+        startLoudnessMatchTask = nil
     }
 
-    private func resumeCurrentStepAfterAirPodsReconnect() {
-        switch step {
-        case .quietRoom:
-            if viewModel.environmentGateResult?.passed != true {
-                viewModel.startContinuousEnvironmentGate()
-            }
-        case .maxVolume:
-            viewModel.startVolumeGateMonitoring()
-        default:
-            break
-        }
-    }
-
-    private var isCurrentA2DPRouteUnconfirmed: Bool {
-        viewModel.headphoneRouteAssessment.isCompatibleBluetoothPlaybackRoute
-            && !viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
-    }
-
-    private func returnToAirPodsConfirmationIfNeeded(for assessment: HeadphoneRouteAssessment) {
-        guard step != .intro,
-              step != .correctEar,
-              step != .activeTest,
-              assessment.isCompatibleBluetoothPlaybackRoute,
-              !viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
-        else {
+    private func clearStartTaskIfCurrent(_ generation: UUID) {
+        guard startLoudnessMatchGeneration == generation else {
             return
         }
-
-        step = .correctEar
+        startLoudnessMatchGeneration = nil
+        startLoudnessMatchTask = nil
     }
 
     private func cleanupForDismiss(abortActiveTest: Bool) {
-        startLoudnessMatchTask?.cancel()
-        startLoudnessMatchTask = nil
-        viewModel.stopHeadphoneRouteMonitoring()
-        viewModel.stopAirPodsContinuityMonitoring()
-        viewModel.cancelEnvironmentGate()
-        viewModel.stopVolumeGateMonitoring()
+        cancelStartLoudnessMatch()
 
         if abortActiveTest {
             viewModel.abort()
         } else if viewModel.isPlaying {
             viewModel.stopTone()
         }
-    }
 
-    private var isInterruptionOverlayPresented: Bool {
-        shouldShowAirPodsInterruptionOverlay || shouldShowQuietRoomInterruptionPopup
+        preflightSession.stop()
     }
+}
 
-    private var messageText: String {
-        switch viewModel.message {
-        case .playbackDisabled:
-            return "Calibrated playback is still disabled for this participant workflow."
-        case .environmentGateFailed:
-            return "The quiet-room gate did not collect enough consecutive samples below the Study No. 1 threshold."
-        case .airPodsNotInEar:
-            return "Please place your AirPods in your ear."
-        case .unsupportedHeadphones:
-            return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
-        case .airPodsPro2ConfirmationRequired:
-            return "Confirm that the connected headphones are AirPods Pro 2 before continuing."
-        case .calibratedPlaybackRouteUnavailable:
-            return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
-        case .missingAudiogramThreshold(let message):
-            return message
-        case .missingPreflight(let message):
-            return message
-        case .incompletePayload(let message):
-            return message
-        case .guardrailsUnavailable:
-            return "Audio guardrails are missing, failed, or require restart."
-        case .environmentGateUnavailable(let message):
-            return message
-        case .playbackFailed(let message):
-            return message
-        case .submissionFailed(let message):
-            return message
-        case nil:
-            return ""
+private enum LoudnessMatchTaskRoute: Hashable {
+    case correctEar
+    case quietRoom
+    case fit
+    case maxVolume
+    case tinnitusLocation
+    case activeTest
+
+    var preparationStep: LoudnessMatchModalStep? {
+        switch self {
+        case .correctEar:
+            return .correctEar
+        case .quietRoom:
+            return .quietRoom
+        case .fit:
+            return .fit
+        case .maxVolume:
+            return .maxVolume
+        case .tinnitusLocation:
+            return .tinnitusLocation
+        case .activeTest:
+            return nil
         }
     }
+}
+
+private struct LoudnessMatchInterruptionConfiguration {
+    let systemName: String
+    let title: String
+    let bodyText: String
+    let accessibilityIdentifier: String
+    var quietRoomLevelRatio: Double? = nil
 }
 
 #Preview {
