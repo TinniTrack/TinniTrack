@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum StudyTaskOrientationStep: Equatable {
+enum StudyTaskOrientationStep: Hashable {
     case welcome
     case hearingTest
     case taskIntro
