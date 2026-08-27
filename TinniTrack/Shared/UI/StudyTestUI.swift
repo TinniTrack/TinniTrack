@@ -219,8 +219,14 @@ struct StudyTestPage<Content: View>: View {
         Button(action: closeAction.action) {
             Image(systemName: closeAction.systemImage)
                 .font(.body.weight(.semibold))
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
+                .foregroundStyle(StudyTestColors.text)
+                .frame(width: 44, height: 44)
+                .background(StudyTestColors.surface, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(StudyTestColors.separator.opacity(0.38), lineWidth: 1)
+                }
+                .contentShape(Circle())
                 .accessibilityHidden(true)
         }
         .buttonStyle(StudyTestPressButtonStyle())
@@ -535,6 +541,7 @@ struct StudyTestToneButton: View {
     let systemImage: String
     var isActive: Bool
     var isEnabled: Bool
+    var feedbackTrigger: Int
     var accessibilityLabel: String?
     var accessibilityHint: String?
     var accessibilityIdentifier: String?
@@ -548,6 +555,7 @@ struct StudyTestToneButton: View {
         systemImage: String,
         isActive: Bool = false,
         isEnabled: Bool = true,
+        feedbackTrigger: Int = 0,
         accessibilityLabel: String? = nil,
         accessibilityHint: String? = nil,
         accessibilityIdentifier: String? = nil,
@@ -557,6 +565,7 @@ struct StudyTestToneButton: View {
         self.systemImage = systemImage
         self.isActive = isActive
         self.isEnabled = isEnabled
+        self.feedbackTrigger = feedbackTrigger
         self.accessibilityLabel = accessibilityLabel
         self.accessibilityHint = accessibilityHint
         self.accessibilityIdentifier = accessibilityIdentifier
@@ -588,6 +597,7 @@ struct StudyTestToneButton: View {
             VStack(spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.system(size: iconSize, weight: .bold))
+                    .symbolEffect(.wiggle.byLayer, value: feedbackTrigger)
                     .foregroundStyle(iconColor)
                     .frame(width: diameter, height: diameter)
                     .background(fillColor, in: Circle())

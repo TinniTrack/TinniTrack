@@ -32,11 +32,8 @@ struct StudyOrientationThresholdTestView: View {
                 progress: session.progress
             )
 
-        case .testing(let ear):
+        case .testing:
             ThresholdEarTest(
-                ear: ear,
-                progress: session.progress,
-                responseCount: session.responseCount,
                 isPaused: session.isPaused,
                 heardTone: session.heardTone
             )
@@ -114,81 +111,68 @@ private struct ThresholdEarInstructions: View {
 
             StudyTestTitleBlock(
                 title: "Listen with your \(ear.rawValue) ear",
-                bodyText: "You’ll hear a series of 1 kHz tones through one AirPod. Tap as soon as you hear a tone—even when it is very quiet."
-            )
-
-            ThresholdGuidanceCard(
-                systemName: "waveform",
-                title: "Quiet tones are expected",
-                message: "Only tap when you actually hear the tone. The pauses vary on purpose, so keep listening until this ear is complete."
+                bodyText: "You’ll hear a series of tones through one AirPod. Tap as soon as you hear a tone."
             )
         }
     }
 }
 
 private struct ThresholdEarTest: View {
-    let ear: StudyOrientationThresholdTestSession.Ear
-    let progress: Double
-    let responseCount: Int
     let isPaused: Bool
     let heardTone: () -> Void
 
-    var body: some View {
-        VStack(spacing: 28) {
-            StudyTestProgress(
-                progress: progress,
-                title: "\(ear.displayName) ear",
-                valueText: "Listening",
-                accessibilityValue: "\(ear.displayName) ear hearing check in progress"
-            )
+    @State private var feedbackTrigger = 0
 
-            VStack(spacing: 10) {
+    var body: some View {
+        VStack(spacing: 32) {
+            VStack(spacing: 12) {
                 Text(isPaused ? "Test paused" : "Listen carefully")
                     .font(.system(.largeTitle, design: .default, weight: .bold))
                     .foregroundStyle(StudyTestColors.text)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(
-                    isPaused
-                        ? "The test will resume when your audio setup is ready."
-                        : "Tap the button whenever you hear a tone. Don’t tap during silence."
-                )
-                .font(.title2)
-                .lineSpacing(5)
-                .foregroundStyle(StudyTestColors.secondaryText)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                if isPaused {
+                    Text("The test will resume when your audio setup is ready.")
+                        .font(.title2)
+                        .foregroundStyle(StudyTestColors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Tap the button whenever you hear a tone")
+                        .font(.title2)
+                        .foregroundStyle(StudyTestColors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Don’t tap during silence")
+                        .font(.title2)
+                        .foregroundStyle(StudyTestColors.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .accessibilityElement(children: .combine)
 
             StudyTestToneButton(
                 title: "I Hear the Tone",
                 systemImage: "hand.tap.fill",
                 isActive: true,
                 isEnabled: !isPaused,
+                feedbackTrigger: feedbackTrigger,
                 accessibilityLabel: "I hear the tone",
                 accessibilityHint: "Records that you can hear the current tone.",
                 accessibilityIdentifier: "study_threshold_heard_button",
-                action: heardTone
+                action: recordHeardTone
             )
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
-
-            Label(
-                "Keep your phone still and your AirPods in place.",
-                systemImage: "airpodspro"
-            )
-            .font(.callout)
-            .foregroundStyle(StudyTestColors.secondaryText)
-            .multilineTextAlignment(.center)
-
-            Text("\(responseCount) responses recorded")
-                .font(.caption)
-                .foregroundStyle(StudyTestColors.tertiaryText)
-                .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func recordHeardTone() {
+        feedbackTrigger &+= 1
+        heardTone()
     }
 }
 

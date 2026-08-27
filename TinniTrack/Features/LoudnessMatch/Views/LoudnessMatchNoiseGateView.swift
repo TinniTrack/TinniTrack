@@ -16,29 +16,23 @@ struct LoudnessMatchNoiseGateView: View {
                 LoudnessMatchNoiseGateMeter(
                     status: status,
                     levelRatio: levelRatio,
-                    passingProgress: passingProgress,
                     isCompact: false
                 )
 
-                HStack(spacing: 10) {
-                    statusIcon
-                    Text(statusText)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .textCase(.uppercase)
-                        .foregroundStyle(statusColor)
-                        .accessibilityIdentifier("loudness_noise_status_label")
-                }
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .combine)
+                Text(statusText)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(statusColor)
+                    .accessibilityIdentifier("loudness_noise_status_label")
+                    .frame(maxWidth: .infinity)
             }
 
             Spacer(minLength: 0)
 
             VStack(alignment: .leading, spacing: 12) {
                 LoudnessMatchModalTitleBlock(
-                    title: "Find a quiet place where you can focus and take the test.",
-                    bodyText: "The app is checking whether your surroundings appear quiet and stable enough for the hearing test. This is a screening check, not a calibrated sound-level measurement."
+                    title: "Find a quiet place where you can focus and take the test",
+                    bodyText: "The app is checking whether your surroundings are quiet enough."
                 )
 
                 Button(action: showSuggestions) {
@@ -58,29 +52,12 @@ struct LoudnessMatchNoiseGateView: View {
         .accessibilityIdentifier("loudness_noise_gate_step")
     }
 
-    private var statusIcon: Image {
-        switch status {
-        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
-            return Image(systemName: "ellipsis")
-        case .suspectedLoudness, .interruptedByLoudness:
-            return Image(systemName: "exclamationmark.circle.fill")
-        case .quiet:
-            return Image(systemName: "checkmark.circle.fill")
-        case .routeInvalid, .unavailable:
-            return Image(systemName: "questionmark.circle.fill")
-        }
-    }
-
     private var statusText: String {
         switch status {
-        case .idle, .warmingUp, .measuringInitialQuietness:
-            return "Checking surroundings..."
-        case .suspended, .reacquiring:
-            return "Resuming check..."
-        case .suspectedLoudness:
-            return "Checking a noise change..."
-        case .interruptedByLoudness:
-            return "Surroundings changed"
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
+            return "Determining ambient sound level"
+        case .suspectedLoudness, .interruptedByLoudness:
+            return "Too loud"
         case .quiet:
             return "Quiet check passed"
         case .routeInvalid:
@@ -106,23 +83,11 @@ struct LoudnessMatchNoiseGateView: View {
             $0 / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
         }
     }
-
-    private var passingProgress: Double {
-        guard let update else {
-            return 0
-        }
-
-        return min(
-            1,
-            Double(update.contiguousPassingSamples) / Double(TinnitusEnvironmentSPLGateConfiguration.studyNo1.requiredContiguousSamples)
-        )
-    }
 }
 
 struct LoudnessMatchNoiseGateMeter: View {
     let status: TinnitusEnvironmentSPLGateStatus
     let levelRatio: Double?
-    var passingProgress: Double?
     var isCompact = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -131,25 +96,7 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     var body: some View {
         VStack(spacing: isCompact ? 12 : 18) {
-            ZStack {
-                Circle()
-                    .stroke(ringBackgroundColor, lineWidth: ringLineWidth)
-
-                Circle()
-                    .trim(from: 0, to: ringProgress)
-                    .stroke(
-                        ringColor,
-                        style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-
-                Image(systemName: ringSymbolName)
-                    .font(.system(size: isCompact ? 18 : 20, weight: .bold))
-                    .foregroundStyle(ringColor)
-            }
-            .frame(width: isCompact ? 44 : 54, height: isCompact ? 44 : 54)
-            .animation(.easeInOut(duration: 0.22), value: status)
-            .animation(.easeInOut(duration: 0.22), value: ringProgress)
+            statusRing
 
             GeometryReader { proxy in
                 let columnCount = columnCount(for: proxy.size.width)
@@ -193,31 +140,51 @@ struct LoudnessMatchNoiseGateMeter: View {
     private static let barHeight: CGFloat = 44
     private static let animationFrameDuration: UInt64 = 33_000_000
 
-    private var clampedLevelRatio: Double {
-        min(1.5, max(0, levelRatio ?? 0))
+    @ViewBuilder
+    private var statusRing: some View {
+        if isDeterminingSoundLevel {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(isCompact ? .regular : .large)
+                .tint(ringColor)
+                .frame(width: isCompact ? 44 : 54, height: isCompact ? 44 : 54)
+        } else {
+            ZStack {
+                Circle()
+                    .stroke(ringBackgroundColor, lineWidth: ringLineWidth)
+
+                Circle()
+                    .stroke(
+                        ringColor,
+                        style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round)
+                    )
+
+                Image(systemName: ringSymbolName)
+                    .font(.system(size: isCompact ? 18 : 20, weight: .bold))
+                    .foregroundStyle(ringColor)
+            }
+            .frame(width: isCompact ? 44 : 54, height: isCompact ? 44 : 54)
+            .transition(.opacity)
+        }
     }
 
-    private var ringProgress: CGFloat {
+    private var isDeterminingSoundLevel: Bool {
         switch status {
-        case .quiet:
-            return 1
-        case .suspectedLoudness, .interruptedByLoudness:
-            return 1
-        case .idle,
-             .warmingUp,
-             .measuringInitialQuietness,
-             .suspended,
-             .reacquiring,
-             .routeInvalid,
-             .unavailable:
-            return min(0.94, max(0.08, passingProgress ?? 0))
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
+            return true
+        case .suspectedLoudness, .interruptedByLoudness, .quiet, .routeInvalid, .unavailable:
+            return false
         }
+    }
+
+    private var clampedLevelRatio: Double {
+        min(1.5, max(0, levelRatio ?? 0))
     }
 
     private var ringSymbolName: String {
         switch status {
         case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
-            return "ellipsis"
+            return "waveform"
         case .suspectedLoudness, .interruptedByLoudness:
             return "xmark"
         case .quiet:

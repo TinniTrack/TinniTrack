@@ -198,7 +198,11 @@ struct LoudnessMatchTaskModalFlowView: View {
         switch step {
         case .intro:
             return "Get Started"
-        case .correctEar, .quietRoom, .fit:
+        case .correctEar:
+            return viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
+                ? "Continue"
+                : "Confirm AirPods Pro 2"
+        case .quietRoom, .fit:
             return "Next"
         case .maxVolume:
             return "Continue"
@@ -211,7 +215,10 @@ struct LoudnessMatchTaskModalFlowView: View {
         switch step {
         case .intro:
             return true
-        case .correctEar, .quietRoom, .fit, .maxVolume:
+        case .correctEar:
+            return viewModel.headphoneRouteAssessment
+                .isAirPodsProPlaybackRouteCandidate
+        case .quietRoom, .fit, .maxVolume:
             return preflightSession.canCommitCurrentPhase
         case .tinnitusLocation:
             return selectedLaterality != nil
@@ -231,6 +238,9 @@ struct LoudnessMatchTaskModalFlowView: View {
             navigationPath.append(.correctEar)
 
         case .correctEar:
+            if !viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed {
+                viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+            }
             guard preflightSession.commitCurrentPhase() else {
                 return
             }
@@ -411,7 +421,7 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .quietRoom(let levelRatio):
             return LoudnessMatchInterruptionConfiguration(
                 systemName: "ear.badge.waveform",
-                title: "Find a Quiet Place",
+                title: "Find a quiet place",
                 bodyText: "The room is too loud for this task. The task will automatically resume once the room is quiet enough.",
                 accessibilityIdentifier: "loudness_quiet_room_interruption_popup",
                 quietRoomLevelRatio: levelRatio

@@ -211,10 +211,13 @@ struct StudyTaskOrientationSheet: View {
             StudyTestPage(
                 navigationTitle: "Orientation",
                 closeAction: orientationCloseAction,
-                primaryAction: action(
-                    title: "Next",
-                    isEnabled: preflightSession.canCommitCurrentPhase,
-                    route: route
+                primaryAction: StudyTestPageAction(
+                    title: airPodsPrimaryActionTitle,
+                    isEnabled: loudnessViewModel.headphoneRouteAssessment
+                        .isAirPodsProPlaybackRouteCandidate,
+                    accessibilityHint: "Confirms the connected headphones are AirPods Pro 2 and continues.",
+                    accessibilityIdentifier: "study_onboarding_primary_button",
+                    action: confirmAirPodsAndAdvance
                 )
             ) {
                 preparationContent(for: .correctEar)
@@ -314,11 +317,28 @@ struct StudyTaskOrientationSheet: View {
         )
     }
 
+    private var airPodsPrimaryActionTitle: String {
+        loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
+            ? "Continue"
+            : "Confirm AirPods Pro 2"
+    }
+
     private func advanceFromHearingTest() {
         guard viewModel.isAudiogramPrerequisiteMet else {
             return
         }
         navigationPath.append(.taskIntro)
+    }
+
+    private func confirmAirPodsAndAdvance() {
+        guard navigationPath.last == .correctEar else {
+            return
+        }
+
+        if !loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed {
+            loudnessViewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        }
+        advance(from: .correctEar)
     }
 
     private func advance(from route: StudyTaskOrientationRoute) {
@@ -462,7 +482,7 @@ struct StudyTaskOrientationSheet: View {
         case .quietRoom(let levelRatio):
             return InterruptionConfiguration(
                 systemName: "ear.badge.waveform",
-                title: "Find a Quiet Place",
+                title: "Find a quiet place",
                 bodyText: "The room is too loud for this task. Onboarding will resume once the room is quiet enough.",
                 accessibilityIdentifier: "study_onboarding_quiet_room_interruption_popup",
                 quietRoomLevelRatio: levelRatio

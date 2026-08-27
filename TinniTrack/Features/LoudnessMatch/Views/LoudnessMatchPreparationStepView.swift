@@ -26,7 +26,6 @@ struct LoudnessMatchPreparationStepView: View {
                 assessment: viewModel.headphoneRouteAssessment,
                 isAirPodsPro2Confirmed: viewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed,
                 isConfirmedAirPodsUsingCallAudio: viewModel.isAirPodsPlaybackRouteBlockedByAnotherApp,
-                setAirPodsPro2Confirmed: viewModel.setAirPodsPro2ConfirmedForCurrentRoute,
                 refreshRoute: viewModel.refreshHeadphoneRouteAssessment
             )
         case .fit:
@@ -81,32 +80,27 @@ private struct AirPodsCorrectEarStepView: View {
     let assessment: HeadphoneRouteAssessment
     let isAirPodsPro2Confirmed: Bool
     let isConfirmedAirPodsUsingCallAudio: Bool
-    let setAirPodsPro2Confirmed: (Bool) -> Void
     let refreshRoute: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 52) {
-                airPodGlyph(label: "L")
-                airPodGlyph(label: "R")
+                airPodGlyph(systemName: "airpodpro.left", label: "L")
+                airPodGlyph(systemName: "airpodpro.right", label: "R")
             }
             .frame(maxWidth: .infinity)
             .accessibilityHidden(true)
 
             LoudnessMatchModalTitleBlock(
-                title: "Place your AirPods in the correct ear.",
-                bodyText: "Having your right AirPod in your right ear and left in your left ear can help with test quality.\n\nIf you wear hearing aids, be sure to remove them first.",
+                title: "Place your AirPods in the correct ear",
+                bodyText: "Put the right AirPod in your right ear and the left AirPod in your left ear. Remove any hearing aids before continuing.",
                 titleLineLimit: nil,
                 bodyLineLimit: nil
             )
 
-            Text(statusText)
-                .font(.callout)
-                .foregroundStyle(statusColor)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("loudness_airpods_status_label")
+            connectionCard
 
-            confirmationControl
+            Spacer(minLength: 0)
 
             #if DEBUG
             diagnosticsDisclosure
@@ -116,34 +110,39 @@ private struct AirPodsCorrectEarStepView: View {
         .accessibilityIdentifier("loudness_airpods_step")
     }
 
-    private var confirmationControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle(
-                "I confirm these are AirPods Pro 2",
-                isOn: Binding(
-                    get: { isAirPodsPro2Confirmed },
-                    set: setAirPodsPro2Confirmed
-                )
-            )
-            .font(.headline)
-            .tint(LoudnessMatchModalColors.primary)
-            .disabled(!assessment.isAirPodsProPlaybackRouteCandidate)
-            .accessibilityIdentifier("loudness_airpods_pro2_confirmation")
-            .accessibilityValue(confirmationAccessibilityValue)
-            .accessibilityHint("Confirm only after checking that the connected device is AirPods Pro 2.")
+    private var connectionCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                connectionIndicator
 
-            if assessment.isCompatibleBluetoothPlaybackRoute, let portName = assessment.portName {
-                Text("Connected: \(portName)")
-                    .font(.callout)
-                    .fontWeight(.semibold)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(connectionTitle)
+                        .font(.headline)
+                        .foregroundStyle(connectionColor)
+
+                    Text(connectionDetail)
+                        .font(.callout)
+                        .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("loudness_airpods_status_label")
+
+            if assessment.isCompatibleBluetoothPlaybackRoute,
+               let portName = assessment.portName {
+                Label(portName, systemImage: "wave.3.right")
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(LoudnessMatchModalColors.text)
                     .textSelection(.enabled)
             }
 
-            Text("iOS cannot identify the AirPods generation. Open Settings, choose Bluetooth, then tap the Info button beside your AirPods. If these are AirPods Pro 2 but the connected name does not include “AirPods Pro,” restore that name there or contact the study team.")
-                .font(.caption)
-                .foregroundStyle(LoudnessMatchModalColors.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            if !assessment.isAirPodsProPlaybackRouteCandidate {
+                Text("Make sure your AirPods are not connected to another device. If your iPhone does not detect them, take them out and put them back in.")
+                    .font(.callout)
+                    .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Button(action: refreshRoute) {
                 Label("Check Again", systemImage: "arrow.clockwise")
@@ -157,23 +156,36 @@ private struct AirPodsCorrectEarStepView: View {
         }
         .padding(14)
         .background(LoudnessMatchModalColors.controlBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
         }
     }
 
-    private var confirmationAccessibilityValue: String {
-        let route = assessment.portName.map { "Connected route: \($0)." } ?? "No Bluetooth playback route connected."
-        let confirmation = isAirPodsPro2Confirmed ? "Confirmed." : "Not confirmed."
-        return "\(route) \(confirmation)"
+    @ViewBuilder
+    private var connectionIndicator: some View {
+        if isAirPodsPro2Confirmed {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .foregroundStyle(LoudnessMatchModalColors.success)
+                .accessibilityHidden(true)
+        } else if assessment.isAirPodsProPlaybackRouteCandidate {
+            Image(systemName: "airpodspro")
+                .font(.title2)
+                .foregroundStyle(LoudnessMatchModalColors.primary)
+                .accessibilityHidden(true)
+        } else {
+            ProgressView()
+                .tint(LoudnessMatchModalColors.primary)
+                .accessibilityHidden(true)
+        }
     }
 
-    private func airPodGlyph(label: String) -> some View {
+    private func airPodGlyph(systemName: String, label: String) -> some View {
         VStack(spacing: 10) {
-            Image(systemName: "airpodspro")
-                .font(.system(size: 94, weight: .regular))
+            Image(systemName: systemName)
+                .font(.system(size: 88, weight: .regular))
                 .foregroundStyle(LoudnessMatchModalColors.graphic)
             Text(label)
                 .font(.headline)
@@ -181,39 +193,40 @@ private struct AirPodsCorrectEarStepView: View {
         }
     }
 
-    private var statusText: String {
+    private var connectionTitle: String {
         if isAirPodsPro2Confirmed {
-            return "You confirmed these are AirPods Pro 2."
+            return "AirPods Pro 2 confirmed"
         }
-
-        if assessment.isCompatibleBluetoothPlaybackRoute {
-            return assessment.looksLikeAirPodsProRoute
-                ? "AirPods Pro playback route detected. Confirm the generation below."
-                : "Bluetooth playback is active, but the selected route is not identified as AirPods Pro. Restore an AirPods Pro name in Bluetooth Settings or contact the study team."
+        if assessment.isAirPodsProPlaybackRouteCandidate {
+            return "AirPods connected"
         }
-
         if isConfirmedAirPodsUsingCallAudio {
-            return "AirPods Pro detected, but another app is using them for call audio. Close Phone, Zoom, or other audio apps, then try again."
+            return "AirPods detected"
         }
-
-        switch assessment.primaryIssue {
-        case .noOutput, .builtInOutput, .bluetoothHeadsetProfile, .bluetoothLowEnergyRoute, .unknownRoute, nil:
-            return "Waiting for your AirPods Pro 2 playback route."
-        case .multipleOutputs, .unsupportedWiredOrExternalRoute, .outputVolumeUnavailable:
-            return "The current audio output is not eligible for this study."
-        }
+        return "Waiting for AirPods"
     }
 
-    private var statusColor: Color {
+    private var connectionDetail: String {
+        if isAirPodsPro2Confirmed {
+            return "Ready to continue"
+        }
+        if assessment.isAirPodsProPlaybackRouteCandidate {
+            return "Please confirm these are AirPods Pro 2"
+        }
+        if isConfirmedAirPodsUsingCallAudio {
+            return "Close any other app that is using them for call audio, then check again."
+        }
+        return "Connect both AirPods to this iPhone."
+    }
+
+    private var connectionColor: Color {
         if isAirPodsPro2Confirmed {
             return LoudnessMatchModalColors.success
         }
-
-        if assessment.isCompatibleBluetoothPlaybackRoute || assessment.looksLikeAirPodsProRoute {
+        if assessment.isAirPodsProPlaybackRouteCandidate {
             return LoudnessMatchModalColors.primary
         }
-
-        return LoudnessMatchModalColors.secondaryText
+        return LoudnessMatchModalColors.text
     }
 
     #if DEBUG

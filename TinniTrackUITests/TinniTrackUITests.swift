@@ -506,7 +506,7 @@ final class TinniTrackUITests: XCTestCase {
 
         let airPodsStep = app.descendants(matching: .any)["loudness_airpods_step"]
         XCTAssertTrue(airPodsStep.waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["You confirmed these are AirPods Pro 2."].exists)
+        XCTAssertTrue(app.staticTexts["AirPods Pro 2 confirmed"].exists)
 
         swipeBack(in: app)
 
@@ -561,12 +561,23 @@ final class TinniTrackUITests: XCTestCase {
 
         let beginRightEarButton = app.buttons["study_threshold_begin_right_ear_button"]
         XCTAssertTrue(beginRightEarButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.staticTexts[
+                "You’ll hear a series of tones through one AirPod. Tap as soon as you hear a tone."
+            ].exists
+        )
+        XCTAssertFalse(app.staticTexts["Quiet tones are expected"].exists)
         beginRightEarButton.tap()
 
         XCTAssertTrue(
             app.descendants(matching: .any)["study_threshold_heard_button"]
                 .waitForExistence(timeout: 3)
         )
+        XCTAssertTrue(app.staticTexts["Listen carefully"].exists)
+        XCTAssertTrue(app.staticTexts["Tap the button whenever you hear a tone"].exists)
+        XCTAssertTrue(app.staticTexts["Don’t tap during silence"].exists)
+        XCTAssertFalse(app.staticTexts["Keep your phone still and your AirPods in place."].exists)
+        XCTAssertFalse(app.staticTexts["0 responses recorded"].exists)
         XCTAssertTrue(app.navigationBars["Orientation"].exists)
         XCTAssertTrue(app.buttons["study_onboarding_close_button"].exists)
     }
