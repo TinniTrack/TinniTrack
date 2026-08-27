@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StudyOrientationThresholdStatusView: View {
     let state: StudyOrientationThresholdCoordinator.State
+    let retrySubmission: () -> Void
     let retryFinalization: () -> Void
 
     var body: some View {
@@ -12,6 +13,15 @@ struct StudyOrientationThresholdStatusView: View {
                 message: "Your hearing check is complete. We’re securely saving the result before finishing orientation."
             )
 
+        case .submissionFailure(let message):
+            failureContent(
+                title: "We Couldn’t Save Your Hearing Check",
+                message: "Your completed hearing check is still here. \(message) Try saving it again—you won’t need to repeat either ear.",
+                buttonTitle: "Try Saving Again",
+                accessibilityIdentifier: "study_onboarding_submission_retry_button",
+                action: retrySubmission
+            )
+
         case .finalizing:
             finishingContent(
                 title: "Finishing Orientation",
@@ -19,11 +29,17 @@ struct StudyOrientationThresholdStatusView: View {
             )
 
         case .finalizationFailure(let message):
-            finalizationFailureContent(message: message)
+            failureContent(
+                title: "We Couldn’t Finish Orientation",
+                message: "Your hearing threshold was saved, so you won’t need to repeat the test. \(message) Try again to finish setting up your study tasks.",
+                buttonTitle: "Try Again",
+                accessibilityIdentifier: "study_onboarding_finalization_retry_button",
+                action: retryFinalization
+            )
 
         case .idle,
              .preparing,
-             .presentingResearchKit,
+             .readyForTest,
              .preflightFailure,
              .completed:
             EmptyView()
@@ -34,11 +50,11 @@ struct StudyOrientationThresholdStatusView: View {
         VStack(alignment: .leading, spacing: 28) {
             ProgressView()
                 .controlSize(.large)
-                .tint(LoudnessMatchModalColors.primary)
+                .tint(StudyTestColors.accent)
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel("Finishing orientation")
 
-            LoudnessMatchModalTitleBlock(
+            StudyTestTitleBlock(
                 title: title,
                 bodyText: message
             )
@@ -46,24 +62,30 @@ struct StudyOrientationThresholdStatusView: View {
         .accessibilityIdentifier("study_onboarding_finishing_state")
     }
 
-    private func finalizationFailureContent(message: String) -> some View {
+    private func failureContent(
+        title: String,
+        message: String,
+        buttonTitle: String,
+        accessibilityIdentifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
         VStack(alignment: .leading, spacing: 28) {
             Image(systemName: "arrow.clockwise.circle.fill")
                 .font(.system(size: 76, weight: .regular))
-                .foregroundStyle(LoudnessMatchModalColors.primary)
+                .foregroundStyle(StudyTestColors.accent)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
 
-            LoudnessMatchModalTitleBlock(
-                title: "We Couldn’t Finish Orientation",
-                bodyText: "Your hearing threshold was saved, so you won’t need to repeat the test. \(message) Try again to finish setting up your study tasks."
+            StudyTestTitleBlock(
+                title: title,
+                bodyText: message
             )
 
-            LoudnessMatchModalPrimaryButton(
-                title: "Try Again",
-                action: retryFinalization
+            StudyTestPrimaryButton(
+                title: buttonTitle,
+                accessibilityIdentifier: accessibilityIdentifier,
+                action: action
             )
-            .accessibilityIdentifier("study_onboarding_finalization_retry_button")
         }
     }
 }

@@ -2,12 +2,14 @@ import SwiftUI
 
 struct StudyTaskOrientationSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @ObservedObject var viewModel: StudyTaskDashboardViewModel
 
     @StateObject private var loudnessViewModel: LoudnessMatchTaskFlowViewModel
     @StateObject private var preflightSession: CalibratedAudioPreflightSession
     @StateObject private var thresholdCoordinator: StudyOrientationThresholdCoordinator
+    @StateObject private var thresholdTestSession: StudyOrientationThresholdTestSession
     @State private var navigationPath: [StudyTaskOrientationRoute] = []
     @State private var isCloseConfirmationPresented = false
     @State private var isNoiseSuggestionsPresented = false
@@ -38,11 +40,109 @@ struct StudyTaskOrientationSheet: View {
                 }
             )
         )
+        _thresholdTestSession = StateObject(
+            wrappedValue: StudyOrientationThresholdTestSession(
+                playTone: { stimulus, duration in
+                    try await resolvedLoudnessViewModel.playOrientationThresholdTone(
+                        stimulus,
+                        duration: duration
+                    )
+                },
+                stopTone: {
+                    resolvedLoudnessViewModel.stopOrientationThresholdTone()
+                },
+                outputVolume: {
+                    resolvedLoudnessViewModel.orientationThresholdOutputVolume
+                }
+            )
+        )
     }
 
     var body: some View {
+        closeConfirmationContent
+    }
+
+    private var closeConfirmationContent: some View {
+        preflightFailureAlertContent
+            .alert("Exit Orientation?", isPresented: $isCloseConfirmationPresented) {
+                Button("Keep Going", role: .cancel) {
+                    resumeThresholdTestIfReady()
+                }
+                Button("Exit Orientation", role: .destructive) {
+                    exitOrientation()
+                }
+            } message: {
+                Text("Your current Study No. 1 onboarding progress will be discarded.")
+            }
+    }
+
+    private var preflightFailureAlertContent: some View {
+        generalAlertContent
+            .alert(
+                "Unable to Complete Hearing Check",
+                isPresented: preflightFailurePresentation
+            ) {
+                Button("Not Now", role: .cancel) {
+                    presentedPreflightFailure = nil
+                }
+                Button("Try Again") {
+                    presentedPreflightFailure = nil
+                    thresholdCoordinator.begin()
+                }
+            } message: {
+                Text(presentedPreflightFailure?.message ?? "Please review the setup and try again.")
+            }
+    }
+
+    private var generalAlertContent: some View {
+        modalContent
+            .alert(
+                "Unable to Continue",
+                isPresented: generalErrorPresentation
+            ) {
+                Button("OK", role: .cancel, action: clearGeneralErrors)
+            } message: {
+                Text(generalErrorMessage)
+            }
+    }
+
+    private var modalContent: some View {
+        lifecycleContent
+            .fullScreenCover(isPresented: $isNoiseSuggestionsPresented) {
+                LoudnessMatchNoiseSuggestionsView {
+                    isNoiseSuggestionsPresented = false
+                }
+            }
+    }
+
+    private var lifecycleContent: some View {
+        orientationContent
+            .foregroundStyle(StudyTestColors.text)
+            .interactiveDismissDisabled(true)
+            .onChange(of: navigationPath) { oldPath, newPath in
+                handleNavigationPathChange(from: oldPath, to: newPath)
+            }
+            .onChange(of: preflightSession.requestedFallback) { _, fallback in
+                handleRequestedFallback(fallback)
+            }
+            .onChange(of: thresholdCoordinator.state) { _, state in
+                handleThresholdStateChange(state)
+            }
+            .onChange(of: isInterruptionOverlayPresented) { _, isPresented in
+                updateThresholdPlaybackForPresentationChange(isPaused: isPresented)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                updateThresholdPlaybackForPresentationChange(isPaused: phase != .active)
+            }
+            .onChange(of: isCloseConfirmationPresented) { _, isPresented in
+                updateThresholdPlaybackForPresentationChange(isPaused: isPresented)
+            }
+            .onDisappear(perform: handleSheetDisappear)
+    }
+
+    private var orientationContent: some View {
         ZStack {
-            LoudnessMatchModalColors.background
+            StudyTestColors.background
                 .ignoresSafeArea()
 
             orientationNavigation
@@ -62,88 +162,19 @@ struct StudyTaskOrientationSheet: View {
                 .zIndex(2)
             }
         }
-        .foregroundStyle(LoudnessMatchModalColors.text)
-        .interactiveDismissDisabled(true)
-        .onChange(of: navigationPath) { oldPath, newPath in
-            handleNavigationPathChange(from: oldPath, to: newPath)
-        }
-        .onChange(of: preflightSession.requestedFallback) { _, fallback in
-            guard fallback == .airPods else {
-                return
-            }
-            navigationPath = [.taskIntro, .correctEar]
-            preflightSession.consumeRequestedFallback()
-        }
-        .onChange(of: thresholdCoordinator.presentation) { _, presentation in
-            if presentation != nil {
-                preflightSession.transition(to: .activeTest)
-            }
-        }
-        .onChange(of: thresholdCoordinator.state) { _, state in
-            handleThresholdStateChange(state)
-        }
-        .onDisappear {
-            guard thresholdCoordinator.presentation == nil,
-                  !isNoiseSuggestionsPresented
-            else {
-                return
-            }
-            cleanupForDismiss()
-        }
-        .fullScreenCover(item: researchKitPresentation) { presentation in
-            ResearchKitTaskPresenterView(request: presentation.request) { summary in
-                Task { @MainActor in
-                    thresholdCoordinator.accept(summary, for: presentation)
-                }
-            }
-            .interactiveDismissDisabled(true)
-        }
-        .fullScreenCover(isPresented: $isNoiseSuggestionsPresented) {
-            LoudnessMatchNoiseSuggestionsView {
-                isNoiseSuggestionsPresented = false
-            }
-        }
-        .alert(
-            "Unable to Continue",
-            isPresented: generalErrorPresentation
-        ) {
-            Button("OK", role: .cancel, action: clearGeneralErrors)
-        } message: {
-            Text(generalErrorMessage)
-        }
-        .alert(
-            "Unable to Complete Hearing Check",
-            isPresented: preflightFailurePresentation
-        ) {
-            Button("Not Now", role: .cancel) {
-                presentedPreflightFailure = nil
-            }
-            Button("Try Again") {
-                presentedPreflightFailure = nil
-                thresholdCoordinator.begin()
-            }
-        } message: {
-            Text(presentedPreflightFailure?.message ?? "Please review the setup and try again.")
-        }
-        .alert("Exit Orientation?", isPresented: $isCloseConfirmationPresented) {
-            Button("Keep Going", role: .cancel) {}
-            Button("Exit Orientation", role: .destructive) {
-                exitOrientation()
-            }
-        } message: {
-            Text("Your current Study No. 1 onboarding progress will be discarded.")
-        }
     }
 
     private var orientationNavigation: some View {
         NavigationStack(path: $navigationPath) {
-            StudyOrientationPage(
-                primaryAction: StudyOrientationPageAction(
+            StudyTestPage(
+                navigationTitle: "Orientation",
+                closeAction: orientationCloseAction,
+                primaryAction: StudyTestPageAction(
                     title: "Continue",
                     isEnabled: viewModel.isAudiogramPrerequisiteMet,
+                    accessibilityIdentifier: "study_onboarding_primary_button",
                     action: advanceFromHearingTest
-                ),
-                requestClose: requestClose
+                )
             ) {
                 StudyOrientationHearingTestView(viewModel: viewModel)
             }
@@ -151,16 +182,17 @@ struct StudyTaskOrientationSheet: View {
                 orientationPage(for: route)
             }
         }
-        .tint(LoudnessMatchModalColors.primary)
+        .tint(StudyTestColors.accent)
     }
 
     @ViewBuilder
     private func orientationPage(for route: StudyTaskOrientationRoute) -> some View {
         switch route {
         case .taskIntro:
-            StudyOrientationPage(
-                primaryAction: action(title: "Get Started", route: route),
-                requestClose: requestClose
+            StudyTestPage(
+                navigationTitle: "Orientation",
+                closeAction: orientationCloseAction,
+                primaryAction: action(title: "Get Started", route: route)
             ) {
                 LoudnessMatchPreparationStepView(
                     step: .intro,
@@ -171,47 +203,51 @@ struct StudyTaskOrientationSheet: View {
             }
 
         case .correctEar:
-            StudyOrientationPage(
+            StudyTestPage(
+                navigationTitle: "Orientation",
+                closeAction: orientationCloseAction,
                 primaryAction: action(
                     title: "Next",
                     isEnabled: preflightSession.canCommitCurrentPhase,
                     route: route
-                ),
-                requestClose: requestClose
+                )
             ) {
                 preparationContent(for: .correctEar)
             }
 
         case .quietRoom:
-            StudyOrientationPage(
+            StudyTestPage(
+                navigationTitle: "Orientation",
+                closeAction: orientationCloseAction,
                 primaryAction: action(
                     title: "Next",
                     isEnabled: preflightSession.canCommitCurrentPhase,
                     route: route
-                ),
-                requestClose: requestClose
+                )
             ) {
                 preparationContent(for: .quietRoom)
             }
 
         case .fit:
-            StudyOrientationPage(
-                primaryAction: action(title: "Next", route: route),
-                requestClose: requestClose
+            StudyTestPage(
+                navigationTitle: "Orientation",
+                closeAction: orientationCloseAction,
+                primaryAction: action(title: "Next", route: route)
             ) {
                 preparationContent(for: .fit)
             }
 
         case .maxVolume:
-            StudyOrientationPage(
+            StudyTestPage(
+                navigationTitle: "Orientation",
+                closeAction: orientationCloseAction,
                 primaryAction: action(
                     title: thresholdCoordinator.isPreparing ? "Starting" : "Start Test",
                     isEnabled: preflightSession.canCommitCurrentPhase
                         && !thresholdCoordinator.isPreparing,
                     isLoading: thresholdCoordinator.isPreparing,
                     route: route
-                ),
-                requestClose: requestClose
+                )
             ) {
                 LoudnessMatchPreparationStepView(
                     step: .maxVolume,
@@ -221,13 +257,21 @@ struct StudyTaskOrientationSheet: View {
                 )
             }
 
+        case .thresholdTest:
+            StudyOrientationThresholdTestView(
+                session: thresholdTestSession,
+                requestClose: requestClose,
+                complete: thresholdCoordinator.submit
+            )
+
         case .thresholdStatus:
-            StudyOrientationPage(
-                primaryAction: nil,
-                requestClose: requestClose
+            StudyTestPage(
+                navigationTitle: "Orientation",
+                closeAction: orientationCloseAction
             ) {
                 StudyOrientationThresholdStatusView(
                     state: thresholdCoordinator.state,
+                    retrySubmission: thresholdCoordinator.retrySubmission,
                     retryFinalization: thresholdCoordinator.retryFinalization
                 )
             }
@@ -248,12 +292,20 @@ struct StudyTaskOrientationSheet: View {
         isEnabled: Bool = true,
         isLoading: Bool = false,
         route: StudyTaskOrientationRoute
-    ) -> StudyOrientationPageAction {
-        StudyOrientationPageAction(
+    ) -> StudyTestPageAction {
+        StudyTestPageAction(
             title: title,
             isEnabled: isEnabled,
             isLoading: isLoading,
+            accessibilityIdentifier: "study_onboarding_primary_button",
             action: { advance(from: route) }
+        )
+    }
+
+    private var orientationCloseAction: StudyTestCloseAction {
+        StudyTestCloseAction(
+            accessibilityIdentifier: "study_onboarding_close_button",
+            action: requestClose
         )
     }
 
@@ -289,7 +341,7 @@ struct StudyTaskOrientationSheet: View {
             guard preflightSession.commitCurrentPhase() else { return }
             thresholdCoordinator.begin()
 
-        case .thresholdStatus:
+        case .thresholdTest, .thresholdStatus:
             break
         }
     }
@@ -305,8 +357,10 @@ struct StudyTaskOrientationSheet: View {
         if newPath.count < oldPath.count {
             let poppedRoutes = oldPath.dropFirst(newPath.count)
             if poppedRoutes.contains(.maxVolume)
+                || poppedRoutes.contains(.thresholdTest)
                 || poppedRoutes.contains(.thresholdStatus) {
                 thresholdCoordinator.stop()
+                thresholdTestSession.stop()
             }
             if loudnessViewModel.isPlaying {
                 loudnessViewModel.stopTone()
@@ -316,21 +370,39 @@ struct StudyTaskOrientationSheet: View {
         preflightSession.transition(to: preflightPhase(for: newPath.last))
     }
 
+    private func handleRequestedFallback(
+        _ fallback: CalibratedAudioPreflightSession.Phase?
+    ) {
+        guard fallback == .airPods else {
+            return
+        }
+        navigationPath = [.taskIntro, .correctEar]
+        preflightSession.consumeRequestedFallback()
+    }
+
     private func handleThresholdStateChange(
         _ state: StudyOrientationThresholdCoordinator.State
     ) {
         switch state {
-        case .submitting, .finalizing, .finalizationFailure:
+        case .readyForTest:
+            preflightSession.transition(to: .activeTest)
+            if navigationPath.last != .thresholdTest {
+                navigationPath.append(.thresholdTest)
+            }
+
+        case .submitting, .submissionFailure, .finalizing, .finalizationFailure:
             if case .finalizationFailure = state {
                 viewModel.dismissTaskError()
             }
+            thresholdTestSession.pause()
             if navigationPath.last != .thresholdStatus {
                 navigationPath.append(.thresholdStatus)
             }
 
         case .preflightFailure(let failure):
-            if navigationPath.last == .thresholdStatus {
-                navigationPath.removeLast()
+            thresholdTestSession.stop()
+            navigationPath.removeAll { route in
+                route == .thresholdTest || route == .thresholdStatus
             }
             preflightSession.transition(to: .maximumVolume)
             presentedPreflightFailure = failure
@@ -338,7 +410,7 @@ struct StudyTaskOrientationSheet: View {
         case .completed:
             dismiss()
 
-        case .idle, .preparing, .presentingResearchKit:
+        case .idle, .preparing:
             break
         }
     }
@@ -355,7 +427,7 @@ struct StudyTaskOrientationSheet: View {
             return .fit
         case .maxVolume:
             return .maximumVolume
-        case .thresholdStatus:
+        case .thresholdTest, .thresholdStatus:
             return .activeTest
         case nil, .taskIntro:
             return nil
@@ -425,20 +497,6 @@ struct StudyTaskOrientationSheet: View {
         return "Please put both AirPods in your ears and reconnect to continue onboarding."
     }
 
-    private var researchKitPresentation: Binding<StudyOrientationThresholdCoordinator.Presentation?> {
-        Binding(
-            get: { thresholdCoordinator.presentation },
-            set: { presentation in
-                guard presentation == nil,
-                      let currentPresentation = thresholdCoordinator.presentation
-                else {
-                    return
-                }
-                thresholdCoordinator.presentationDismissed(currentPresentation)
-            }
-        )
-    }
-
     private var generalErrorPresentation: Binding<Bool> {
         Binding(
             get: {
@@ -474,11 +532,11 @@ struct StudyTaskOrientationSheet: View {
 
     private var isShowingThresholdStatus: Bool {
         switch thresholdCoordinator.state {
-        case .submitting, .finalizing, .finalizationFailure:
+        case .submitting, .submissionFailure, .finalizing, .finalizationFailure:
             return true
         case .idle,
              .preparing,
-             .presentingResearchKit,
+             .readyForTest,
              .preflightFailure,
              .completed:
             return false
@@ -490,8 +548,40 @@ struct StudyTaskOrientationSheet: View {
         viewModel.dismissTaskError()
     }
 
+    private func handleSheetDisappear() {
+        guard !isNoiseSuggestionsPresented else {
+            return
+        }
+        cleanupForDismiss()
+    }
+
     private func requestClose() {
+        if navigationPath.last == .thresholdTest {
+            thresholdTestSession.pause()
+        }
         isCloseConfirmationPresented = true
+    }
+
+    private func updateThresholdPlaybackForPresentationChange(isPaused: Bool) {
+        guard navigationPath.last == .thresholdTest else {
+            return
+        }
+        if isPaused {
+            thresholdTestSession.pause()
+        } else {
+            resumeThresholdTestIfReady()
+        }
+    }
+
+    private func resumeThresholdTestIfReady() {
+        guard navigationPath.last == .thresholdTest,
+              scenePhase == .active,
+              !isCloseConfirmationPresented,
+              !isInterruptionOverlayPresented
+        else {
+            return
+        }
+        thresholdTestSession.resume()
     }
 
     private func exitOrientation() {
@@ -505,10 +595,9 @@ struct StudyTaskOrientationSheet: View {
 
     private func cleanupForDismiss() {
         thresholdCoordinator.stop()
+        thresholdTestSession.stop()
         preflightSession.stop()
-        if loudnessViewModel.isPlaying {
-            loudnessViewModel.stopTone()
-        }
+        loudnessViewModel.stopOrientationThresholdTone()
     }
 }
 
@@ -518,58 +607,8 @@ private enum StudyTaskOrientationRoute: Hashable {
     case quietRoom
     case fit
     case maxVolume
+    case thresholdTest
     case thresholdStatus
-}
-
-private struct StudyOrientationPageAction {
-    let title: String
-    var isEnabled = true
-    var isLoading = false
-    let action: () -> Void
-}
-
-private struct StudyOrientationPage<Content: View>: View {
-    let primaryAction: StudyOrientationPageAction?
-    let requestClose: () -> Void
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                content
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minHeight: max(0, proxy.size.height - 48), alignment: .top)
-                    .padding(.horizontal, 34)
-                    .padding(.vertical, 24)
-            }
-        }
-        .background(LoudnessMatchModalColors.background)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let primaryAction {
-                LoudnessMatchModalPrimaryButton(
-                    title: primaryAction.title,
-                    isEnabled: primaryAction.isEnabled,
-                    isLoading: primaryAction.isLoading,
-                    action: primaryAction.action
-                )
-                .accessibilityIdentifier("study_onboarding_primary_button")
-                .padding(.horizontal, 34)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-            }
-        }
-        .navigationTitle("Orientation")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: requestClose) {
-                    Image(systemName: "xmark")
-                }
-                .accessibilityLabel("Close")
-                .accessibilityIdentifier("study_onboarding_close_button")
-            }
-        }
-    }
 }
 
 private struct InterruptionConfiguration {

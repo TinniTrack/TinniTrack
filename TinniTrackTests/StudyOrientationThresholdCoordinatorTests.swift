@@ -5,7 +5,7 @@ import Testing
 @MainActor
 struct StudyOrientationThresholdCoordinatorTests {
     @Test
-    func stopDuringSuspendedPreparationPreventsLatePresentation() async throws {
+    func stopDuringSuspendedPreparationPreventsLateReadyState() async {
         let task = orientationTask()
         let service = CoordinatorStudyService(
             beginBehavior: .suspendedIgnoringCancellation(task)
@@ -30,7 +30,6 @@ struct StudyOrientationThresholdCoordinatorTests {
         }
 
         #expect(isIdle(coordinator.state))
-        #expect(coordinator.presentation == nil)
         #expect(await service.submissionCallCount() == 0)
         #expect(completion.callCount == 0)
     }
@@ -53,9 +52,8 @@ struct StudyOrientationThresholdCoordinatorTests {
             completion: completion
         )
 
-        coordinator.begin()
-        let presentation = try await requirePresentation(from: coordinator)
-        coordinator.accept(completedSummary(), for: presentation)
+        try await prepareForTest(coordinator)
+        coordinator.submit(completeThresholdResult())
 
         #expect(await waitUntil {
             isFinalizationFailure(
@@ -88,9 +86,8 @@ struct StudyOrientationThresholdCoordinatorTests {
             completion: completion
         )
 
-        coordinator.begin()
-        let presentation = try await requirePresentation(from: coordinator)
-        coordinator.accept(completedSummary(), for: presentation)
+        try await prepareForTest(coordinator)
+        coordinator.submit(completeThresholdResult())
 
         #expect(await waitUntil {
             isFinalizationFailure(
@@ -111,7 +108,7 @@ struct StudyOrientationThresholdCoordinatorTests {
     }
 
     @Test
-    func duplicateResearchKitCompletionSubmitsAndFinalizesExactlyOnce() async throws {
+    func duplicateNativeCompletionSubmitsAndFinalizesExactlyOnce() async throws {
         let service = CoordinatorStudyService(
             beginBehavior: .immediate(orientationTask()),
             submissionBehavior: .suspendedIgnoringCancellation
@@ -123,13 +120,11 @@ struct StudyOrientationThresholdCoordinatorTests {
             builder: builder,
             completion: completion
         )
+        let result = completeThresholdResult()
 
-        coordinator.begin()
-        let presentation = try await requirePresentation(from: coordinator)
-        let summary = completedSummary()
-
-        coordinator.accept(summary, for: presentation)
-        coordinator.accept(summary, for: presentation)
+        try await prepareForTest(coordinator)
+        coordinator.submit(result)
+        coordinator.submit(result)
 
         #expect(await waitUntil { await service.submissionCallCount() == 1 })
         #expect(builder.callCount == 1)
@@ -143,18 +138,17 @@ struct StudyOrientationThresholdCoordinatorTests {
     }
 
     @Test
-    func nonCompletedResearchKitResultsReturnToPreflightWithoutConsequentialWork() async throws {
-        let finishStates: [ResearchTaskFinishState] = [
-            .discarded,
-            .failed,
-            .saved,
-            .earlyTermination,
-            .unknown
+    func unavailableScheduledTasksReturnToPreflightWithoutConsequentialWork() async {
+        let unavailableStatuses: [ScheduledTaskStatus] = [
+            .missed,
+            .skipped,
+            .cancelled,
+            .unknown("future-status")
         ]
 
-        for finishState in finishStates {
+        for status in unavailableStatuses {
             let service = CoordinatorStudyService(
-                beginBehavior: .immediate(orientationTask())
+                beginBehavior: .immediate(orientationTask(status: status))
             )
             let builder = CoordinatorSubmissionBuilder()
             let completion = OnboardingCompletionStub(outcomes: [.completed])
@@ -165,22 +159,11 @@ struct StudyOrientationThresholdCoordinatorTests {
             )
 
             coordinator.begin()
-            let presentation = try await requirePresentation(from: coordinator)
-            coordinator.accept(
-                ResearchKitTaskResultSummary(
-                    taskIdentifier: taskIdentifier,
-                    finishState: finishState,
-                    errorDescription: finishState == .failed ? "ResearchKit failed." : nil,
-                    studyNo1OrientationThreshold: completeThresholdResult()
-                ),
-                for: presentation
-            )
 
             #expect(
-                await waitUntil { isPreflightFailure(coordinator.state) },
-                "Expected retryable preflight state for \(finishState.rawValue)."
+                await waitUntil { isPreparationFailure(coordinator.state) },
+                "Expected retryable preparation state for \(status.rawValue)."
             )
-            #expect(coordinator.presentation == nil)
             #expect(await service.submissionCallCount() == 0)
             #expect(builder.callCount == 0)
             #expect(completion.callCount == 0)
@@ -188,7 +171,7 @@ struct StudyOrientationThresholdCoordinatorTests {
     }
 
     @Test
-    func incompleteResearchKitResultReturnsToPreflightWithoutConsequentialWork() async throws {
+    func incompleteNativeResultReturnsToPreflightWithoutConsequentialWork() async throws {
         let service = CoordinatorStudyService(
             beginBehavior: .immediate(orientationTask())
         )
@@ -199,36 +182,27 @@ struct StudyOrientationThresholdCoordinatorTests {
             builder: builder,
             completion: completion
         )
-
-        coordinator.begin()
-        let presentation = try await requirePresentation(from: coordinator)
-        coordinator.accept(
-            ResearchKitTaskResultSummary(
-                taskIdentifier: taskIdentifier,
-                finishState: .completed,
-                errorDescription: nil,
-                studyNo1OrientationThreshold: StudyNo1OrientationThresholdResearchKitResult(
-                    taskIdentifier: taskIdentifier,
-                    rightEar: orientationEar(channel: .right, threshold: 18),
-                    leftEar: nil,
-                    environment: nil
-                )
-            ),
-            for: presentation
+        let incompleteResult = StudyNo1OrientationThresholdResult(
+            taskIdentifier: taskIdentifier,
+            rightEar: orientationEar(channel: .right, threshold: 18),
+            leftEar: nil,
+            environment: nil
         )
 
-        #expect(await waitUntil { isPreflightFailure(coordinator.state) })
-        #expect(coordinator.presentation == nil)
+        try await prepareForTest(coordinator)
+        coordinator.submit(incompleteResult)
+
+        #expect(await waitUntil { isIncompleteResultFailure(coordinator.state) })
         #expect(await service.submissionCallCount() == 0)
         #expect(builder.callCount == 0)
         #expect(completion.callCount == 0)
     }
 
     @Test
-    func submissionFailureReturnsToPreflightAndDoesNotFinalize() async throws {
+    func submissionFailureRetriesPendingResultWithoutRepeatingTest() async throws {
         let service = CoordinatorStudyService(
             beginBehavior: .immediate(orientationTask()),
-            submissionBehavior: .failure(CoordinatorTestError.submissionFailed)
+            submissionBehavior: .failureOnce(CoordinatorTestError.submissionFailed)
         )
         let builder = CoordinatorSubmissionBuilder()
         let completion = OnboardingCompletionStub(outcomes: [.completed])
@@ -237,20 +211,34 @@ struct StudyOrientationThresholdCoordinatorTests {
             builder: builder,
             completion: completion
         )
+        let result = completeThresholdResult()
 
-        coordinator.begin()
-        let presentation = try await requirePresentation(from: coordinator)
-        coordinator.accept(completedSummary(), for: presentation)
+        try await prepareForTest(coordinator)
+        coordinator.submit(result)
 
-        #expect(await waitUntil { isPreflightFailure(coordinator.state) })
-        #expect(coordinator.presentation == nil)
+        #expect(await waitUntil {
+            isSubmissionFailure(
+                coordinator.state,
+                message: "Threshold submission failed."
+            )
+        })
         #expect(await service.submissionCallCount() == 1)
         #expect(builder.callCount == 1)
+        #expect(builder.lastResult == result)
         #expect(completion.callCount == 0)
+
+        coordinator.retrySubmission()
+
+        #expect(await waitUntil { isCompleted(coordinator.state) })
+        #expect(await service.beginCallCount() == 1)
+        #expect(await service.submissionCallCount() == 2)
+        #expect(builder.callCount == 2)
+        #expect(builder.lastResult == result)
+        #expect(completion.callCount == 1)
     }
 
     @Test
-    func completedHiddenTaskRecoversByFinalizingWithoutPresentingResearchKit() async {
+    func completedScheduledTaskFinalizesWithoutStartingNativeTest() async {
         let service = CoordinatorStudyService(
             beginBehavior: .immediate(orientationTask(status: .completed))
         )
@@ -265,7 +253,6 @@ struct StudyOrientationThresholdCoordinatorTests {
         coordinator.begin()
 
         #expect(await waitUntil { isCompleted(coordinator.state) })
-        #expect(coordinator.presentation == nil)
         #expect(await service.submissionCallCount() == 0)
         #expect(builder.callCount == 0)
         #expect(completion.callCount == 1)
@@ -286,29 +273,18 @@ struct StudyOrientationThresholdCoordinatorTests {
         )
     }
 
-    private func requirePresentation(
-        from coordinator: StudyOrientationThresholdCoordinator
-    ) async throws -> StudyOrientationThresholdCoordinator.Presentation {
-        let appeared = await waitUntil {
-            coordinator.presentation != nil && isPresentingResearchKit(coordinator.state)
+    private func prepareForTest(
+        _ coordinator: StudyOrientationThresholdCoordinator
+    ) async throws {
+        coordinator.begin()
+        guard await waitUntil(condition: { isReadyForTest(coordinator.state) }) else {
+            throw CoordinatorTestError.readyStateMissing
         }
-        guard appeared, let presentation = coordinator.presentation else {
-            throw CoordinatorTestError.presentationMissing
-        }
-        return presentation
+        await Task.yield()
     }
 
-    private func completedSummary() -> ResearchKitTaskResultSummary {
-        ResearchKitTaskResultSummary(
-            taskIdentifier: taskIdentifier,
-            finishState: .completed,
-            errorDescription: nil,
-            studyNo1OrientationThreshold: completeThresholdResult()
-        )
-    }
-
-    private func completeThresholdResult() -> StudyNo1OrientationThresholdResearchKitResult {
-        StudyNo1OrientationThresholdResearchKitResult(
+    private func completeThresholdResult() -> StudyNo1OrientationThresholdResult {
+        StudyNo1OrientationThresholdResult(
             taskIdentifier: taskIdentifier,
             rightEar: orientationEar(channel: .right, threshold: 18),
             leftEar: orientationEar(channel: .left, threshold: 12),
@@ -370,17 +346,34 @@ struct StudyOrientationThresholdCoordinatorTests {
         return false
     }
 
-    private func isPresentingResearchKit(
-        _ state: StudyOrientationThresholdCoordinator.State
-    ) -> Bool {
-        if case .presentingResearchKit = state { return true }
+    private func isReadyForTest(_ state: StudyOrientationThresholdCoordinator.State) -> Bool {
+        if case .readyForTest = state { return true }
         return false
     }
 
-    private func isPreflightFailure(
+    private func isPreparationFailure(
         _ state: StudyOrientationThresholdCoordinator.State
     ) -> Bool {
-        if case .preflightFailure = state { return true }
+        guard case .preflightFailure(let failure) = state else { return false }
+        if case .preparation = failure { return true }
+        return false
+    }
+
+    private func isIncompleteResultFailure(
+        _ state: StudyOrientationThresholdCoordinator.State
+    ) -> Bool {
+        guard case .preflightFailure(let failure) = state else { return false }
+        if case .incompleteResult = failure { return true }
+        return false
+    }
+
+    private func isSubmissionFailure(
+        _ state: StudyOrientationThresholdCoordinator.State,
+        message: String
+    ) -> Bool {
+        if case .submissionFailure(let actualMessage) = state {
+            return actualMessage == message
+        }
         return false
     }
 
@@ -423,37 +416,31 @@ struct StudyOrientationThresholdCoordinatorTests {
 }
 
 private enum CoordinatorTestError: LocalizedError {
-    case presentationMissing
+    case readyStateMissing
     case submissionFailed
 
     var errorDescription: String? {
         switch self {
-        case .presentationMissing:
-            return "The coordinator did not present ResearchKit."
+        case .readyStateMissing:
+            return "The coordinator did not become ready for the native hearing test."
         case .submissionFailed:
             return "Threshold submission failed."
         }
     }
 }
 
+@MainActor
 private final class CoordinatorSubmissionBuilder: StudyOrientationThresholdSubmissionBuilding {
-    private let lock = NSLock()
-    private var storedCallCount = 0
-
-    var callCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedCallCount
-    }
+    private(set) var callCount = 0
+    private(set) var lastResult: StudyNo1OrientationThresholdResult?
 
     func makeOrientationThresholdSubmission(
-        result: StudyNo1OrientationThresholdResearchKitResult,
+        result: StudyNo1OrientationThresholdResult,
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment
     ) throws -> StudyNo1OrientationThresholdSubmission {
-        lock.lock()
-        storedCallCount += 1
-        lock.unlock()
+        callCount += 1
+        lastResult = result
 
         return StudyNo1OrientationThresholdSubmission(
             startedAt: Date(timeIntervalSince1970: 1_710_000_000),
@@ -496,7 +483,7 @@ private actor CoordinatorStudyService: StudyServiceProtocol {
     enum SubmissionBehavior {
         case immediate
         case suspendedIgnoringCancellation
-        case failure(Error)
+        case failureOnce(Error)
     }
 
     private let beginBehavior: BeginBehavior
@@ -554,8 +541,10 @@ private actor CoordinatorStudyService: StudyServiceProtocol {
             await withCheckedContinuation { continuation in
                 suspendedSubmissionContinuation = continuation
             }
-        case .failure(let error):
-            throw error
+        case .failureOnce(let error):
+            if submissionCalls == 1 {
+                throw error
+            }
         }
     }
 

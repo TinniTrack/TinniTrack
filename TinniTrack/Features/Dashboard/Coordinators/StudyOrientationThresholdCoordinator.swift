@@ -4,7 +4,7 @@ import Foundation
 @MainActor
 protocol StudyOrientationThresholdSubmissionBuilding: AnyObject {
     func makeOrientationThresholdSubmission(
-        result: StudyNo1OrientationThresholdResearchKitResult,
+        result: StudyNo1OrientationThresholdResult,
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment
     ) throws -> StudyNo1OrientationThresholdSubmission
@@ -12,40 +12,14 @@ protocol StudyOrientationThresholdSubmissionBuilding: AnyObject {
 
 @MainActor
 final class StudyOrientationThresholdCoordinator: ObservableObject {
-    struct Presentation: Identifiable, Equatable {
-        let id: UUID
-        let scheduledTask: ScheduledTask
-        let request: ResearchKitTaskRequest
-
-        init(
-            id: UUID = UUID(),
-            scheduledTask: ScheduledTask,
-            request: ResearchKitTaskRequest = .studyNo1OrientationThreshold(
-                identifier: "study-no-1-orientation-threshold"
-            )
-        ) {
-            self.id = id
-            self.scheduledTask = scheduledTask
-            self.request = request
-        }
-    }
-
     enum RetryableFailure: Equatable {
         case preparation(message: String)
-        case researchKitCancelled
-        case researchKitIncomplete(message: String)
-        case researchKitFailed(message: String)
-        case submission(message: String)
+        case incompleteResult(message: String)
 
         var message: String {
             switch self {
-            case .preparation(let message),
-                 .researchKitIncomplete(let message),
-                 .researchKitFailed(let message),
-                 .submission(let message):
+            case .preparation(let message), .incompleteResult(let message):
                 return message
-            case .researchKitCancelled:
-                return "The hearing threshold check was canceled. Review the setup and try again."
             }
         }
     }
@@ -53,8 +27,9 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
     enum State: Equatable {
         case idle
         case preparing
-        case presentingResearchKit
+        case readyForTest
         case submitting
+        case submissionFailure(message: String)
         case finalizing
         case preflightFailure(RetryableFailure)
         case finalizationFailure(message: String)
@@ -62,7 +37,6 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
-    @Published private(set) var presentation: Presentation?
 
     private let enrollment: StudyEnrollment
     private let studyService: StudyServiceProtocol
@@ -72,6 +46,7 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
     private var operation: Task<Void, Never>?
     private var operationGeneration: UInt64 = 0
     private var preparedTask: ScheduledTask?
+    private var pendingResult: StudyNo1OrientationThresholdResult?
     private var submittedTaskID: UUID?
 
     init(
@@ -91,10 +66,7 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
     }
 
     func begin() {
-        guard canBegin,
-              operation == nil,
-              presentation == nil
-        else {
+        guard canBegin, operation == nil else {
             return
         }
 
@@ -104,60 +76,43 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
         }
     }
 
-    func accept(
-        _ summary: ResearchKitTaskResultSummary,
-        for presentedTask: Presentation
-    ) {
-        guard presentation?.id == presentedTask.id,
-              operation == nil
+    func submit(_ result: StudyNo1OrientationThresholdResult) {
+        guard state == .readyForTest,
+              operation == nil,
+              let scheduledTask = preparedTask
         else {
             return
         }
 
-        presentation = nil
-
-        guard summary.finishState == .completed else {
-            state = .preflightFailure(Self.failure(for: summary))
-            return
-        }
-
-        guard let result = summary.studyNo1OrientationThreshold,
-              result.isComplete
-        else {
+        guard result.isComplete else {
             state = .preflightFailure(
-                .researchKitIncomplete(
-                    message: "The hearing threshold check did not return both 1 kHz ear thresholds. Review the setup and try again."
+                .incompleteResult(
+                    message: "The hearing check did not return both 1 kHz ear thresholds. Review the setup and try again."
                 )
             )
             return
         }
 
-        let generation = beginOperation(in: .submitting)
-        operation = Task { @MainActor [weak self] in
-            await self?.submitThresholdAndFinalize(
-                result: result,
-                scheduledTask: presentedTask.scheduledTask,
-                generation: generation
-            )
-        }
+        pendingResult = result
+        submitPendingResult(result, scheduledTask: scheduledTask)
     }
 
-    func presentationDismissed(_ presentedTask: Presentation) {
-        guard presentation?.id == presentedTask.id,
-              operation == nil
+    func retrySubmission() {
+        guard case .submissionFailure = state,
+              operation == nil,
+              let pendingResult,
+              let preparedTask
         else {
             return
         }
 
-        presentation = nil
-        state = .preflightFailure(.researchKitCancelled)
+        submitPendingResult(pendingResult, scheduledTask: preparedTask)
     }
 
     func retryFinalization() {
         guard case .finalizationFailure = state,
               submittedTaskID != nil,
-              operation == nil,
-              presentation == nil
+              operation == nil
         else {
             return
         }
@@ -170,9 +125,9 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
 
     func stop() {
         guard operation != nil
-                || presentation != nil
                 || state != .idle
                 || preparedTask != nil
+                || pendingResult != nil
                 || submittedTaskID != nil
         else {
             return
@@ -181,8 +136,8 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
         operationGeneration &+= 1
         operation?.cancel()
         operation = nil
-        presentation = nil
         preparedTask = nil
+        pendingResult = nil
         submittedTaskID = nil
         state = .idle
     }
@@ -212,18 +167,14 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
 
             switch task.status {
             case .scheduled:
-                let nextPresentation = Presentation(scheduledTask: task)
-                guard canContinue(generation: generation) else {
-                    return
-                }
-                presentation = nextPresentation
-                state = .presentingResearchKit
+                state = .readyForTest
 
             case .completed:
                 submittedTaskID = task.id
                 await finalizeOnboarding(generation: generation)
 
             case .missed, .skipped, .cancelled, .unknown:
+                preparedTask = nil
                 state = .preflightFailure(
                     .preparation(
                         message: "The hearing threshold check is not available right now. Please try again."
@@ -240,8 +191,22 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
         }
     }
 
+    private func submitPendingResult(
+        _ result: StudyNo1OrientationThresholdResult,
+        scheduledTask: ScheduledTask
+    ) {
+        let generation = beginOperation(in: .submitting)
+        operation = Task { @MainActor [weak self] in
+            await self?.submitThresholdAndFinalize(
+                result: result,
+                scheduledTask: scheduledTask,
+                generation: generation
+            )
+        }
+    }
+
     private func submitThresholdAndFinalize(
-        result: StudyNo1OrientationThresholdResearchKitResult,
+        result: StudyNo1OrientationThresholdResult,
         scheduledTask: ScheduledTask,
         generation: UInt64
     ) async {
@@ -274,6 +239,7 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
                 }
 
                 submittedTaskID = scheduledTask.id
+                pendingResult = nil
             }
 
             await finalizeOnboarding(generation: generation)
@@ -283,7 +249,7 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
             guard canContinue(generation: generation) else {
                 return
             }
-            state = .preflightFailure(.submission(message: error.localizedDescription))
+            state = .submissionFailure(message: error.localizedDescription)
         }
     }
 
@@ -333,38 +299,13 @@ final class StudyOrientationThresholdCoordinator: ObservableObject {
         case .idle, .preflightFailure:
             return true
         case .preparing,
-             .presentingResearchKit,
+             .readyForTest,
              .submitting,
+             .submissionFailure,
              .finalizing,
              .finalizationFailure,
              .completed:
             return false
-        }
-    }
-
-    private static func failure(
-        for summary: ResearchKitTaskResultSummary
-    ) -> RetryableFailure {
-        switch summary.finishState {
-        case .discarded:
-            return .researchKitCancelled
-        case .saved, .earlyTermination:
-            return .researchKitIncomplete(
-                message: "The hearing threshold check was not completed. Review the setup and try again."
-            )
-        case .failed:
-            return .researchKitFailed(
-                message: summary.errorDescription
-                    ?? "The hearing threshold check could not be completed. Please try again."
-            )
-        case .unknown:
-            return .researchKitFailed(
-                message: "The hearing threshold check ended unexpectedly. Please try again."
-            )
-        case .completed:
-            return .researchKitIncomplete(
-                message: "The hearing threshold check did not return a complete result. Please try again."
-            )
         }
     }
 }

@@ -1305,8 +1305,8 @@ struct LoudnessMatchTaskFlowViewModelTests {
         )
     }
 
-    private func orientationThresholdResult() -> StudyNo1OrientationThresholdResearchKitResult {
-        StudyNo1OrientationThresholdResearchKitResult(
+    private func orientationThresholdResult() -> StudyNo1OrientationThresholdResult {
+        StudyNo1OrientationThresholdResult(
             taskIdentifier: "study-no-1-orientation-threshold",
             rightEar: orientationEar(channel: .right, threshold: 18),
             leftEar: orientationEar(channel: .left, threshold: 12),

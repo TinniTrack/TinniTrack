@@ -756,6 +756,65 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
         startOrRefreshTonePlayback(isRefreshingActivePlayback: false)
     }
 
+    func playOrientationThresholdTone(
+        _ stimulus: StudyNo1OrientationThresholdStimulus,
+        duration: TimeInterval
+    ) async throws {
+        guard !isPlaying, !isPreparingPlayback else {
+            throw OrientationThresholdPlaybackError.playbackAlreadyActive
+        }
+
+        if isRunningEnvironmentGate,
+           environmentGateResult?.passed == true {
+            isPreparingPlayback = true
+            let shouldResume = await suspendPassedEnvironmentGateForPlayback()
+            shouldResumeEnvironmentGateAfterPlayback = shouldResume
+            isPreparingPlayback = false
+        }
+
+        guard allowsCalibratedPlayback else {
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
+            throw OrientationThresholdPlaybackError.playbackDisabled
+        }
+
+        currentGuardrailValidation = guardrailProvider()
+        guard preflightReady, currentGuardrailValidation.state == .passed else {
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
+            throw OrientationThresholdPlaybackError.preflightUnavailable
+        }
+
+        let request = CalibratedTonePlaybackRequest(
+            frequencyHz: stimulus.frequencyHz,
+            levelDBHL: stimulus.levelDBHL,
+            channel: stimulus.channel,
+            duration: duration,
+            guardrailValidation: currentGuardrailValidation
+        )
+
+        do {
+            _ = try player?.play(request)
+            isPlaying = true
+            startPlaybackGuardrailMonitoring()
+            message = nil
+        } catch {
+            guardrailMonitor?.stopMonitoring()
+            isPlaying = false
+            resumeEnvironmentGateAfterPlaybackIfNeeded()
+            throw error
+        }
+    }
+
+    func stopOrientationThresholdTone() {
+        guardrailMonitor?.stopMonitoring()
+        _ = player?.stop()
+        isPlaying = false
+        resumeEnvironmentGateAfterPlaybackIfNeeded()
+    }
+
+    var orientationThresholdOutputVolume: Double? {
+        currentGuardrailValidation.metadata.rawOutputVolume
+    }
+
     private func suspendPassedEnvironmentGateForPlayback() async -> Bool {
         guard isRunningEnvironmentGate,
               environmentGateResult?.passed == true,
@@ -967,7 +1026,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func makeOrientationThresholdPayload(
-        result: StudyNo1OrientationThresholdResearchKitResult,
+        result: StudyNo1OrientationThresholdResult,
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment,
         submittedAt: Date? = nil
@@ -1004,7 +1063,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func makeOrientationThresholdSubmission(
-        result: StudyNo1OrientationThresholdResearchKitResult,
+        result: StudyNo1OrientationThresholdResult,
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment
     ) throws -> StudyNo1OrientationThresholdSubmission {
@@ -1019,7 +1078,7 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
     }
 
     func submitOrientationThreshold(
-        result: StudyNo1OrientationThresholdResearchKitResult,
+        result: StudyNo1OrientationThresholdResult,
         scheduledTask: ScheduledTask,
         enrollment: StudyEnrollment,
         studyService: StudyServiceProtocol
@@ -1118,6 +1177,23 @@ final class LoudnessMatchTaskFlowViewModel: ObservableObject {
 }
 
 extension LoudnessMatchTaskFlowViewModel: StudyOrientationThresholdSubmissionBuilding {}
+
+private enum OrientationThresholdPlaybackError: LocalizedError {
+    case playbackAlreadyActive
+    case playbackDisabled
+    case preflightUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .playbackAlreadyActive:
+            return "Another calibrated tone is already playing."
+        case .playbackDisabled:
+            return "Calibrated hearing-test playback is unavailable."
+        case .preflightUnavailable:
+            return "Your AirPods, room, or volume changed. Review the audio setup before continuing."
+        }
+    }
+}
 
 private extension StudyNo1OrientationThresholdEarResult {
     var studyNo1Context: StudyNo1OrientationThresholdEarContext? {
