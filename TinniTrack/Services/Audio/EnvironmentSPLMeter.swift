@@ -370,9 +370,15 @@ private final class AVAudioEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSe
         for measurement in result.measurements {
             continuation.yield(.measurement(measurement))
             if let digitalLevel = measurement.aWeightedDigitalLevelDBFS {
-                logger.info(
-                    "Window valid=\(measurement.isValid, privacy: .public) duration=\(measurement.duration, privacy: .public) aWeightedDBFS=\(digitalLevel, privacy: .public) estimatedDBA=\(measurement.provisionalEstimatedDBA ?? -999, privacy: .public)"
-                )
+                if let estimatedLevel = measurement.provisionalEstimatedDBA {
+                    logger.info(
+                        "Window valid=\(measurement.isValid, privacy: .public) duration=\(measurement.duration, privacy: .public) aWeightedDBFS=\(digitalLevel, privacy: .public) estimatedDBA=\(estimatedLevel, privacy: .public)"
+                    )
+                } else {
+                    logger.info(
+                        "Window valid=\(measurement.isValid, privacy: .public) duration=\(measurement.duration, privacy: .public) aWeightedDBFS=\(digitalLevel, privacy: .public) estimatedDBA=unavailable"
+                    )
+                }
             } else if case .invalid(let reason) = measurement.validity {
                 logger.info("Window excluded reason=\(reason.rawValue, privacy: .public)")
             }
