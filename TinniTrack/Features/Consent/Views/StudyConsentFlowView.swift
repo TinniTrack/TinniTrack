@@ -37,7 +37,11 @@ struct StudyConsentFlowView: View {
             definition: viewModel.definition,
             enrollmentRecoveryStatus: viewModel.enrollmentRecoveryStatus,
             isResumingEnrollment: viewModel.state == .finalizing,
-            reviewConsent: { isReviewPresented = true },
+            canReviewConsent: viewModel.canReviewConsent,
+            reviewConsent: {
+                guard viewModel.canReviewConsent else { return }
+                isReviewPresented = true
+            },
             resumeEnrollment: resumeEnrollmentAndHandleCompletion,
             retryEnrollmentRecoveryProbe: {
                 Task {

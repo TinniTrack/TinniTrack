@@ -167,8 +167,11 @@ struct StudyConsentFlowViewModelTests {
         #expect(await viewModel.signAndEnroll())
 
         viewModel.restoreSignatureStepAfterNavigationPresentation()
+        viewModel.continueToSignature()
 
         #expect(viewModel.state == .completed)
+        #expect(viewModel.canContinueToSignature == false)
+        #expect(viewModel.canReviewConsent == false)
         #expect(viewModel.canSignAndEnroll == false)
     }
 

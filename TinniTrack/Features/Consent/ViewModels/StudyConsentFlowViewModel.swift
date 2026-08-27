@@ -60,7 +60,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     var canContinueToSignature: Bool {
-        hasScrolledToConsentEnd
+        state == .reviewingConsent && hasScrolledToConsentEnd
     }
 
     var canReviewConsent: Bool {
@@ -171,6 +171,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     func markConsentScrolledToEnd() {
+        guard state == .reviewingConsent else { return }
         hasScrolledToConsentEnd = true
     }
 
