@@ -141,26 +141,14 @@ struct StudyConsentFlowView: View {
     private var reviewPresentation: Binding<Bool> {
         Binding(
             get: { route.presentsReview },
-            set: { isPresented in
-                let previousRoute = route
-                route.setReviewPresented(isPresented)
-                if previousRoute != route, route == .landing {
-                    viewModel.resetConsentReviewProgress()
-                }
-            }
+            set: { route.setReviewPresented($0) }
         )
     }
 
     private var signaturePresentation: Binding<Bool> {
         Binding(
             get: { route.presentsSignature },
-            set: { isPresented in
-                let previousRoute = route
-                route.setSignaturePresented(isPresented)
-                if previousRoute == .signature, route == .review {
-                    viewModel.resetConsentReviewProgress()
-                }
-            }
+            set: { route.setSignaturePresented($0) }
         )
     }
 

@@ -165,7 +165,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
         hasScrolledToConsentEnd = true
     }
 
-    func resetConsentReviewProgress() {
+    private func resetConsentReviewProgress() {
         hasScrolledToConsentEnd = false
     }
 
