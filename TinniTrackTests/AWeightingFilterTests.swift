@@ -8,10 +8,16 @@ struct AWeightingFilterTests {
         let at100Hz = try AWeightingFilter.responseDB(frequencyHz: 100, sampleRate: sampleRate)
         let atOneKilohertz = try AWeightingFilter.responseDB(frequencyHz: 1_000, sampleRate: sampleRate)
         let atFourKilohertz = try AWeightingFilter.responseDB(frequencyHz: 4_000, sampleRate: sampleRate)
+        let atTenKilohertz = try AWeightingFilter.responseDB(frequencyHz: 10_000, sampleRate: sampleRate)
+        let atSixteenKilohertz = try AWeightingFilter.responseDB(frequencyHz: 16_000, sampleRate: sampleRate)
+        let atTwentyKilohertz = try AWeightingFilter.responseDB(frequencyHz: 20_000, sampleRate: sampleRate)
 
         #expect(abs(at100Hz - (-19.1)) < 0.25)
         #expect(abs(atOneKilohertz) < 0.01)
         #expect(abs(atFourKilohertz - 1.0) < 0.2)
+        #expect(abs(atTenKilohertz - (-2.5)) < 0.35)
+        #expect(abs(atSixteenKilohertz - (-6.7)) < 0.4)
+        #expect(abs(atTwentyKilohertz - (-9.3)) < 0.4)
     }
 
     @Test(arguments: [44_100.0, 48_000.0])

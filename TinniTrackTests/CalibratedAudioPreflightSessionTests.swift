@@ -267,6 +267,9 @@ struct CalibratedAudioPreflightSessionTests {
 
         #expect(session.interruption == .quietRoom(levelRatio: 1.2))
 
+        controller.environmentGateUpdate = nil
+        #expect(session.interruption == .quietRoom(levelRatio: nil))
+
         session.transition(to: .quietRoom)
         #expect(session.interruption == nil)
     }

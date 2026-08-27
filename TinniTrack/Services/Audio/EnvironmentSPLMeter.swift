@@ -40,18 +40,27 @@ protocol EnvironmentSPLWorkflowManaging {
 final class AVAudioEnvironmentSPLMeter: EnvironmentSPLMeasuring, EnvironmentSPLGateMonitoring, EnvironmentSPLWorkflowManaging {
     private let audioSessionCoordinator: StudyAudioSessionCoordinating
     private let notificationCenter: NotificationCenter
-    private let engineFactory: () -> AVAudioEngine
+    private let engineFactory: () throws -> AVAudioEngine
+    private let permissionRequester: () async -> Bool
     private let dateProvider: () -> Date
 
     init(
         audioSessionCoordinator: StudyAudioSessionCoordinating? = nil,
         notificationCenter: NotificationCenter = .default,
-        engineFactory: @escaping () -> AVAudioEngine = AVAudioEngine.init,
+        engineFactory: @escaping () throws -> AVAudioEngine = { AVAudioEngine() },
+        permissionRequester: (() async -> Bool)? = nil,
         dateProvider: @escaping () -> Date = Date.init
     ) {
         self.audioSessionCoordinator = audioSessionCoordinator ?? StudyAudioSessionCoordinator.shared
         self.notificationCenter = notificationCenter
         self.engineFactory = engineFactory
+        self.permissionRequester = permissionRequester ?? {
+            await withCheckedContinuation { continuation in
+                AVAudioApplication.requestRecordPermission { granted in
+                    continuation.resume(returning: granted)
+                }
+            }
+        }
         self.dateProvider = dateProvider
     }
 
@@ -110,6 +119,7 @@ final class AVAudioEnvironmentSPLMeter: EnvironmentSPLMeasuring, EnvironmentSPLG
             audioSessionCoordinator: audioSessionCoordinator,
             notificationCenter: notificationCenter,
             engineFactory: engineFactory,
+            permissionRequester: permissionRequester,
             dateProvider: dateProvider
         )
     }
@@ -155,7 +165,8 @@ private final class AVAudioEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSe
     private let configuration: TinnitusEnvironmentSPLGateConfiguration
     private let audioSessionCoordinator: StudyAudioSessionCoordinating
     private let notificationCenter: NotificationCenter
-    private let engineFactory: () -> AVAudioEngine
+    private let engineFactory: () throws -> AVAudioEngine
+    private let permissionRequester: () async -> Bool
     private let dateProvider: () -> Date
     private let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "TinniTrack",
@@ -176,7 +187,8 @@ private final class AVAudioEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSe
         initialReason: TinnitusEnvironmentSPLReacquisitionReason,
         audioSessionCoordinator: StudyAudioSessionCoordinating,
         notificationCenter: NotificationCenter,
-        engineFactory: @escaping () -> AVAudioEngine,
+        engineFactory: @escaping () throws -> AVAudioEngine,
+        permissionRequester: @escaping () async -> Bool,
         dateProvider: @escaping () -> Date
     ) {
         var capturedContinuation: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation!
@@ -186,6 +198,7 @@ private final class AVAudioEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSe
         self.audioSessionCoordinator = audioSessionCoordinator
         self.notificationCenter = notificationCenter
         self.engineFactory = engineFactory
+        self.permissionRequester = permissionRequester
         self.dateProvider = dateProvider
 
         continuation.onTermination = { [weak self] _ in
@@ -214,7 +227,7 @@ private final class AVAudioEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSe
 
     private func start(reason: TinnitusEnvironmentSPLReacquisitionReason) async {
         continuation.yield(.warmingUp(reason))
-        guard await requestMicrophonePermission() else {
+        guard await permissionRequester() else {
             continuation.yield(.unavailable(.microphonePermissionDenied))
             continuation.finish()
             return
@@ -251,7 +264,7 @@ private final class AVAudioEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSe
                 return
             }
 
-            let captureEngine = engineFactory()
+            let captureEngine = try engineFactory()
             let inputNode = captureEngine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
             guard format.commonFormat == .pcmFormatFloat32,
@@ -461,14 +474,6 @@ private final class AVAudioEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSe
         engine.reset()
         self.engine = nil
         processorBox = nil
-    }
-
-    private func requestMicrophonePermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { granted in
-                continuation.resume(returning: granted)
-            }
-        }
     }
 
     private func configurationChange(

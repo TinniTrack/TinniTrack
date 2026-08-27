@@ -1,10 +1,11 @@
 import Foundation
 
 /// Streaming IEC-style A-weighting implemented as a digital pole/zero cascade.
-/// The standard analog pole frequencies are mapped with a bilinear transform,
-/// then the digital response is normalized to 0 dB at 1 kHz.
+/// Low-frequency poles use a bilinear mapping. The high-frequency pole/zero
+/// pair is fitted at each supported rate to compensate for bilinear warping,
+/// then the complete response is normalized to 0 dB at 1 kHz.
 nonisolated struct AWeightingFilter: Sendable {
-    static let algorithmVersion = "iec-a-weighting-bilinear-sos-v1"
+    static let algorithmVersion = "iec-a-weighting-frequency-fitted-sos-v2"
 
     private var sections: [Biquad]
     let sampleRate: Double
@@ -46,17 +47,30 @@ nonisolated struct AWeightingFilter: Sendable {
     }
 
     private static func makeSections(sampleRate: Double) -> [Biquad] {
-        let poleFrequencies = [20.598_997, 20.598_997, 107.652_65, 737.862_23, 12_194.217, 12_194.217]
-        let mappedPoles = poleFrequencies.map { frequency -> Double in
+        let lowPoleFrequencies = [20.598_997, 20.598_997, 107.652_65, 737.862_23]
+        var mappedPoles = lowPoleFrequencies.map { frequency -> Double in
             let analogPole = -2 * Double.pi * frequency
             let twoSampleRate = 2 * sampleRate
             return (twoSampleRate + analogPole) / (twoSampleRate - analogPole)
         }
 
+        // A direct bilinear transform compresses the upper audio band and is
+        // roughly 1.2–1.5 dB low at 10 kHz. These endpoint parameters were fit
+        // against the canonical analog A-weighting curve at 4, 10, 12.5, 16,
+        // and 20 kHz. Linear interpolation covers actual 44.1/48 kHz hardware
+        // rates while retaining stable, real-valued second-order sections.
+        let interpolation = min(1, max(0, (sampleRate - 44_100) / 3_900))
+        let highFrequencyPole = 0.103 + (interpolation * (0.155 - 0.103))
+        let highFrequencyZeroRadius = 0.224 + (interpolation * (0.192 - 0.224))
+        mappedPoles.append(contentsOf: [highFrequencyPole, highFrequencyPole])
+
         var result = [
             Biquad(zeros: (1, 1), poles: (mappedPoles[0], mappedPoles[1])),
             Biquad(zeros: (1, 1), poles: (mappedPoles[2], mappedPoles[3])),
-            Biquad(zeros: (-1, -1), poles: (mappedPoles[4], mappedPoles[5]))
+            Biquad(
+                zeros: (-highFrequencyZeroRadius, -highFrequencyZeroRadius),
+                poles: (mappedPoles[4], mappedPoles[5])
+            )
         ]
 
         let magnitudeAtOneKilohertz = result.reduce(1.0) { partial, section in

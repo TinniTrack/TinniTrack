@@ -65,6 +65,25 @@ struct EnvironmentPCMWindowProcessorTests {
     }
 
     @Test
+    func channelEnergyUsesFrameCountTimesChannelCount() throws {
+        let sampleRate = 48_000.0
+        let samples = sine(amplitude: 0.1, sampleRate: sampleRate, count: 48_000)
+        var mono = try makeProcessor(sampleRate: sampleRate)
+        var stereo = try makeProcessor(sampleRate: sampleRate, channelCount: 2)
+
+        let monoLevel = try #require(
+            mono.process(channels: [samples], timestamp: .reference)
+                .measurements.first?.aWeightedDigitalLevelDBFS
+        )
+        let stereoLevel = try #require(
+            stereo.process(channels: [samples, samples], timestamp: .reference)
+                .measurements.first?.aWeightedDigitalLevelDBFS
+        )
+
+        #expect(abs(monoLevel - stereoLevel) < 1e-10)
+    }
+
+    @Test
     func silenceIsAValidFiniteFloorMeasurement() throws {
         var processor = try makeProcessor(sampleRate: 48_000)
         let result = processor.process(
@@ -145,6 +164,7 @@ struct EnvironmentPCMWindowProcessorTests {
 
     private func makeProcessor(
         sampleRate: Double,
+        channelCount: Int = 1,
         warmUpDuration: TimeInterval = 0
     ) throws -> EnvironmentPCMWindowProcessor {
         try EnvironmentPCMWindowProcessor(
@@ -152,7 +172,7 @@ struct EnvironmentPCMWindowProcessorTests {
                 route: .builtInMicrophone,
                 dataSourceOrientation: .bottom,
                 sampleRate: sampleRate,
-                channelCount: 1,
+                channelCount: channelCount,
                 inputGain: 1,
                 isInputGainSettable: false
             ),

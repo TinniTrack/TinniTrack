@@ -173,22 +173,71 @@ struct TinnitusEnvironmentSPLGateTests {
     }
 
     @Test
-    func routeChangeResetsStreaksAndBaselineButRetainsInitialPass() {
-        var machine = passedAndReacquiredMachine()
-        let generation = machine.generation
-        _ = machine.handle(
-            .measurement(measurement(47, index: 10)),
-            generation: generation
-        )
+    func inputConfigurationChangesResetStreaksAndBaselineButRetainInitialPass() {
+        let changes: [TinnitusEnvironmentMeasurementFailureReason] = [
+            .routeChanged,
+            .dataSourceChanged,
+            .sampleFormatChanged,
+            .inputGainChanged
+        ]
 
-        _ = machine.handle(.invalidated(.routeChanged), generation: generation)
+        for change in changes {
+            var machine = passedAndReacquiredMachine()
+            let generation = machine.generation
+            for index in 0..<4 {
+                _ = machine.handle(
+                    .measurement(measurement(40, index: 10 + index)),
+                    generation: generation
+                )
+            }
+            #expect(machine.currentUpdate.localBaselineDBA != nil)
+            _ = machine.handle(
+                .measurement(measurement(47, index: 20)),
+                generation: generation
+            )
+            #expect(machine.currentUpdate.consecutiveLoudSamples == 1)
 
-        #expect(machine.status == .routeInvalid(.routeChanged))
-        #expect(machine.currentUpdate.consecutiveLoudSamples == 0)
-        #expect(machine.currentUpdate.consecutiveRecoverySamples == 0)
-        #expect(machine.currentUpdate.localBaselineDBA == nil)
-        #expect(machine.passedResult?.passed == true)
-        #expect(machine.status.isGenuineLoudnessInterruption == false)
+            _ = machine.handle(.invalidated(change), generation: generation)
+
+            #expect(machine.status == .routeInvalid(change))
+            #expect(machine.currentUpdate.consecutiveLoudSamples == 0)
+            #expect(machine.currentUpdate.consecutiveRecoverySamples == 0)
+            #expect(machine.currentUpdate.localBaselineDBA == nil)
+            #expect(machine.passedResult?.passed == true)
+            #expect(machine.status.isGenuineLoudnessInterruption == false)
+        }
+    }
+
+    @Test
+    func cancellationBufferAndServiceFailuresNeverBecomeQuietOrLoud() {
+        let failures: [TinnitusEnvironmentMeasurementFailureReason] = [
+            .emptyInput,
+            .invalidPCM,
+            .clippedPCM,
+            .discontinuousSampleTime,
+            .microphonePermissionDenied,
+            .engineFailure,
+            .cancelled
+        ]
+
+        for failure in failures {
+            var machine = passedAndReacquiredMachine()
+            let generation = machine.generation
+            let event: TinnitusEnvironmentSPLMonitorEvent = switch failure {
+            case .microphonePermissionDenied, .engineFailure, .cancelled:
+                .unavailable(failure)
+            default:
+                .invalidated(failure)
+            }
+
+            _ = machine.handle(event, generation: generation)
+
+            #expect(machine.status != .quiet)
+            #expect(machine.status != .suspectedLoudness)
+            #expect(machine.status != .interruptedByLoudness)
+            #expect(machine.currentUpdate.consecutiveLoudSamples == 0)
+            #expect(machine.passedResult?.passed == true)
+        }
     }
 
     @Test

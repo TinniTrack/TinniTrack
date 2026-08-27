@@ -654,6 +654,31 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
+    func workflowCleanupWaitsForCaptureAndPlayerThenRestoresOnlyOnce() async throws {
+        let order = AudioWorkflowCleanupOrderRecorder()
+        let player = MockCalibratedTonePlayer()
+        player.onStop = { order.record("player") }
+        let meter = WorkflowTrackingEnvironmentSPLMeter(order: order)
+        let monitor = TeardownTrackingEnvironmentSPLGateMonitor(order: order)
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            player: player,
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: meter,
+            environmentGateMonitor: monitor
+        )
+        viewModel.startContinuousEnvironmentGate()
+        #expect(try await waitUntil { viewModel.isRunningEnvironmentGate })
+
+        viewModel.endAudioSessionWorkflow()
+        viewModel.endAudioSessionWorkflow()
+
+        #expect(try await waitUntil { meter.endWorkflowCallCount == 1 })
+        #expect(order.values == ["monitor", "player", "workflow"])
+        #expect(player.stopCallCount == 1)
+    }
+
+    @Test
     func startTestRequiresPassedVolumeGuardrails() async {
         var validation = CalibratedAudioGuardrailPolicy().validate(
             route: supportedRoute(),
@@ -1549,6 +1574,84 @@ private struct MockEnvironmentSPLMeter: EnvironmentSPLMeasuring {
 }
 
 @MainActor
+private final class WorkflowTrackingEnvironmentSPLMeter:
+    EnvironmentSPLMeasuring,
+    EnvironmentSPLWorkflowManaging
+{
+    private let order: AudioWorkflowCleanupOrderRecorder
+    private(set) var endWorkflowCallCount = 0
+
+    init(order: AudioWorkflowCleanupOrderRecorder) {
+        self.order = order
+    }
+
+    func runGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) async throws -> TinnitusEnvironmentSPLGateResult {
+        TinnitusEnvironmentSPLGateEvaluator().evaluate(
+            samplesDBA: [],
+            configuration: configuration
+        )
+    }
+
+    func endAudioWorkflow() {
+        endWorkflowCallCount += 1
+        order.record("workflow")
+    }
+}
+
+@MainActor
+private final class TeardownTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    private let order: AudioWorkflowCleanupOrderRecorder
+
+    init(order: AudioWorkflowCleanupOrderRecorder) {
+        self.order = order
+    }
+
+    func makeMonitor(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) -> any EnvironmentSPLMonitorSession {
+        TeardownTrackingEnvironmentSPLMonitorSession(order: order, reason: reason)
+    }
+}
+
+@MainActor
+private final class TeardownTrackingEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSession {
+    let events: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>
+    private let continuation: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation
+    private let order: AudioWorkflowCleanupOrderRecorder
+    private var didStop = false
+
+    init(
+        order: AudioWorkflowCleanupOrderRecorder,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) {
+        var captured: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation!
+        events = AsyncThrowingStream { captured = $0 }
+        continuation = captured
+        self.order = order
+        continuation.yield(.warmingUp(reason))
+    }
+
+    func stop() async {
+        guard !didStop else { return }
+        didStop = true
+        order.record("monitor")
+        continuation.finish()
+    }
+}
+
+@MainActor
+private final class AudioWorkflowCleanupOrderRecorder {
+    private(set) var values: [String] = []
+
+    func record(_ value: String) {
+        values.append(value)
+    }
+}
+
+@MainActor
 private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
     let samplesByUpdate: [[Double]]
     var finishAfterUpdates = true
@@ -1828,6 +1931,7 @@ private final class MockAudioSessionObservation: AudioSessionObservation {
 private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
     var playedRequests: [CalibratedTonePlaybackRequest] = []
     var stopCallCount = 0
+    var onStop: () -> Void = {}
 
     func play(_ request: CalibratedTonePlaybackRequest) throws -> CalibratedTonePlaybackMetadata {
         playedRequests.append(request)
@@ -1841,6 +1945,7 @@ private final class MockCalibratedTonePlayer: CalibratedTonePlaying {
 
     func stop() -> CalibratedTonePlaybackMetadata? {
         stopCallCount += 1
+        onStop()
         guard let request = playedRequests.last else {
             return nil
         }
