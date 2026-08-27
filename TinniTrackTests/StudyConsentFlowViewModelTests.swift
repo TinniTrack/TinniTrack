@@ -377,9 +377,10 @@ private actor MockConsentService: ConsentServiceProtocol {
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {
+    ) async throws -> StudyEnrollment {
         callCount += 1
         capturedConsent = consent
+        return makeEnrollment(for: study)
     }
 
     func finalizeCallCount() -> Int {
@@ -398,11 +399,12 @@ private actor BlockingConsentService: ConsentServiceProtocol {
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {
+    ) async throws -> StudyEnrollment {
         callCount += 1
         await withCheckedContinuation { continuation in
             self.continuation = continuation
         }
+        return makeEnrollment(for: study)
     }
 
     func finalizeCallCount() -> Int {
@@ -421,11 +423,12 @@ private actor FailOnceConsentService: ConsentServiceProtocol {
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {
+    ) async throws -> StudyEnrollment {
         attempts.append(consent)
         if attempts.count == 1 {
             throw Failure.unavailable
         }
+        return makeEnrollment(for: study)
     }
 
     func capturedConsents() -> [StudyConsentCompletion] {
@@ -442,12 +445,16 @@ private actor RecoveryUnavailableConsentService: ConsentServiceProtocol {
         nil
     }
 
-    func resumeEnrollment(for study: Study) async throws {}
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment {
+        makeEnrollment(for: study)
+    }
 
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {}
+    ) async throws -> StudyEnrollment {
+        makeEnrollment(for: study)
+    }
 }
 
 private actor BlockingEnrollmentRecoveryConsentService: ConsentServiceProtocol {
@@ -459,18 +466,20 @@ private actor BlockingEnrollmentRecoveryConsentService: ConsentServiceProtocol {
         .pendingUpload
     }
 
-    func resumeEnrollment(for study: Study) async throws {
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment {
         resumeCount += 1
         await withCheckedContinuation { continuation in
             resumeContinuation = continuation
         }
+        return makeEnrollment(for: study)
     }
 
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {
+    ) async throws -> StudyEnrollment {
         finalizeCount += 1
+        return makeEnrollment(for: study)
     }
 
     func resumeCallCount() -> Int {
@@ -498,12 +507,16 @@ private actor FailOnceRecoveryProbeConsentService: ConsentServiceProtocol {
         return nil
     }
 
-    func resumeEnrollment(for study: Study) async throws {}
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment {
+        makeEnrollment(for: study)
+    }
 
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {}
+    ) async throws -> StudyEnrollment {
+        makeEnrollment(for: study)
+    }
 
     func probeCallCount() -> Int {
         probeCount
@@ -519,14 +532,16 @@ private actor ResumeFailingRecoveryConsentService: ConsentServiceProtocol {
         .pendingEnrollment
     }
 
-    func resumeEnrollment(for study: Study) async throws {
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment {
         throw Failure.unavailable
     }
 
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {}
+    ) async throws -> StudyEnrollment {
+        makeEnrollment(for: study)
+    }
 
     private enum Failure: Error {
         case unavailable
@@ -555,4 +570,15 @@ private final class MockConsentArtifactGenerator: ConsentArtifactGenerating {
     func sha256Hex(for data: Data) -> String {
         String(repeating: "c", count: 64)
     }
+}
+
+private func makeEnrollment(for study: Study) -> StudyEnrollment {
+    StudyEnrollment(
+        id: UUID(uuidString: "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF")!,
+        userID: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
+        studyID: study.id,
+        status: .enrolled,
+        enrolledAt: Date(timeIntervalSince1970: 1_750_000_100),
+        createdAt: Date(timeIntervalSince1970: 1_750_000_100)
+    )
 }

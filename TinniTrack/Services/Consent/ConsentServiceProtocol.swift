@@ -15,12 +15,12 @@ protocol ConsentServiceProtocol {
         for study: Study
     ) async throws -> ConsentEnrollmentRecovery?
 
-    func resumeEnrollment(for study: Study) async throws
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment
 
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws
+    ) async throws -> StudyEnrollment
 }
 
 extension ConsentServiceProtocol {
@@ -30,7 +30,7 @@ extension ConsentServiceProtocol {
         nil
     }
 
-    func resumeEnrollment(for study: Study) async throws {
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment {
         throw ConsentServiceError.noRecoverableConsent
     }
 }

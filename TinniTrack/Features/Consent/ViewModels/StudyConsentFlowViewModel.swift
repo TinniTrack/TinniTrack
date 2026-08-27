@@ -148,7 +148,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
         state = .finalizing
 
         do {
-            try await consentService.resumeEnrollment(for: study)
+            _ = try await consentService.resumeEnrollment(for: study)
             enrollmentRecoveryStatus = .unavailable
             state = .completed
             return true
@@ -286,7 +286,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
                 return false
             }
 
-            try await consentService.finalizeConsentAndEnroll(
+            _ = try await consentService.finalizeConsentAndEnroll(
                 study: study,
                 consent: consentCompletion
             )

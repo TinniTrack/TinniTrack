@@ -429,8 +429,12 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
         ]
     }
 
-    func finalizeConsentAndEnroll(study: Study, consent: StudyConsentCompletion) async throws {
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws -> StudyEnrollment {
         isEnrolled = true
+        return enrollment
     }
 
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
@@ -458,6 +462,18 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
         enrollmentID: UUID,
         submission: LoudnessMatchSubmission
     ) async throws {}
+
+    private var enrollment: StudyEnrollment {
+        StudyEnrollment(
+            id: enrollmentID,
+            userID: userID,
+            studyID: studyID,
+            status: .enrolled,
+            enrolledAt: Date(timeIntervalSince1970: 1_700_000_100),
+            createdAt: Date(timeIntervalSince1970: 1_700_000_100),
+            onboardingCompletedAt: nil
+        )
+    }
 }
 #endif
 

@@ -73,6 +73,18 @@ private enum StudyConsentFlowPreviewModel {
 }
 
 private struct PreviewConsentService: ConsentServiceProtocol {
-    func finalizeConsentAndEnroll(study: Study, consent: StudyConsentCompletion) async throws {}
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws -> StudyEnrollment {
+        StudyEnrollment(
+            id: UUID(),
+            userID: UUID(),
+            studyID: study.id,
+            status: .enrolled,
+            enrolledAt: Date(),
+            createdAt: Date()
+        )
+    }
 }
 #endif

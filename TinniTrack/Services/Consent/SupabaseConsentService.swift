@@ -49,14 +49,14 @@ final class SupabaseConsentService: ConsentServiceProtocol {
         try await recoveryResolution(for: study)?.availability
     }
 
-    func resumeEnrollment(for study: Study) async throws {
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment {
         guard let resolution = try await recoveryResolution(for: study) else {
             throw ConsentServiceError.noRecoverableConsent
         }
 
         switch resolution {
         case let .pendingUpload(consent):
-            try await finalizeConsentAndEnroll(
+            return try await finalizeConsentAndEnroll(
                 study: study,
                 consent: consent
             )
@@ -64,7 +64,7 @@ final class SupabaseConsentService: ConsentServiceProtocol {
             if clearLocalEvidence {
                 try await clearPendingConsent(for: key)
             }
-            try await enroll(
+            return try await enroll(
                 studyID: study.id,
                 consentID: existingConsent.id
             )
@@ -74,7 +74,7 @@ final class SupabaseConsentService: ConsentServiceProtocol {
     func finalizeConsentAndEnroll(
         study: Study,
         consent: StudyConsentCompletion
-    ) async throws {
+    ) async throws -> StudyEnrollment {
         guard let definition = StudyConsentCatalog.definition(for: study.slug) else {
             throw ConsentServiceError.missingCatalogDefinition(studySlug: study.slug)
         }
@@ -130,11 +130,10 @@ final class SupabaseConsentService: ConsentServiceProtocol {
                     throw ConsentServiceError.conflictingPendingArtifact
                 }
             }
-            try await enroll(
+            return try await enroll(
                 studyID: study.id,
                 consentID: existingConsent.id
             )
-            return
         }
 
         let pendingConsent = try await recoverOrSavePendingConsent(
@@ -163,11 +162,10 @@ final class SupabaseConsentService: ConsentServiceProtocol {
                 storagePath: storagePath
             ) {
                 try await clearPendingConsent(for: pendingKey)
-                try await enroll(
+                return try await enroll(
                     studyID: study.id,
                     consentID: recordedConsentID
                 )
-                return
             }
         }
 
@@ -199,11 +197,10 @@ final class SupabaseConsentService: ConsentServiceProtocol {
                     storagePath: storagePath
                 ) {
                     try await clearPendingConsent(for: pendingKey)
-                    try await enroll(
+                    return try await enroll(
                         studyID: study.id,
                         consentID: recordedConsentID
                     )
-                    return
                 }
             } catch let recoveryError as ConsentServiceError {
                 throw recoveryError
@@ -221,7 +218,7 @@ final class SupabaseConsentService: ConsentServiceProtocol {
             throw ConsentServiceError.consentRecordConfirmationFailed
         }
         try await clearPendingConsent(for: pendingKey)
-        try await enroll(studyID: study.id, consentID: confirmedConsentID)
+        return try await enroll(studyID: study.id, consentID: confirmedConsentID)
     }
 
     private func recoverOrSavePendingConsent(
@@ -399,7 +396,7 @@ final class SupabaseConsentService: ConsentServiceProtocol {
         return nil
     }
 
-    private func enroll(studyID: UUID, consentID: UUID) async throws {
+    private func enroll(studyID: UUID, consentID: UUID) async throws -> StudyEnrollment {
         try await remote.enroll(studyID: studyID, consentID: consentID)
     }
 }
