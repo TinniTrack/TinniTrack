@@ -341,11 +341,41 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(signAndEnrollButton.isEnabled)
         signAndEnrollButton.tap()
 
-        XCTAssertTrue(app.buttons["Begin Orientation"].waitForExistence(timeout: 5))
+        let beginOrientationButton = app.buttons["study_begin_orientation_button"]
+        XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 5))
+        XCTAssertEqual(beginOrientationButton.label, "Begin Orientation")
         XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
         XCTAssertFalse(app.navigationBars["Study Details"].exists)
+
+        beginOrientationButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Orientation"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
+        let orientationContinueButton = app.buttons["study_onboarding_primary_button"]
+        XCTAssertTrue(orientationContinueButton.waitForExistence(timeout: 2))
+        XCTAssertEqual(orientationContinueButton.label, "Continue")
+        orientationContinueButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].waitForExistence(timeout: 3))
+        swipeBack(in: app)
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].waitForExistence(timeout: 3))
+
+        let closeOrientationButton = app.buttons["study_onboarding_close_button"]
+        XCTAssertTrue(closeOrientationButton.exists)
+        closeOrientationButton.tap()
+
+        let exitAlert = app.alerts["Exit Orientation?"]
+        XCTAssertTrue(exitAlert.waitForExistence(timeout: 2))
+        XCTAssertTrue(exitAlert.staticTexts["Your current Study No. 1 onboarding progress will be discarded."].exists)
+        exitAlert.buttons["Keep Going"].tap()
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
+
+        closeOrientationButton.tap()
+        XCTAssertTrue(exitAlert.waitForExistence(timeout: 2))
+        exitAlert.buttons["Exit Orientation"].tap()
+        XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 3))
 
         swipeBack(in: app)
         XCTAssertTrue(app.navigationBars["Dashboard"].waitForExistence(timeout: 3))
