@@ -396,21 +396,21 @@ final class TinniTrackUITests: XCTestCase {
 
         lastNameField.tap()
         lastNameField.typeText("Draft")
-        XCTAssertFalse(signAndEnrollButton.isEnabled)
+        XCTAssertTrue(waitForEnabledState(false, of: signAndEnrollButton))
 
         firstNameField.tap()
         firstNameField.typeText("Alex")
-        XCTAssertTrue(signAndEnrollButton.isEnabled)
+        XCTAssertTrue(waitForEnabledState(true, of: signAndEnrollButton))
 
         replaceText(in: lastNameField, with: "")
-        XCTAssertFalse(signAndEnrollButton.isEnabled)
+        XCTAssertTrue(waitForEnabledState(false, of: signAndEnrollButton))
         replaceText(in: lastNameField, with: "Rivers")
-        XCTAssertTrue(signAndEnrollButton.isEnabled)
+        XCTAssertTrue(waitForEnabledState(true, of: signAndEnrollButton))
 
         replaceText(in: firstNameField, with: "")
-        XCTAssertFalse(signAndEnrollButton.isEnabled)
+        XCTAssertTrue(waitForEnabledState(false, of: signAndEnrollButton))
         replaceText(in: firstNameField, with: "Alex")
-        XCTAssertTrue(signAndEnrollButton.isEnabled)
+        XCTAssertTrue(waitForEnabledState(true, of: signAndEnrollButton))
 
         let signatureScroll = app.scrollViews["study_consent_signature"]
         for _ in 0..<3 where !signAndEnrollButton.isHittable {
@@ -504,6 +504,17 @@ final class TinniTrackUITests: XCTestCase {
         if !text.isEmpty {
             field.typeText(text)
         }
+    }
+
+    @MainActor
+    private func waitForEnabledState(
+        _ isEnabled: Bool,
+        of element: XCUIElement,
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        let predicate = NSPredicate(format: "enabled == %@", NSNumber(value: isEnabled))
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
     @MainActor
