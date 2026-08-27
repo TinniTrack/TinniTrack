@@ -59,13 +59,8 @@ enum LoudnessMatchModalColors {
 struct LoudnessMatchModalPrimaryButton: View {
     let title: String
     var isEnabled = true
-    var isInteractionEnabled: Bool? = nil
     var isLoading = false
     let action: () -> Void
-
-    private var canInteract: Bool {
-        isInteractionEnabled ?? isEnabled
-    }
 
     var body: some View {
         Button(action: action) {
@@ -93,7 +88,7 @@ struct LoudnessMatchModalPrimaryButton: View {
             }
         }
         .buttonStyle(AppCapsuleButtonStyle())
-        .disabled(!canInteract || isLoading)
+        .disabled(!isEnabled || isLoading)
         .accessibilityIdentifier("loudness_modal_primary_button")
     }
 }

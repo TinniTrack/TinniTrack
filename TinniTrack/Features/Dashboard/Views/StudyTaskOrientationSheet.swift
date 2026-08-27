@@ -6,6 +6,7 @@ struct StudyTaskOrientationSheet: View {
     @ObservedObject var viewModel: StudyTaskDashboardViewModel
 
     @StateObject private var loudnessViewModel: LoudnessMatchTaskFlowViewModel
+    @StateObject private var preflightSession: CalibratedAudioPreflightSession
     @StateObject private var thresholdCoordinator: StudyOrientationThresholdCoordinator
     @State private var navigationPath: [StudyTaskOrientationRoute] = []
     @State private var isCloseConfirmationPresented = false
@@ -21,6 +22,9 @@ struct StudyTaskOrientationSheet: View {
         let resolvedLoudnessViewModel = loudnessViewModel ?? LoudnessMatchTaskFlowViewModel()
         self.viewModel = viewModel
         _loudnessViewModel = StateObject(wrappedValue: resolvedLoudnessViewModel)
+        _preflightSession = StateObject(
+            wrappedValue: CalibratedAudioPreflightSession(controller: resolvedLoudnessViewModel)
+        )
         _thresholdCoordinator = StateObject(
             wrappedValue: StudyOrientationThresholdCoordinator(
                 enrollment: enrollment,
@@ -63,17 +67,16 @@ struct StudyTaskOrientationSheet: View {
         .onChange(of: navigationPath) { oldPath, newPath in
             handleNavigationPathChange(from: oldPath, to: newPath)
         }
-        .onChange(of: loudnessViewModel.isAirPodsRouteInterrupted) { _, isInterrupted in
-            if !isInterrupted {
-                resumeCurrentRouteAfterAirPodsReconnect()
+        .onChange(of: preflightSession.requestedFallback) { _, fallback in
+            guard fallback == .airPods else {
+                return
             }
-        }
-        .onChange(of: loudnessViewModel.headphoneRouteAssessment) { _, assessment in
-            returnToAirPodsConfirmationIfNeeded(for: assessment)
+            navigationPath = [.taskIntro, .correctEar]
+            preflightSession.consumeRequestedFallback()
         }
         .onChange(of: thresholdCoordinator.presentation) { _, presentation in
             if presentation != nil {
-                loudnessViewModel.stopVolumeGateMonitoring()
+                preflightSession.transition(to: .activeTest)
             }
         }
         .onChange(of: thresholdCoordinator.state) { _, state in
@@ -171,7 +174,7 @@ struct StudyTaskOrientationSheet: View {
             StudyOrientationPage(
                 primaryAction: action(
                     title: "Next",
-                    isEnabled: loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed,
+                    isEnabled: preflightSession.canCommitCurrentPhase,
                     route: route
                 ),
                 requestClose: requestClose
@@ -183,7 +186,7 @@ struct StudyTaskOrientationSheet: View {
             StudyOrientationPage(
                 primaryAction: action(
                     title: "Next",
-                    isEnabled: loudnessViewModel.environmentGateResult?.passed == true,
+                    isEnabled: preflightSession.canCommitCurrentPhase,
                     route: route
                 ),
                 requestClose: requestClose
@@ -203,7 +206,7 @@ struct StudyTaskOrientationSheet: View {
             StudyOrientationPage(
                 primaryAction: action(
                     title: thresholdCoordinator.isPreparing ? "Starting" : "Start Test",
-                    isEnabled: loudnessViewModel.currentGuardrailValidation.state == .passed
+                    isEnabled: preflightSession.canCommitCurrentPhase
                         && !thresholdCoordinator.isPreparing,
                     isLoading: thresholdCoordinator.isPreparing,
                     route: route
@@ -271,26 +274,19 @@ struct StudyTaskOrientationSheet: View {
             navigationPath.append(.correctEar)
 
         case .correctEar:
-            guard loudnessViewModel.validateAirPodsForCorrectEarStep() else {
-                return
-            }
-            loudnessViewModel.prepareEnvironmentGateForQuietRoomStep()
+            guard preflightSession.commitCurrentPhase() else { return }
             navigationPath.append(.quietRoom)
 
         case .quietRoom:
-            guard loudnessViewModel.environmentGateResult?.passed == true else {
-                return
-            }
+            guard preflightSession.commitCurrentPhase() else { return }
             navigationPath.append(.fit)
 
         case .fit:
-            loudnessViewModel.completeFitConfirmation()
+            guard preflightSession.commitCurrentPhase() else { return }
             navigationPath.append(.maxVolume)
 
         case .maxVolume:
-            guard loudnessViewModel.acknowledgeSafetyAndStartTest() else {
-                return
-            }
+            guard preflightSession.commitCurrentPhase() else { return }
             thresholdCoordinator.begin()
 
         case .thresholdStatus:
@@ -302,63 +298,22 @@ struct StudyTaskOrientationSheet: View {
         from oldPath: [StudyTaskOrientationRoute],
         to newPath: [StudyTaskOrientationRoute]
     ) {
-        let oldRoute = oldPath.last
-        let newRoute = newPath.last
-        guard oldRoute != newRoute else {
+        guard oldPath.last != newPath.last else {
             return
         }
 
         if newPath.count < oldPath.count {
-            cleanupForNavigationPop(oldPath.dropFirst(newPath.count).reversed())
-        }
-
-        handleRouteEntered(newRoute)
-    }
-
-    private func cleanupForNavigationPop<Routes: Sequence>(_ poppedRoutes: Routes)
-    where Routes.Element == StudyTaskOrientationRoute {
-        if loudnessViewModel.isPlaying {
-            loudnessViewModel.stopTone()
-        }
-
-        for route in poppedRoutes {
-            switch route {
-            case .correctEar:
-                loudnessViewModel.stopHeadphoneRouteMonitoring()
-            case .quietRoom:
-                loudnessViewModel.cancelEnvironmentGate()
-                loudnessViewModel.stopAirPodsContinuityMonitoring()
-            case .maxVolume:
+            let poppedRoutes = oldPath.dropFirst(newPath.count)
+            if poppedRoutes.contains(.maxVolume)
+                || poppedRoutes.contains(.thresholdStatus) {
                 thresholdCoordinator.stop()
-                loudnessViewModel.stopVolumeGateMonitoring()
-            case .taskIntro, .fit, .thresholdStatus:
-                break
+            }
+            if loudnessViewModel.isPlaying {
+                loudnessViewModel.stopTone()
             }
         }
-    }
 
-    private func handleRouteEntered(_ route: StudyTaskOrientationRoute?) {
-        switch route {
-        case .correctEar:
-            loudnessViewModel.stopAirPodsContinuityMonitoring()
-            loudnessViewModel.stopVolumeGateMonitoring()
-            loudnessViewModel.cancelEnvironmentGate()
-            loudnessViewModel.startHeadphoneRouteMonitoring()
-
-        case .quietRoom:
-            loudnessViewModel.stopHeadphoneRouteMonitoring()
-            loudnessViewModel.startAirPodsContinuityMonitoring()
-            if loudnessViewModel.environmentGateResult?.passed != true {
-                loudnessViewModel.startContinuousEnvironmentGate()
-            }
-
-        case .maxVolume:
-            loudnessViewModel.stopHeadphoneRouteMonitoring()
-            loudnessViewModel.startVolumeGateMonitoring()
-
-        case nil, .taskIntro, .fit, .thresholdStatus:
-            break
-        }
+        preflightSession.transition(to: preflightPhase(for: newPath.last))
     }
 
     private func handleThresholdStateChange(
@@ -377,7 +332,7 @@ struct StudyTaskOrientationSheet: View {
             if navigationPath.last == .thresholdStatus {
                 navigationPath.removeLast()
             }
-            loudnessViewModel.startVolumeGateMonitoring()
+            preflightSession.transition(to: .maximumVolume)
             presentedPreflightFailure = failure
 
         case .completed:
@@ -388,112 +343,86 @@ struct StudyTaskOrientationSheet: View {
         }
     }
 
-    private func resumeCurrentRouteAfterAirPodsReconnect() {
-        switch navigationPath.last {
+    private func preflightPhase(
+        for route: StudyTaskOrientationRoute?
+    ) -> CalibratedAudioPreflightSession.Phase? {
+        switch route {
+        case .correctEar:
+            return .airPods
         case .quietRoom:
-            if loudnessViewModel.environmentGateResult?.passed != true {
-                loudnessViewModel.startContinuousEnvironmentGate()
-            }
+            return .quietRoom
+        case .fit:
+            return .fit
         case .maxVolume:
-            loudnessViewModel.startVolumeGateMonitoring()
-        case nil, .taskIntro, .correctEar, .fit, .thresholdStatus:
-            break
+            return .maximumVolume
+        case .thresholdStatus:
+            return .activeTest
+        case nil, .taskIntro:
+            return nil
         }
-    }
-
-    private func returnToAirPodsConfirmationIfNeeded(
-        for assessment: HeadphoneRouteAssessment
-    ) {
-        guard let currentRoute = navigationPath.last,
-              currentRoute != .taskIntro,
-              currentRoute != .correctEar,
-              currentRoute != .thresholdStatus,
-              assessment.isCompatibleBluetoothPlaybackRoute,
-              !loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
-        else {
-            return
-        }
-
-        navigationPath = [.taskIntro, .correctEar]
     }
 
     private var interruptionConfiguration: InterruptionConfiguration? {
-        if shouldShowAirPodsInterruption {
-            return InterruptionConfiguration(
-                systemName: "airpodspro",
-                title: airPodsInterruptionTitle,
-                bodyText: airPodsInterruptionBodyText,
-                accessibilityIdentifier: "study_onboarding_airpods_interruption_popup"
-            )
+        guard navigationPath.last != .thresholdStatus else {
+            return nil
         }
 
-        if shouldShowQuietRoomInterruption {
+        switch preflightSession.interruption {
+        case .airPods(let routeUnconfirmed, let blockedByAnotherApp):
+            return InterruptionConfiguration(
+                systemName: "airpodspro",
+                title: airPodsInterruptionTitle(
+                    routeUnconfirmed: routeUnconfirmed,
+                    blockedByAnotherApp: blockedByAnotherApp
+                ),
+                bodyText: airPodsInterruptionBodyText(
+                    routeUnconfirmed: routeUnconfirmed,
+                    blockedByAnotherApp: blockedByAnotherApp
+                ),
+                accessibilityIdentifier: "study_onboarding_airpods_interruption_popup"
+            )
+
+        case .quietRoom(let levelRatio):
             return InterruptionConfiguration(
                 systemName: "ear.badge.waveform",
                 title: "Find a Quiet Place",
                 bodyText: "The room is too loud for this task. Onboarding will resume once the room is quiet enough.",
                 accessibilityIdentifier: "study_onboarding_quiet_room_interruption_popup",
-                quietRoomLevelRatio: quietRoomInterruptionLevelRatio
+                quietRoomLevelRatio: levelRatio
             )
-        }
 
-        return nil
-    }
-
-    private var shouldShowAirPodsInterruption: Bool {
-        guard let route = navigationPath.last else {
-            return false
+        case nil:
+            return nil
         }
-        return loudnessViewModel.isAirPodsRouteInterrupted
-            && route != .taskIntro
-            && route != .correctEar
-            && route != .thresholdStatus
-    }
-
-    private var shouldShowQuietRoomInterruption: Bool {
-        guard let route = navigationPath.last else {
-            return false
-        }
-        return loudnessViewModel.isEnvironmentQuietnessInterrupted
-            && route != .taskIntro
-            && route != .correctEar
-            && route != .quietRoom
-            && route != .thresholdStatus
     }
 
     private var isInterruptionOverlayPresented: Bool {
         interruptionConfiguration != nil
     }
 
-    private var isCurrentA2DPRouteUnconfirmed: Bool {
-        loudnessViewModel.headphoneRouteAssessment.isCompatibleBluetoothPlaybackRoute
-            && !loudnessViewModel.isCurrentAirPodsPro2PlaybackRouteConfirmed
-    }
-
-    private var airPodsInterruptionTitle: String {
-        if isCurrentA2DPRouteUnconfirmed {
+    private func airPodsInterruptionTitle(
+        routeUnconfirmed: Bool,
+        blockedByAnotherApp: Bool
+    ) -> String {
+        if routeUnconfirmed {
             return "AirPods Output Changed"
         }
-        return loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp
+        return blockedByAnotherApp
             ? "Calibrated Audio Blocked"
             : "Reconnect Your AirPods"
     }
 
-    private var airPodsInterruptionBodyText: String {
-        if isCurrentA2DPRouteUnconfirmed {
-            return "The audio output changed after confirmation. Exit and restart orientation to confirm the current AirPods before continuing."
+    private func airPodsInterruptionBodyText(
+        routeUnconfirmed: Bool,
+        blockedByAnotherApp: Bool
+    ) -> String {
+        if routeUnconfirmed {
+            return "The audio output changed after confirmation. Confirm the current AirPods again before continuing."
         }
-        if loudnessViewModel.isAirPodsPlaybackRouteBlockedByAnotherApp {
+        if blockedByAnotherApp {
             return "Another app is using your AirPods for call audio. Close Phone, Zoom, or other apps that may be using the headphones. Onboarding will resume once AirPods return to calibrated playback."
         }
         return "Please put both AirPods in your ears and reconnect to continue onboarding."
-    }
-
-    private var quietRoomInterruptionLevelRatio: Double {
-        guard let latestSampleDBA = loudnessViewModel.environmentGateUpdate?.latestSampleDBA else {
-            return 1.2
-        }
-        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
     }
 
     private var researchKitPresentation: Binding<StudyOrientationThresholdCoordinator.Presentation?> {
@@ -513,7 +442,7 @@ struct StudyTaskOrientationSheet: View {
     private var generalErrorPresentation: Binding<Bool> {
         Binding(
             get: {
-                loudnessViewModel.message != nil
+                preflightSession.participantMessage != nil
                     || (viewModel.taskLoadErrorMessage != nil
                         && !isShowingThresholdStatus)
             },
@@ -540,7 +469,7 @@ struct StudyTaskOrientationSheet: View {
         if let dashboardMessage = viewModel.taskLoadErrorMessage {
             return dashboardMessage
         }
-        return Self.message(for: loudnessViewModel.message)
+        return preflightSession.participantMessage ?? ""
     }
 
     private var isShowingThresholdStatus: Bool {
@@ -557,7 +486,7 @@ struct StudyTaskOrientationSheet: View {
     }
 
     private func clearGeneralErrors() {
-        loudnessViewModel.clearMessage()
+        preflightSession.clearMessage()
         viewModel.dismissTaskError()
     }
 
@@ -576,42 +505,9 @@ struct StudyTaskOrientationSheet: View {
 
     private func cleanupForDismiss() {
         thresholdCoordinator.stop()
-        loudnessViewModel.stopHeadphoneRouteMonitoring()
-        loudnessViewModel.stopAirPodsContinuityMonitoring()
-        loudnessViewModel.cancelEnvironmentGate()
-        loudnessViewModel.stopVolumeGateMonitoring()
+        preflightSession.stop()
         if loudnessViewModel.isPlaying {
             loudnessViewModel.stopTone()
-        }
-    }
-
-    private static func message(
-        for message: LoudnessMatchTaskFlowViewModel.FlowMessage?
-    ) -> String {
-        switch message {
-        case .playbackDisabled:
-            return "Calibrated playback is still disabled for this participant workflow."
-        case .environmentGateFailed:
-            return "The quiet-room gate did not collect enough consecutive samples below the Study No. 1 threshold."
-        case .airPodsNotInEar:
-            return "Please place your AirPods in your ear."
-        case .unsupportedHeadphones:
-            return "We detected headphones that are not AirPods Pro 2. AirPods Pro 2 are the only headphones we can use for this study."
-        case .airPodsPro2ConfirmationRequired:
-            return "Confirm that the connected headphones are AirPods Pro 2 before continuing."
-        case .calibratedPlaybackRouteUnavailable:
-            return "AirPods Pro 2 are connected, but another app is using them for call audio. Close Phone, Zoom, or other apps that may be using the headphones, then try again."
-        case .missingAudiogramThreshold(let message),
-             .missingPreflight(let message),
-             .incompletePayload(let message),
-             .environmentGateUnavailable(let message),
-             .playbackFailed(let message),
-             .submissionFailed(let message):
-            return message
-        case .guardrailsUnavailable:
-            return "Audio guardrails are missing, failed, or require restart."
-        case nil:
-            return ""
         }
     }
 }
