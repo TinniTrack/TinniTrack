@@ -109,6 +109,7 @@ struct CalibratedAudioPreflightSessionTests {
         controller.isCurrentAirPodsPro2PlaybackRouteConfirmed = true
         controller.validateAirPodsResult = true
         controller.environmentGateResult = passingEnvironmentResult()
+        controller.environmentGateUpdate = passingEnvironmentUpdate()
         controller.acknowledgeSafetyResult = true
         let session = CalibratedAudioPreflightSession(controller: controller)
 
@@ -262,13 +263,7 @@ struct CalibratedAudioPreflightSessionTests {
 
         controller.isAirPodsRouteInterrupted = false
         controller.isEnvironmentQuietnessInterrupted = true
-        controller.environmentGateUpdate = TinnitusEnvironmentSPLGateUpdate(
-            samplesDBA: [54],
-            latestSampleDBA: 54,
-            contiguousPassingSamples: 0,
-            status: .tooLoud,
-            result: nil
-        )
+        controller.environmentGateUpdate = interruptedEnvironmentUpdate()
 
         #expect(session.interruption == .quietRoom(levelRatio: 1.2))
 
@@ -317,6 +312,37 @@ struct CalibratedAudioPreflightSessionTests {
             samplesDBA: [40, 41, 42, 43, 44],
             configuration: .studyNo1
         )
+    }
+
+    private func passingEnvironmentUpdate() -> TinnitusEnvironmentSPLGateUpdate {
+        TinnitusEnvironmentSPLGateEvaluator().update(
+            samplesDBA: [40, 41, 42, 43, 44],
+            configuration: .studyNo1
+        )
+    }
+
+    private func interruptedEnvironmentUpdate() -> TinnitusEnvironmentSPLGateUpdate {
+        var machine = TinnitusEnvironmentSPLGateStateMachine()
+        let initial = machine.beginMonitoring(reason: .initial)
+        _ = machine.handle(.ready, generation: initial.generation)
+        let evaluator = TinnitusEnvironmentSPLGateEvaluator()
+        for (index, level) in [40.0, 41, 42, 43, 44].enumerated() {
+            _ = machine.handle(
+                .measurement(evaluator.legacyMeasurement(levelDBA: level, index: index)),
+                generation: initial.generation
+            )
+        }
+        let resumed = machine.beginMonitoring(reason: .postPlayback)
+        _ = machine.handle(.ready, generation: resumed.generation)
+        _ = machine.handle(
+            .measurement(evaluator.legacyMeasurement(levelDBA: 54, index: 5)),
+            generation: resumed.generation
+        )
+        _ = machine.handle(
+            .measurement(evaluator.legacyMeasurement(levelDBA: 54, index: 6)),
+            generation: resumed.generation
+        )
+        return machine.currentUpdate
     }
 
     private func passedGuardrails() -> CalibratedAudioGuardrailValidation {
@@ -399,6 +425,7 @@ private final class CalibratedAudioPreflightControllerSpy: CalibratedAudioPrefli
     private(set) var cancelEnvironmentGateCallCount = 0
     private(set) var startVolumeGateMonitoringCallCount = 0
     private(set) var stopVolumeGateMonitoringCallCount = 0
+    private(set) var endAudioSessionWorkflowCallCount = 0
     private(set) var clearMessageCallCount = 0
 
     init(currentGuardrailValidation: CalibratedAudioGuardrailValidation) {
@@ -469,6 +496,10 @@ private final class CalibratedAudioPreflightControllerSpy: CalibratedAudioPrefli
     func stopVolumeGateMonitoring() {
         stopVolumeGateMonitoringCallCount += 1
         isVolumeGateMonitoring = false
+    }
+
+    func endAudioSessionWorkflow() {
+        endAudioSessionWorkflowCallCount += 1
     }
 
     func clearMessage() {

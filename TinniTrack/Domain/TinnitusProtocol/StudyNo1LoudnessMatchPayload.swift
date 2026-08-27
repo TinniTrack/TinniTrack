@@ -95,6 +95,31 @@ nonisolated struct StudyNo1EnvironmentSPLContext: Codable, Equatable {
     let sensitivityOffsetDB: Double?
     let samplesDBA: [Double]
     let gateResult: StudyNo1GateResult
+    let measurementSchemaVersion: Int?
+    let levelSemantics: String?
+    let measurements: [TinnitusEnvironmentSPLMeasurement]?
+
+    init(
+        thresholdDBA: Double,
+        requiredContiguousSamples: Int,
+        samplingInterval: TimeInterval,
+        sensitivityOffsetDB: Double?,
+        samplesDBA: [Double],
+        gateResult: StudyNo1GateResult,
+        measurementSchemaVersion: Int? = nil,
+        levelSemantics: String? = nil,
+        measurements: [TinnitusEnvironmentSPLMeasurement]? = nil
+    ) {
+        self.thresholdDBA = thresholdDBA
+        self.requiredContiguousSamples = requiredContiguousSamples
+        self.samplingInterval = samplingInterval
+        self.sensitivityOffsetDB = sensitivityOffsetDB
+        self.samplesDBA = samplesDBA
+        self.gateResult = gateResult
+        self.measurementSchemaVersion = measurementSchemaVersion
+        self.levelSemantics = levelSemantics
+        self.measurements = measurements
+    }
 }
 
 nonisolated struct StudyNo1FitSealContext: Codable, Equatable {

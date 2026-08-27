@@ -98,16 +98,40 @@ private struct PassingEnvironmentSPLGate: EnvironmentSPLMeasuring, EnvironmentSP
         )
     }
 
-    func monitorGate(
-        configuration: TinnitusEnvironmentSPLGateConfiguration
-    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
-        let update = TinnitusEnvironmentSPLGateEvaluator().update(
+    func makeMonitor(
+        configuration: TinnitusEnvironmentSPLGateConfiguration,
+        reason: TinnitusEnvironmentSPLReacquisitionReason
+    ) -> any EnvironmentSPLMonitorSession {
+        let result = TinnitusEnvironmentSPLGateEvaluator().evaluate(
             samplesDBA: samplesDBA,
             configuration: configuration
         )
-        return AsyncThrowingStream { continuation in
-            continuation.yield(update)
-        }
+        return PassingEnvironmentSPLMonitorSession(
+            reason: reason,
+            measurements: result.measurements
+        )
+    }
+}
+
+@MainActor
+private final class PassingEnvironmentSPLMonitorSession: EnvironmentSPLMonitorSession {
+    let events: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>
+    private let continuation: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation
+
+    init(
+        reason: TinnitusEnvironmentSPLReacquisitionReason,
+        measurements: [TinnitusEnvironmentSPLMeasurement]
+    ) {
+        var captured: AsyncThrowingStream<TinnitusEnvironmentSPLMonitorEvent, Error>.Continuation!
+        events = AsyncThrowingStream { captured = $0 }
+        continuation = captured
+        continuation.yield(.warmingUp(reason))
+        continuation.yield(.ready)
+        measurements.forEach { continuation.yield(.measurement($0)) }
+    }
+
+    func stop() async {
+        continuation.finish()
     }
 }
 

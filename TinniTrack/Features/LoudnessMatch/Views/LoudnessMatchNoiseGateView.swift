@@ -5,7 +5,7 @@ struct LoudnessMatchNoiseGateView: View {
     let showSuggestions: () -> Void
 
     private var status: TinnitusEnvironmentSPLGateStatus {
-        update?.status ?? .measuring
+        update?.status ?? .idle
     }
 
     var body: some View {
@@ -38,7 +38,7 @@ struct LoudnessMatchNoiseGateView: View {
             VStack(alignment: .leading, spacing: 12) {
                 LoudnessMatchModalTitleBlock(
                     title: "Find a quiet place where you can focus and take the test.",
-                    bodyText: "Too much background noise can cause inaccurate results in your test."
+                    bodyText: "The app is checking whether your surroundings appear quiet and stable enough for the hearing test. This is a screening check, not a calibrated sound-level measurement."
                 )
 
                 Button(action: showSuggestions) {
@@ -60,43 +60,51 @@ struct LoudnessMatchNoiseGateView: View {
 
     private var statusIcon: Image {
         switch status {
-        case .measuring:
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
             return Image(systemName: "ellipsis")
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return Image(systemName: "exclamationmark.circle.fill")
-        case .passed:
+        case .quiet:
             return Image(systemName: "checkmark.circle.fill")
+        case .routeInvalid, .unavailable:
+            return Image(systemName: "questionmark.circle.fill")
         }
     }
 
     private var statusText: String {
         switch status {
-        case .measuring:
-            return "In Progress..."
-        case .tooLoud:
-            return "Too much noise"
-        case .passed:
-            return "Noise Ok"
+        case .idle, .warmingUp, .measuringInitialQuietness:
+            return "Checking surroundings..."
+        case .suspended, .reacquiring:
+            return "Resuming check..."
+        case .suspectedLoudness:
+            return "Checking a noise change..."
+        case .interruptedByLoudness:
+            return "Surroundings changed"
+        case .quiet:
+            return "Quiet check passed"
+        case .routeInvalid:
+            return "Microphone route changed"
+        case .unavailable:
+            return "Check unavailable"
         }
     }
 
     private var statusColor: Color {
         switch status {
-        case .measuring:
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring, .routeInvalid, .unavailable:
             return LoudnessMatchModalColors.secondaryText
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return LoudnessMatchModalColors.warning
-        case .passed:
+        case .quiet:
             return LoudnessMatchModalColors.success
         }
     }
 
-    private var levelRatio: Double {
-        guard let latestSampleDBA = update?.latestSampleDBA else {
-            return 0.66
+    private var levelRatio: Double? {
+        update?.latestSampleDBA.map {
+            $0 / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
         }
-
-        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
     }
 
     private var passingProgress: Double {
@@ -113,7 +121,7 @@ struct LoudnessMatchNoiseGateView: View {
 
 struct LoudnessMatchNoiseGateMeter: View {
     let status: TinnitusEnvironmentSPLGateStatus
-    let levelRatio: Double
+    let levelRatio: Double?
     var passingProgress: Double?
     var isCompact = false
 
@@ -186,49 +194,65 @@ struct LoudnessMatchNoiseGateMeter: View {
     private static let animationFrameDuration: UInt64 = 33_000_000
 
     private var clampedLevelRatio: Double {
-        min(1.5, max(0, levelRatio))
+        min(1.5, max(0, levelRatio ?? 0))
     }
 
     private var ringProgress: CGFloat {
         switch status {
-        case .passed:
+        case .quiet:
             return 1
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return 1
-        case .measuring:
+        case .idle,
+             .warmingUp,
+             .measuringInitialQuietness,
+             .suspended,
+             .reacquiring,
+             .routeInvalid,
+             .unavailable:
             return min(0.94, max(0.08, passingProgress ?? 0))
         }
     }
 
     private var ringSymbolName: String {
         switch status {
-        case .measuring:
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
             return "ellipsis"
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return "xmark"
-        case .passed:
+        case .quiet:
             return "checkmark"
+        case .routeInvalid, .unavailable:
+            return "questionmark"
         }
     }
 
     private var ringColor: Color {
         switch status {
-        case .measuring:
+        case .idle, .warmingUp, .measuringInitialQuietness, .suspended, .reacquiring:
             return LoudnessMatchModalColors.primary
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return LoudnessMatchModalColors.warning
-        case .passed:
+        case .quiet:
             return LoudnessMatchModalColors.success
+        case .routeInvalid, .unavailable:
+            return LoudnessMatchModalColors.secondaryText
         }
     }
 
     private var ringBackgroundColor: Color {
         switch status {
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             return LoudnessMatchModalColors.warning.opacity(0.22)
-        case .passed:
+        case .quiet:
             return LoudnessMatchModalColors.success.opacity(0.22)
-        case .measuring:
+        case .idle,
+             .warmingUp,
+             .measuringInitialQuietness,
+             .suspended,
+             .reacquiring,
+             .routeInvalid,
+             .unavailable:
             return LoudnessMatchModalColors.meterInactive.opacity(0.34)
         }
     }
@@ -239,12 +263,18 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     private var accessibilityLabel: String {
         switch status {
-        case .measuring:
-            return "Quiet-room meter measuring"
-        case .tooLoud:
-            return "Quiet-room meter too loud"
-        case .passed:
-            return "Quiet-room meter passed"
+        case .idle, .warmingUp, .measuringInitialQuietness:
+            return "Quiet surroundings screening in progress"
+        case .suspended, .reacquiring:
+            return "Quiet surroundings screening resuming"
+        case .suspectedLoudness:
+            return "Possible background noise change"
+        case .interruptedByLoudness:
+            return "Sustained background noise interruption"
+        case .quiet:
+            return "Quiet surroundings screening passed"
+        case .routeInvalid, .unavailable:
+            return "Quiet surroundings screening unavailable"
         }
     }
 
@@ -303,11 +333,18 @@ struct LoudnessMatchNoiseGateMeter: View {
 
     private func targetIndex(columnCount: Int) -> Int {
         switch status {
-        case .tooLoud:
+        case .suspectedLoudness, .interruptedByLoudness:
             let minimumLoudIndex = greenIndexLimit(columnCount: columnCount) + 2
             let currentLevelIndex = Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1
             return min(columnCount - 1, max(minimumLoudIndex, currentLevelIndex))
-        case .measuring, .passed:
+        case .idle,
+             .warmingUp,
+             .measuringInitialQuietness,
+             .quiet,
+             .suspended,
+             .reacquiring,
+             .routeInvalid,
+             .unavailable:
             return min(columnCount - 1, max(0, Int(floor(normalizedLevelRatio() * Double(columnCount))) + 1))
         }
     }
@@ -357,6 +394,9 @@ struct LoudnessMatchNoiseGateMeter: View {
     }
 
     private func activeOpacity(for index: Int) -> Double {
+        guard levelRatio != nil else {
+            return 0
+        }
         let position = Double(index)
         let distance = position - displayedPosition
         let phase = phaseMultiplier(for: index)

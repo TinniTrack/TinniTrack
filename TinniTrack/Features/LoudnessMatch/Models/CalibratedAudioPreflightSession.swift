@@ -30,6 +30,7 @@ protocol CalibratedAudioPreflightControlling: AnyObject {
     func cancelEnvironmentGate()
     func startVolumeGateMonitoring()
     func stopVolumeGateMonitoring()
+    func endAudioSessionWorkflow()
     func clearMessage()
 }
 
@@ -46,7 +47,7 @@ final class CalibratedAudioPreflightSession: ObservableObject {
 
     enum Interruption: Equatable {
         case airPods(routeUnconfirmed: Bool, blockedByAnotherApp: Bool)
-        case quietRoom(levelRatio: Double)
+        case quietRoom(levelRatio: Double?)
     }
 
     @Published private(set) var phase: Phase?
@@ -73,7 +74,7 @@ final class CalibratedAudioPreflightSession: ObservableObject {
         case .airPods:
             return controller.isCurrentAirPodsPro2PlaybackRouteConfirmed
         case .quietRoom:
-            return controller.environmentGateResult?.passed == true
+            return controller.environmentGateUpdate?.hasCurrentQuietDecision == true
         case .fit:
             return true
         case .maximumVolume:
@@ -161,7 +162,7 @@ final class CalibratedAudioPreflightSession: ObservableObject {
             return true
 
         case .quietRoom:
-            return controller.environmentGateResult?.passed == true
+            return controller.environmentGateUpdate?.hasCurrentQuietDecision == true
 
         case .fit:
             controller.completeFitConfirmation()
@@ -195,6 +196,7 @@ final class CalibratedAudioPreflightSession: ObservableObject {
         stopAirPodsContinuityIfNeeded()
         cancelEnvironmentGateIfNeeded()
         stopVolumeMonitoringIfNeeded()
+        controller.endAudioSessionWorkflow()
         requestedFallback = nil
         phase = nil
         hasStarted = false
@@ -243,11 +245,10 @@ final class CalibratedAudioPreflightSession: ObservableObject {
             && !controller.isCurrentAirPodsPro2PlaybackRouteConfirmed
     }
 
-    private var quietRoomInterruptionLevelRatio: Double {
-        guard let latestSampleDBA = controller.environmentGateUpdate?.latestSampleDBA else {
-            return 1.2
+    private var quietRoomInterruptionLevelRatio: Double? {
+        controller.environmentGateUpdate?.latestSampleDBA.map {
+            $0 / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
         }
-        return latestSampleDBA / TinnitusEnvironmentSPLGateConfiguration.studyNo1.thresholdDBA
     }
 
     private func startHeadphoneRouteMonitoringIfNeeded() {
@@ -281,7 +282,7 @@ final class CalibratedAudioPreflightSession: ObservableObject {
     private func startEnvironmentGateIfNeeded() {
         guard !controller.isAirPodsRouteInterrupted,
               !controller.isRunningEnvironmentGate,
-              controller.environmentGateResult?.passed != true
+              controller.environmentGateUpdate?.status != .quiet
         else {
             return
         }

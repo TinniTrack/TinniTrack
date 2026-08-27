@@ -20,7 +20,7 @@ struct CalibratedAudioInterruptionOverlay: View {
                 VStack(alignment: .leading, spacing: 18) {
                     if let quietRoomLevelRatio {
                         LoudnessMatchNoiseGateMeter(
-                            status: .tooLoud,
+                            status: .interruptedByLoudness,
                             levelRatio: quietRoomLevelRatio,
                             isCompact: true
                         )

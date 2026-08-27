@@ -146,17 +146,25 @@ final class CalibratedAudioSessionGuardrailMonitor {
 
 final class AVAudioSessionRouteVolumeProvider: AudioSessionRouteVolumeProviding {
     private let audioSession: AVAudioSession
+    private let workflowCoordinator: StudyAudioSessionCoordinating
     private let notificationCenter: NotificationCenter
 
     init(
         audioSession: AVAudioSession = .sharedInstance(),
+        workflowCoordinator: StudyAudioSessionCoordinating? = nil,
         notificationCenter: NotificationCenter = .default
     ) {
         self.audioSession = audioSession
+        self.workflowCoordinator = workflowCoordinator ?? StudyAudioSessionCoordinator.shared
         self.notificationCenter = notificationCenter
     }
 
     func refreshRouteAndVolume() {
+        guard !workflowCoordinator.isWorkflowActive else {
+            // Route/volume inspection is read-only while the hearing-test
+            // workflow owns the process-global audio session.
+            return
+        }
         do {
             try audioSession.setCategory(.playback, mode: .default, options: [])
             try audioSession.setActive(true)
