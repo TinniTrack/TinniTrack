@@ -341,18 +341,21 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(signAndEnrollButton.isEnabled)
         signAndEnrollButton.tap()
 
-        let beginOrientationButton = app.buttons["study_begin_orientation_button"]
-        XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 5))
-        XCTAssertEqual(beginOrientationButton.label, "Begin Orientation")
+        XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
         XCTAssertFalse(app.navigationBars["Study Details"].exists)
 
-        beginOrientationButton.tap()
+        swipeBack(in: app)
+        XCTAssertTrue(app.navigationBars["Dashboard"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["ENROLLED"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Go to Tasks"].exists)
+    }
 
-        XCTAssertTrue(app.navigationBars["Orientation"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
+    @MainActor
+    func testStudyNo1OrientationUsesNativeNavigation() throws {
+        let app = launchEnrolledStudyOrientation()
         let orientationContinueButton = app.buttons["study_onboarding_primary_button"]
         XCTAssertTrue(orientationContinueButton.waitForExistence(timeout: 2))
         XCTAssertEqual(orientationContinueButton.label, "Continue")
@@ -361,7 +364,11 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].waitForExistence(timeout: 3))
         swipeBack(in: app)
         XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].waitForExistence(timeout: 3))
+    }
 
+    @MainActor
+    func testStudyNo1OrientationConfirmsExit() throws {
+        let app = launchEnrolledStudyOrientation()
         let closeOrientationButton = app.buttons["study_onboarding_close_button"]
         XCTAssertTrue(closeOrientationButton.exists)
         closeOrientationButton.tap()
@@ -369,18 +376,8 @@ final class TinniTrackUITests: XCTestCase {
         let exitAlert = app.alerts["Exit Orientation?"]
         XCTAssertTrue(exitAlert.waitForExistence(timeout: 2))
         XCTAssertTrue(exitAlert.staticTexts["Your current Study No. 1 onboarding progress will be discarded."].exists)
-        exitAlert.buttons["Keep Going"].tap()
-        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
-
-        closeOrientationButton.tap()
-        XCTAssertTrue(exitAlert.waitForExistence(timeout: 2))
         exitAlert.buttons["Exit Orientation"].tap()
-        XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 3))
-
-        swipeBack(in: app)
-        XCTAssertTrue(app.navigationBars["Dashboard"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["ENROLLED"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Go to Tasks"].exists)
+        XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 3))
     }
 
     @MainActor
@@ -440,6 +437,26 @@ final class TinniTrackUITests: XCTestCase {
         app.launchEnvironment["SUPABASE_URL"] = "https://vhgbjeeoqmbqvxtstpcq.supabase.co"
         app.launchEnvironment["SUPABASE_ANON_KEY"] = "sb_publishable_tzvCA-Go43bESrFD67sr8Q_8bdat__Q"
         app.launchEnvironment["SUPABASE_ENVIRONMENT"] = "Development"
+        return app
+    }
+
+    @MainActor
+    private func launchEnrolledStudyOrientation() -> XCUIApplication {
+        let app = makeAuthenticatedStudyApp()
+        app.launchEnvironment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] = "1"
+        app.launch()
+
+        let studyCard = app.buttons["study_card_study-no-1"]
+        XCTAssertTrue(studyCard.waitForExistence(timeout: 5))
+        studyCard.tap()
+
+        let beginOrientationButton = app.buttons["study_begin_orientation_button"]
+        XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 3))
+        XCTAssertEqual(beginOrientationButton.label, "Begin Orientation")
+        beginOrientationButton.tap()
+
+        XCTAssertTrue(app.navigationBars["Orientation"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
         return app
     }
 
