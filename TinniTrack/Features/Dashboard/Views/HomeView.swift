@@ -267,6 +267,7 @@ private struct StudyDetailView: View {
     let onEnrollmentConfirmed: @MainActor (StudyEnrollment) -> Void
 
     @State private var confirmedEnrollment: StudyEnrollment?
+    @State private var beganWithActiveEnrollment: Bool
 
     init(
         studyCard: DashboardStudyCard,
@@ -283,11 +284,12 @@ private struct StudyDetailView: View {
         _confirmedEnrollment = State(
             initialValue: studyCard.isEnrolledActive ? studyCard.enrollment : nil
         )
+        _beganWithActiveEnrollment = State(initialValue: studyCard.isEnrolledActive)
     }
 
     var body: some View {
         Group {
-            if let confirmedEnrollment {
+            if beganWithActiveEnrollment, let confirmedEnrollment {
                 StudyTaskDashboardView(
                     study: studyCard.study,
                     enrollment: confirmedEnrollment,
@@ -295,17 +297,32 @@ private struct StudyDetailView: View {
                     studyService: studyService
                 )
             } else if canEnroll, let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) {
-                StudyConsentFlowView(
-                    study: studyCard.study,
-                    definition: definition,
-                    consentService: consentService
-                ) { enrollment in
-                    var transaction = Transaction(animation: nil)
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        confirmedEnrollment = enrollment
+                ZStack {
+                    StudyConsentFlowView(
+                        study: studyCard.study,
+                        definition: definition,
+                        consentService: consentService
+                    ) { enrollment in
+                        var transaction = Transaction(animation: nil)
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            confirmedEnrollment = enrollment
+                        }
+                        onEnrollmentConfirmed(enrollment)
                     }
-                    onEnrollmentConfirmed(enrollment)
+                    .opacity(confirmedEnrollment == nil ? 1 : 0)
+                    .allowsHitTesting(confirmedEnrollment == nil)
+                    .accessibilityHidden(confirmedEnrollment != nil)
+
+                    if let confirmedEnrollment {
+                        StudyTaskDashboardView(
+                            study: studyCard.study,
+                            enrollment: confirmedEnrollment,
+                            profileTimezone: profileTimezone,
+                            studyService: studyService
+                        )
+                        .zIndex(1)
+                    }
                 }
             } else {
                 EnrollmentUnavailableView(
@@ -314,6 +331,8 @@ private struct StudyDetailView: View {
                 )
             }
         }
+        .navigationTitle(confirmedEnrollment == nil ? "Study Details" : studyCard.study.title)
+        .navigationBarTitleDisplayMode(.inline)
         .interactivePopGestureEnabled()
     }
 

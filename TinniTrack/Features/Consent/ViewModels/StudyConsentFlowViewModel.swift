@@ -101,6 +101,11 @@ final class StudyConsentFlowViewModel: ObservableObject {
         return hasAvailableEnrollmentRecovery
     }
 
+    var hasSignedConsentError: Bool {
+        guard case .failed(.signedConsent, _) = enrollmentOperation else { return false }
+        return true
+    }
+
     var trimmedFirstName: String {
         firstName.trimmingCharacters(in: .whitespacesAndNewlines)
     }

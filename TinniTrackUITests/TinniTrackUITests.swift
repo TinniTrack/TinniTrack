@@ -179,21 +179,18 @@ final class TinniTrackUITests: XCTestCase {
 
     @MainActor
     func testStudyNo1DashboardConsentFlowUsesNativePushAndSwipeBack() throws {
-        let app = makeAuthenticatedStudyApp()
+        let app = makeMockedStudyApp(scenario: .success)
         app.launch()
 
         let studyCard = app.buttons["study_card_study-no-1"]
-        XCTAssertTrue(
-            studyCard.waitForExistence(timeout: 15),
-            "Timed out waiting for the hosted development study catalog to show Study No. 1."
-        )
+        XCTAssertTrue(studyCard.waitForExistence(timeout: 5))
         studyCard.tap()
 
         XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Loudness Match Study"].exists)
         let reviewButton = app.buttons["study_consent_review_button"]
-        XCTAssertTrue(reviewButton.exists)
+        XCTAssertTrue(reviewButton.waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["Inclusion Criteria"].exists)
         XCTAssertFalse(app.staticTexts["Exclusion Criteria"].exists)
 
@@ -292,6 +289,116 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
+    func testStudyConsentBackNavigationPreservesDraftAcrossReentry() throws {
+        let app = makeMockedStudyApp(scenario: .success)
+        app.launch()
+
+        openStudyConsentReader(in: app)
+        continueToStudyConsentSignature(in: app)
+        completeStudyConsentSignature(in: app, firstName: "Alex", lastName: "Rivers")
+        XCTAssertTrue(signAndEnrollButton(in: app).isEnabled)
+
+        let nativeBackButton = app.navigationBars["Sign Consent"].buttons.firstMatch
+        XCTAssertTrue(nativeBackButton.waitForExistence(timeout: 2))
+        nativeBackButton.tap()
+        XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
+
+        swipeBack(in: app)
+        assertStudyConsentLanding(in: app)
+
+        openStudyConsentReaderFromLanding(in: app)
+        continueToStudyConsentSignature(in: app)
+
+        XCTAssertEqual(app.textFields["study_consent_first_name_field"].value as? String, "Alex")
+        XCTAssertEqual(app.textFields["study_consent_last_name_field"].value as? String, "Rivers")
+        XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
+        XCTAssertTrue(signAndEnrollButton(in: app).isEnabled)
+    }
+
+    @MainActor
+    func testStudyConsentDeclineFromReaderAndSignatureReturnsToStudyDetails() throws {
+        let app = makeMockedStudyApp(scenario: .success)
+        app.launch()
+
+        openStudyConsentReader(in: app)
+        let readerDeclineButton = app.buttons["study_consent_decline_button"]
+        XCTAssertTrue(readerDeclineButton.waitForExistence(timeout: 2))
+        readerDeclineButton.tap()
+
+        let readerAlert = app.alerts["Consent Required"]
+        XCTAssertTrue(readerAlert.waitForExistence(timeout: 2))
+        readerAlert.buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 2))
+
+        readerDeclineButton.tap()
+        XCTAssertTrue(readerAlert.waitForExistence(timeout: 2))
+        readerAlert.buttons["Exit"].tap()
+        assertStudyConsentLanding(in: app)
+
+        openStudyConsentReaderFromLanding(in: app)
+        continueToStudyConsentSignature(in: app)
+
+        let signatureDeclineButton = app.buttons["study_consent_signature_decline_button"]
+        let signatureScroll = app.scrollViews["study_consent_signature"]
+        for _ in 0..<4 where !signatureDeclineButton.isHittable {
+            signatureScroll.swipeUp()
+        }
+        XCTAssertTrue(signatureDeclineButton.isHittable)
+        signatureDeclineButton.tap()
+
+        let signatureAlert = app.alerts["Consent Required"]
+        XCTAssertTrue(signatureAlert.waitForExistence(timeout: 2))
+        signatureAlert.buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 2))
+
+        signatureDeclineButton.tap()
+        XCTAssertTrue(signatureAlert.waitForExistence(timeout: 2))
+        signatureAlert.buttons["Exit"].tap()
+        assertStudyConsentLanding(in: app)
+    }
+
+    @MainActor
+    func testStudyConsentFailOnceStaysOnSignatureAndRetrySucceeds() throws {
+        let app = makeMockedStudyApp(scenario: .failOnce)
+        app.launch()
+
+        openStudyConsentReader(in: app)
+        continueToStudyConsentSignature(in: app)
+        completeStudyConsentSignature(in: app, firstName: "Alex", lastName: "Rivers")
+        makeSignAndEnrollButtonHittable(in: app).tap()
+
+        let failureAlert = app.alerts["Unable to Finish Enrollment"]
+        XCTAssertTrue(failureAlert.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Sign Consent"].exists)
+        failureAlert.buttons["Try Again"].tap()
+
+        XCTAssertTrue(failureAlert.waitForNonExistence(timeout: 2))
+        XCTAssertTrue(app.navigationBars["Sign Consent"].exists)
+        XCTAssertEqual(app.textFields["study_consent_first_name_field"].value as? String, "Alex")
+        XCTAssertEqual(app.textFields["study_consent_last_name_field"].value as? String, "Rivers")
+        XCTAssertTrue(app.images["study_signature_preview_image"].exists)
+
+        let retryButton = makeSignAndEnrollButtonHittable(in: app)
+        XCTAssertTrue(waitForEnabledState(true, of: retryButton))
+        retryButton.tap()
+        assertStudyTaskDashboardDestination(in: app)
+    }
+
+    @MainActor
+    func testStudyConsentPendingRecoveryRoutesToTaskDashboard() throws {
+        let app = makeMockedStudyApp(scenario: .pendingRecovery)
+        app.launch()
+
+        openStudyDetails(in: app)
+        let resumeButton = app.buttons["study_consent_resume_enrollment_button"]
+        XCTAssertTrue(resumeButton.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["study_consent_review_button"].exists)
+        resumeButton.tap()
+
+        assertStudyTaskDashboardDestination(in: app)
+    }
+
+    @MainActor
     func testStudyNo1EnrollmentSuccessRoutesToOrientationAndRefreshesDashboard() throws {
         let app = makeAuthenticatedStudyApp()
         app.launchEnvironment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] = "1"
@@ -345,6 +452,7 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
+        XCTAssertTrue(app.navigationBars["Loudness Matching Study"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.navigationBars["Study Details"].exists)
 
         swipeBack(in: app)
@@ -449,6 +557,7 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
         XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
+        XCTAssertTrue(app.navigationBars["Loudness Matching Study"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.navigationBars["Study Details"].exists)
     }
 
@@ -512,6 +621,12 @@ final class TinniTrackUITests: XCTestCase {
         return app
     }
 
+    private func makeMockedStudyApp(scenario: MockStudyScenario) -> XCUIApplication {
+        let app = makeAuthenticatedStudyApp()
+        app.launchEnvironment["UITEST_MOCK_STUDY_SCENARIO"] = scenario.rawValue
+        return app
+    }
+
     @MainActor
     private func launchEnrolledStudyOrientation() -> XCUIApplication {
         let app = makeAuthenticatedStudyApp()
@@ -538,6 +653,105 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(profileTab.waitForExistence(timeout: 3))
         profileTab.tap()
         XCTAssertTrue(app.navigationBars["Profile"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    private func openStudyDetails(in app: XCUIApplication) {
+        let studyCard = app.buttons["study_card_study-no-1"]
+        XCTAssertTrue(studyCard.waitForExistence(timeout: 5))
+        studyCard.tap()
+        XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    private func openStudyConsentReader(in app: XCUIApplication) {
+        openStudyDetails(in: app)
+        openStudyConsentReaderFromLanding(in: app)
+    }
+
+    @MainActor
+    private func openStudyConsentReaderFromLanding(in app: XCUIApplication) {
+        let reviewButton = app.buttons["study_consent_review_button"]
+        XCTAssertTrue(reviewButton.waitForExistence(timeout: 3))
+        reviewButton.tap()
+        XCTAssertTrue(app.navigationBars["Informed Consent"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    private func continueToStudyConsentSignature(in app: XCUIApplication) {
+        scrollConsentToBottom(in: app)
+        let signatureButton = app.buttons["study_consent_signature_button"]
+        XCTAssertTrue(signatureButton.waitForExistence(timeout: 2))
+        XCTAssertTrue(signatureButton.isEnabled)
+        signatureButton.tap()
+        XCTAssertTrue(app.navigationBars["Sign Consent"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    private func completeStudyConsentSignature(
+        in app: XCUIApplication,
+        firstName: String,
+        lastName: String
+    ) {
+        let firstNameField = app.textFields["study_consent_first_name_field"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))
+        firstNameField.tap()
+        firstNameField.typeText(firstName)
+        firstNameField.typeText("\n")
+
+        let lastNameField = app.textFields["study_consent_last_name_field"]
+        XCTAssertTrue(lastNameField.waitForExistence(timeout: 2))
+        lastNameField.tap()
+        lastNameField.typeText(lastName)
+        lastNameField.typeText("\n")
+
+        let drawSignatureButton = app.buttons["study_consent_draw_signature_button"]
+        XCTAssertTrue(drawSignatureButton.waitForExistence(timeout: 2))
+        drawSignatureButton.tap()
+
+        let saveSignatureButton = app.buttons["study_signature_save_button"]
+        XCTAssertTrue(saveSignatureButton.waitForExistence(timeout: 2))
+        drawSignature(in: app)
+        XCTAssertTrue(saveSignatureButton.isEnabled)
+        saveSignatureButton.tap()
+        XCTAssertTrue(app.images["study_signature_preview_image"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    private func signAndEnrollButton(in app: XCUIApplication) -> XCUIElement {
+        let identifiedButton = app.buttons["study_consent_sign_and_enroll_button"]
+        if identifiedButton.waitForExistence(timeout: 0.5) {
+            return identifiedButton
+        }
+        return app.buttons["Sign and Enroll"]
+    }
+
+    @MainActor
+    private func makeSignAndEnrollButtonHittable(in app: XCUIApplication) -> XCUIElement {
+        let button = signAndEnrollButton(in: app)
+        let signatureScroll = app.scrollViews["study_consent_signature"]
+        for _ in 0..<4 where !button.isHittable {
+            signatureScroll.swipeUp()
+        }
+        XCTAssertTrue(button.waitForExistence(timeout: 2))
+        XCTAssertTrue(button.isHittable)
+        return button
+    }
+
+    @MainActor
+    private func assertStudyConsentLanding(in app: XCUIApplication) {
+        XCTAssertTrue(app.navigationBars["Study Details"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.scrollViews["study_consent_landing"].waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    private func assertStudyTaskDashboardDestination(in app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Welcome. Thanks for choosing to participate in this study!"].exists)
+        XCTAssertFalse(app.navigationBars["Sign Consent"].exists)
+        XCTAssertFalse(app.navigationBars["Informed Consent"].exists)
+        XCTAssertTrue(app.navigationBars["Loudness Matching Study"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.navigationBars["Study Details"].exists)
     }
 
     @MainActor
@@ -609,5 +823,11 @@ final class TinniTrackUITests: XCTestCase {
         let start = drawingSurface.coordinate(withNormalizedOffset: CGVector(dx: 0.18, dy: 0.58))
         let end = drawingSurface.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.42))
         start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    private enum MockStudyScenario: String {
+        case success
+        case failOnce = "fail_once"
+        case pendingRecovery = "pending_recovery"
     }
 }

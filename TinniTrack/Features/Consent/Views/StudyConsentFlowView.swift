@@ -78,8 +78,6 @@ struct StudyConsentFlowView: View {
                 }
             }
         )
-        .navigationTitle("Study Details")
-        .navigationBarTitleDisplayMode(.inline)
         .foregroundStyle(LoudnessMatchModalColors.text)
         .background(LoudnessMatchModalColors.background)
         .navigationDestination(isPresented: reviewPresentation) {
@@ -113,26 +111,27 @@ struct StudyConsentFlowView: View {
                 .toolbar(.hidden, for: .tabBar)
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .background(LoudnessMatchModalColors.background)
+                .alert("Unable to Finish Enrollment", isPresented: signedEnrollmentErrorPresentation) {
+                    Button("Try Again") {
+                        viewModel.dismissEnrollmentError()
+                    }
+                    Button("Cancel", role: .cancel) {
+                        exitConsentToLanding()
+                    }
+                } message: {
+                    Text(viewModel.errorMessage ?? "")
+                }
             }
         }
         .task {
             await viewModel.probeEnrollmentRecoveryIfNeeded()
         }
-        .alert("Unable to Finish Enrollment", isPresented: enrollmentErrorPresentation) {
-            if viewModel.shouldRetryEnrollmentRecoveryFromAlert {
-                Button("Try Again") {
-                    completeEnrollment(using: .recovery)
-                }
-                Button("Not Now", role: .cancel) {
-                    viewModel.dismissEnrollmentError()
-                }
-            } else {
-                Button("Try Again") {
-                    viewModel.dismissEnrollmentError()
-                }
-                Button("Cancel", role: .cancel) {
-                    exitConsentToLanding()
-                }
+        .alert("Unable to Finish Enrollment", isPresented: recoveryEnrollmentErrorPresentation) {
+            Button("Try Again") {
+                completeEnrollment(using: .recovery)
+            }
+            Button("Not Now", role: .cancel) {
+                viewModel.dismissEnrollmentError()
             }
         } message: {
             Text(viewModel.errorMessage ?? "")
@@ -165,15 +164,24 @@ struct StudyConsentFlowView: View {
         )
     }
 
-    private var enrollmentErrorPresentation: Binding<Bool> {
+    private var recoveryEnrollmentErrorPresentation: Binding<Bool> {
         Binding(
-            get: { viewModel.errorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    viewModel.dismissEnrollmentError()
-                }
-            }
+            get: { viewModel.shouldRetryEnrollmentRecoveryFromAlert },
+            set: dismissEnrollmentErrorIfNeeded
         )
+    }
+
+    private var signedEnrollmentErrorPresentation: Binding<Bool> {
+        Binding(
+            get: { viewModel.hasSignedConsentError },
+            set: dismissEnrollmentErrorIfNeeded
+        )
+    }
+
+    private func dismissEnrollmentErrorIfNeeded(_ isPresented: Bool) {
+        if !isPresented {
+            viewModel.dismissEnrollmentError()
+        }
     }
 
     @MainActor
@@ -200,6 +208,7 @@ struct StudyConsentFlowView: View {
     private func completeEnrollment(using source: StudyConsentFlowViewModel.EnrollmentSource) {
         Task { @MainActor in
             guard let enrollment = await viewModel.completeEnrollment(using: source) else { return }
+            route = .landing
             onCompleted(enrollment)
         }
     }
