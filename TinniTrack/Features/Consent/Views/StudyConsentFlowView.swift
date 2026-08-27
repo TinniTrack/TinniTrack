@@ -10,19 +10,51 @@ enum StudyConsentReadableColors {
     static let bodyText = Color(uiColor: .label)
 }
 
-struct StudyConsentFlowView: View {
-    let onCompleted: @MainActor () async -> Bool
+enum StudyConsentRoute: Hashable {
+    case landing
+    case review
+    case signature
 
-    @Environment(\.dismiss) private var dismiss
+    var presentsReview: Bool {
+        self != .landing
+    }
+
+    var presentsSignature: Bool {
+        self == .signature
+    }
+
+    mutating func setReviewPresented(_ isPresented: Bool) {
+        if isPresented {
+            if self == .landing {
+                self = .review
+            }
+        } else {
+            self = .landing
+        }
+    }
+
+    mutating func setSignaturePresented(_ isPresented: Bool) {
+        if isPresented {
+            if self == .review {
+                self = .signature
+            }
+        } else if self == .signature {
+            self = .review
+        }
+    }
+}
+
+struct StudyConsentFlowView: View {
+    let onCompleted: @MainActor (StudyEnrollment) -> Void
+
     @StateObject private var viewModel: StudyConsentFlowViewModel
-    @State private var isReviewPresented = false
-    @State private var hasHandledCompletion = false
+    @State private var route: StudyConsentRoute = .landing
 
     init(
         study: Study,
         definition: StudyConsentDefinition,
         consentService: ConsentServiceProtocol,
-        onCompleted: @escaping @MainActor () async -> Bool
+        onCompleted: @escaping @MainActor (StudyEnrollment) -> Void
     ) {
         self.onCompleted = onCompleted
         _viewModel = StateObject(wrappedValue: StudyConsentFlowViewModel(
@@ -36,99 +68,148 @@ struct StudyConsentFlowView: View {
         StudyConsentLandingView(
             definition: viewModel.definition,
             enrollmentRecoveryStatus: viewModel.enrollmentRecoveryStatus,
-            isResumingEnrollment: viewModel.state == .finalizing,
+            isResumingEnrollment: viewModel.isResumingEnrollment,
             canReviewConsent: viewModel.canReviewConsent,
-            reviewConsent: {
-                guard viewModel.canReviewConsent else { return }
-                viewModel.reviewConsent()
-                isReviewPresented = true
-            },
-            resumeEnrollment: resumeEnrollmentAndHandleCompletion,
+            reviewConsent: presentConsentReview,
+            resumeEnrollment: { completeEnrollment(using: .recovery) },
             retryEnrollmentRecoveryProbe: {
-                Task {
+                Task { @MainActor in
                     await viewModel.retryEnrollmentRecoveryProbe()
                 }
             }
         )
-            .navigationTitle("Study Details")
+        .foregroundStyle(LoudnessMatchModalColors.text)
+        .background(LoudnessMatchModalColors.background)
+        .navigationDestination(isPresented: reviewPresentation) {
+            StudyConsentReaderView(
+                definition: viewModel.definition,
+                visibleSections: viewModel.visibleSections,
+                canContinueToSignature: viewModel.canContinueToSignature,
+                markConsentReviewed: viewModel.markConsentScrolledToEnd,
+                continueToSignature: presentSignature,
+                declineConsent: exitConsentToLanding
+            )
+            .navigationTitle("Informed Consent")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
             .foregroundStyle(LoudnessMatchModalColors.text)
             .background(LoudnessMatchModalColors.background)
-            .navigationDestination(isPresented: $isReviewPresented) {
-                StudyConsentReaderView(
-                    viewModel: viewModel,
-                    onEnrollmentCompleted: handleCompletedEnrollment
+            .navigationDestination(isPresented: signaturePresentation) {
+                StudyConsentSignatureView(
+                    definition: viewModel.definition,
+                    firstName: $viewModel.firstName,
+                    lastName: $viewModel.lastName,
+                    signatureImageData: $viewModel.signatureImageData,
+                    canSignAndEnroll: viewModel.canSignAndEnroll,
+                    isFinalizingEnrollment: viewModel.isFinalizingSignedConsent,
+                    clearSignature: viewModel.clearSignature,
+                    signAndEnroll: { completeEnrollment(using: .signedConsent) },
+                    declineConsent: exitConsentToLanding
                 )
-                .navigationTitle("Informed Consent")
+                .navigationTitle("Sign Consent")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(.hidden, for: .tabBar)
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .background(LoudnessMatchModalColors.background)
-            }
-            .onChange(of: isReviewPresented) { wasPresented, isPresented in
-                guard wasPresented, !isPresented else { return }
-                viewModel.returnToLandingAfterNavigationPop()
-            }
-            .task(id: viewModel.state) {
-                switch viewModel.state {
-                case .landing:
-                    await viewModel.probeEnrollmentRecoveryIfNeeded()
-                case .dismissed:
-                    dismiss()
-                case .reviewingConsent, .signing, .finalizing, .completed, .failed:
-                    break
-                }
-            }
-            .alert("Unable to Finish Enrollment", isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { shouldShow in
-                    if !shouldShow {
-                        viewModel.errorMessage = nil
-                    }
-                }
-            )) {
-                if viewModel.shouldRetryEnrollmentRecoveryFromAlert {
+                .alert("Unable to Finish Enrollment", isPresented: signedEnrollmentErrorPresentation) {
                     Button("Try Again") {
-                        resumeEnrollmentAndHandleCompletion()
-                    }
-                    Button("Not Now", role: .cancel) {
-                        viewModel.dismissEnrollmentRecoveryError()
-                    }
-                } else {
-                    Button("Try Again") {
-                        viewModel.retryAfterFailure()
+                        viewModel.dismissEnrollmentError()
                     }
                     Button("Cancel", role: .cancel) {
-                        viewModel.declineOrCancel()
+                        exitConsentToLanding()
                     }
+                } message: {
+                    Text(viewModel.errorMessage ?? "")
                 }
-            } message: {
-                Text(viewModel.errorMessage ?? "")
             }
+        }
+        .task {
+            await viewModel.probeEnrollmentRecoveryIfNeeded()
+        }
+        .alert("Unable to Finish Enrollment", isPresented: recoveryEnrollmentErrorPresentation) {
+            Button("Try Again") {
+                completeEnrollment(using: .recovery)
+            }
+            Button("Not Now", role: .cancel) {
+                viewModel.dismissEnrollmentError()
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
+    }
+
+    private var reviewPresentation: Binding<Bool> {
+        Binding(
+            get: { route.presentsReview },
+            set: { isPresented in
+                let previousRoute = route
+                route.setReviewPresented(isPresented)
+                if previousRoute != route, route == .landing {
+                    viewModel.resetConsentReviewProgress()
+                }
+            }
+        )
+    }
+
+    private var signaturePresentation: Binding<Bool> {
+        Binding(
+            get: { route.presentsSignature },
+            set: { isPresented in
+                let previousRoute = route
+                route.setSignaturePresented(isPresented)
+                if previousRoute == .signature, route == .review {
+                    viewModel.resetConsentReviewProgress()
+                }
+            }
+        )
+    }
+
+    private var recoveryEnrollmentErrorPresentation: Binding<Bool> {
+        Binding(
+            get: { viewModel.shouldRetryEnrollmentRecoveryFromAlert },
+            set: dismissEnrollmentErrorIfNeeded
+        )
+    }
+
+    private var signedEnrollmentErrorPresentation: Binding<Bool> {
+        Binding(
+            get: { viewModel.hasSignedConsentError },
+            set: dismissEnrollmentErrorIfNeeded
+        )
+    }
+
+    private func dismissEnrollmentErrorIfNeeded(_ isPresented: Bool) {
+        if !isPresented {
+            viewModel.dismissEnrollmentError()
+        }
     }
 
     @MainActor
-    private func resumeEnrollmentAndHandleCompletion() {
+    private func presentConsentReview() {
+        guard viewModel.canReviewConsent else { return }
+        viewModel.prepareConsentReview()
+        route = .review
+    }
+
+    @MainActor
+    private func presentSignature() {
+        guard route == .review, viewModel.canContinueToSignature else { return }
+        route = .signature
+    }
+
+    @MainActor
+    private func exitConsentToLanding() {
+        guard !viewModel.isEnrollmentInProgress else { return }
+        viewModel.abandonConsentAttempt()
+        route = .landing
+    }
+
+    @MainActor
+    private func completeEnrollment(using source: StudyConsentFlowViewModel.EnrollmentSource) {
         Task { @MainActor in
-            guard await viewModel.resumeEnrollment() else { return }
-            await handleCompletedEnrollment()
-        }
-    }
-
-    @MainActor
-    private func handleCompletedEnrollment() async {
-        guard viewModel.state == .completed, !hasHandledCompletion else { return }
-        hasHandledCompletion = true
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            isReviewPresented = false
-        }
-        await Task.yield()
-
-        let didRouteAfterCompletion = await onCompleted()
-        if !didRouteAfterCompletion {
-            dismiss()
+            guard let enrollment = await viewModel.completeEnrollment(using: source) else { return }
+            route = .landing
+            onCompleted(enrollment)
         }
     }
 }

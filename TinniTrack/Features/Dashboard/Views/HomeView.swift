@@ -18,10 +18,12 @@ struct HomeView: View {
         processInfo: ProcessInfo = .processInfo
     ) {
         #if DEBUG
+        let uiTestStudyScenario = processInfo.environment["UITEST_MOCK_STUDY_SCENARIO"]
         if studyService == nil,
            consentService == nil,
            (processInfo.environment["UITEST_MOCK_STUDY_ENROLLMENT_SUCCESS"] == "1"
-            || processInfo.environment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] == "1") {
+            || processInfo.environment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] == "1"
+            || uiTestStudyScenario != nil) {
             let uiTestServices = UITestEnrollmentServices(processInfo: processInfo)
             self.studyService = uiTestServices
             self.consentService = uiTestServices
@@ -169,28 +171,16 @@ private struct DashboardTabView: View {
         }
     }
 
-    @ViewBuilder
     private func destination(for studyCard: DashboardStudyCard) -> some View {
-        if studyCard.isEnrolledActive, let enrollment = studyCard.enrollment {
-            StudyTaskDashboardView(
-                study: studyCard.study,
-                enrollment: enrollment,
-                profileTimezone: profileTimezone,
-                studyService: studyService
-            )
-        } else {
-            StudyDetailView(
-                studyCard: studyCard,
-                profileTimezone: profileTimezone,
-                studyService: studyService,
-                consentService: consentService
-            ) {
-                await viewModel.refreshAfterEnrollment()
-                guard let refreshedStudyCard = viewModel.studies.first(where: { $0.study.id == studyCard.study.id }),
-                      refreshedStudyCard.isEnrolledActive else {
-                    return nil
-                }
-                return refreshedStudyCard
+        StudyDetailView(
+            studyCard: studyCard,
+            profileTimezone: profileTimezone,
+            studyService: studyService,
+            consentService: consentService
+        ) { enrollment in
+            viewModel.confirmEnrollment(enrollment)
+            Task { @MainActor in
+                await viewModel.reconcileAfterEnrollment()
             }
         }
     }
@@ -274,39 +264,65 @@ private struct StudyDetailView: View {
     let profileTimezone: String?
     let studyService: StudyServiceProtocol
     let consentService: ConsentServiceProtocol
-    let onEnrollmentCompleted: @MainActor () async -> DashboardStudyCard?
+    let onEnrollmentConfirmed: @MainActor (StudyEnrollment) -> Void
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var completedStudyCard: DashboardStudyCard?
+    @State private var confirmedEnrollment: StudyEnrollment?
+    @State private var beganWithActiveEnrollment: Bool
+
+    init(
+        studyCard: DashboardStudyCard,
+        profileTimezone: String?,
+        studyService: StudyServiceProtocol,
+        consentService: ConsentServiceProtocol,
+        onEnrollmentConfirmed: @escaping @MainActor (StudyEnrollment) -> Void
+    ) {
+        self.studyCard = studyCard
+        self.profileTimezone = profileTimezone
+        self.studyService = studyService
+        self.consentService = consentService
+        self.onEnrollmentConfirmed = onEnrollmentConfirmed
+        _confirmedEnrollment = State(
+            initialValue: studyCard.isEnrolledActive ? studyCard.enrollment : nil
+        )
+        _beganWithActiveEnrollment = State(initialValue: studyCard.isEnrolledActive)
+    }
 
     var body: some View {
         Group {
-            if let completedStudyCard,
-               completedStudyCard.isEnrolledActive,
-               let enrollment = completedStudyCard.enrollment {
+            if beganWithActiveEnrollment, let confirmedEnrollment {
                 StudyTaskDashboardView(
-                    study: completedStudyCard.study,
-                    enrollment: enrollment,
+                    study: studyCard.study,
+                    enrollment: confirmedEnrollment,
                     profileTimezone: profileTimezone,
                     studyService: studyService
                 )
             } else if canEnroll, let definition = StudyConsentCatalog.definition(for: studyCard.study.slug) {
-                StudyConsentFlowView(
-                    study: studyCard.study,
-                    definition: definition,
-                    consentService: consentService
-                ) {
-                    let refreshedStudyCard = await onEnrollmentCompleted()
-                    guard let refreshedStudyCard,
-                          refreshedStudyCard.isEnrolledActive else {
-                        return false
+                ZStack {
+                    StudyConsentFlowView(
+                        study: studyCard.study,
+                        definition: definition,
+                        consentService: consentService
+                    ) { enrollment in
+                        var transaction = Transaction(animation: nil)
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            confirmedEnrollment = enrollment
+                        }
+                        onEnrollmentConfirmed(enrollment)
                     }
-                    var transaction = Transaction(animation: nil)
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        completedStudyCard = refreshedStudyCard
+                    .opacity(confirmedEnrollment == nil ? 1 : 0)
+                    .allowsHitTesting(confirmedEnrollment == nil)
+                    .accessibilityHidden(confirmedEnrollment != nil)
+
+                    if let confirmedEnrollment {
+                        StudyTaskDashboardView(
+                            study: studyCard.study,
+                            enrollment: confirmedEnrollment,
+                            profileTimezone: profileTimezone,
+                            studyService: studyService
+                        )
+                        .zIndex(1)
                     }
-                    return true
                 }
             } else {
                 EnrollmentUnavailableView(
@@ -315,11 +331,9 @@ private struct StudyDetailView: View {
                 )
             }
         }
+        .navigationTitle(confirmedEnrollment == nil ? "Study Details" : studyCard.study.title)
+        .navigationBarTitleDisplayMode(.inline)
         .interactivePopGestureEnabled()
-        .onChange(of: studyCard.enrollment?.status) { _, status in
-            guard status == .enrolled else { return }
-            dismiss()
-        }
     }
 
     private var canEnroll: Bool {
@@ -395,9 +409,14 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
     private let studyID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
     private let enrollmentID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
     private let userID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+    private let scenario: Scenario
     private var isEnrolled: Bool
+    private var finalizationAttemptCount = 0
 
     init(processInfo: ProcessInfo = .processInfo) {
+        scenario = Scenario(
+            rawValue: processInfo.environment["UITEST_MOCK_STUDY_SCENARIO"] ?? "success"
+        ) ?? .success
         isEnrolled = processInfo.environment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] == "1"
     }
 
@@ -416,21 +435,38 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
 
     func fetchMyEnrollments() async throws -> [StudyEnrollment] {
         guard isEnrolled else { return [] }
-        return [
-            StudyEnrollment(
-                id: enrollmentID,
-                userID: userID,
-                studyID: studyID,
-                status: .enrolled,
-                enrolledAt: Date(timeIntervalSince1970: 1_700_000_100),
-                createdAt: Date(timeIntervalSince1970: 1_700_000_100),
-                onboardingCompletedAt: nil
-            )
-        ]
+        return [enrollment]
     }
 
-    func finalizeConsentAndEnroll(study: Study, consent: StudyConsentCompletion) async throws {
+    func availableEnrollmentRecovery(
+        for study: Study
+    ) async throws -> ConsentEnrollmentRecovery? {
+        guard scenario == .pendingRecovery, !isEnrolled else { return nil }
+        return .pendingEnrollment
+    }
+
+    func resumeEnrollment(for study: Study) async throws -> StudyEnrollment {
+        guard scenario == .pendingRecovery else {
+            throw ConsentServiceError.noRecoverableConsent
+        }
         isEnrolled = true
+        return enrollment
+    }
+
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws -> StudyEnrollment {
+        finalizationAttemptCount += 1
+        if scenario == .failOnce, finalizationAttemptCount == 1 {
+            throw NSError(
+                domain: "UITestEnrollmentServices",
+                code: 503,
+                userInfo: [NSLocalizedDescriptionKey: "Enrollment is temporarily unavailable."]
+            )
+        }
+        isEnrolled = true
+        return enrollment
     }
 
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
@@ -458,6 +494,24 @@ private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServi
         enrollmentID: UUID,
         submission: LoudnessMatchSubmission
     ) async throws {}
+
+    private var enrollment: StudyEnrollment {
+        StudyEnrollment(
+            id: enrollmentID,
+            userID: userID,
+            studyID: studyID,
+            status: .enrolled,
+            enrolledAt: Date(timeIntervalSince1970: 1_700_000_100),
+            createdAt: Date(timeIntervalSince1970: 1_700_000_100),
+            onboardingCompletedAt: nil
+        )
+    }
+
+    private enum Scenario: String {
+        case success
+        case failOnce = "fail_once"
+        case pendingRecovery = "pending_recovery"
+    }
 }
 #endif
 

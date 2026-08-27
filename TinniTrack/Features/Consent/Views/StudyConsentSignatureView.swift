@@ -7,10 +7,15 @@ private enum StudyConsentSignatureField: Hashable {
 }
 
 struct StudyConsentSignatureView: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject var viewModel: StudyConsentFlowViewModel
-    let onEnrollmentCompleted: @MainActor () async -> Void
-    let exitConsentFlow: () -> Void
+    let definition: StudyConsentDefinition
+    @Binding var firstName: String
+    @Binding var lastName: String
+    @Binding var signatureImageData: Data?
+    let canSignAndEnroll: Bool
+    let isFinalizingEnrollment: Bool
+    let clearSignature: () -> Void
+    let signAndEnroll: () -> Void
+    let declineConsent: () -> Void
     @State private var isSignatureCapturePresented = false
     @State private var isDeclineConfirmationPresented = false
     @FocusState private var focusedField: StudyConsentSignatureField?
@@ -33,12 +38,12 @@ struct StudyConsentSignatureView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { dismissTextFocus() }
 
-                StudyConsentAttestationCard(text: viewModel.definition.attestation.text)
+                StudyConsentAttestationCard(text: definition.attestation.text)
                     .onTapGesture { dismissTextFocus() }
 
                 StudyConsentTextField(
                     title: "First name",
-                    text: $viewModel.firstName,
+                    text: $firstName,
                     textContentType: .givenName,
                     accessibilityIdentifier: "study_consent_first_name_field",
                     focusedField: $focusedField,
@@ -51,7 +56,7 @@ struct StudyConsentSignatureView: View {
 
                 StudyConsentTextField(
                     title: "Last name",
-                    text: $viewModel.lastName,
+                    text: $lastName,
                     textContentType: .familyName,
                     accessibilityIdentifier: "study_consent_last_name_field",
                     focusedField: $focusedField,
@@ -63,7 +68,7 @@ struct StudyConsentSignatureView: View {
                 }
 
                 StudySignatureCaptureCard(
-                    signatureImageData: viewModel.signatureImageData,
+                    signatureImageData: signatureImageData,
                     drawSignature: {
                         dismissTextFocus()
                         isSignatureCapturePresented = true
@@ -78,16 +83,14 @@ struct StudyConsentSignatureView: View {
 
                 LoudnessMatchModalPrimaryButton(
                     title: "Sign and Enroll",
-                    isEnabled: viewModel.canSignAndEnroll,
-                    isLoading: viewModel.state == .finalizing
+                    isEnabled: canSignAndEnroll,
+                    isLoading: isFinalizingEnrollment
                 ) {
                     dismissTextFocus()
-                    Task { @MainActor in
-                        guard await viewModel.signAndEnroll() else { return }
-                        await onEnrollmentCompleted()
-                    }
+                    signAndEnroll()
                 }
                 .padding(.top, 8)
+                .accessibilityIdentifier("study_consent_sign_and_enroll_button")
 
                 Button("I do not agree") {
                     dismissTextFocus()
@@ -110,25 +113,20 @@ struct StudyConsentSignatureView: View {
         .scrollDismissesKeyboard(.immediately)
         .background(LoudnessMatchModalColors.background)
         .overlay {
-            if viewModel.state == .finalizing {
+            if isFinalizingEnrollment {
                 StudyConsentFinalizingView()
             }
         }
         .sheet(isPresented: $isSignatureCapturePresented) {
             StudySignatureCaptureSheet(
-                signatureImageData: $viewModel.signatureImageData,
-                clear: viewModel.clearSignature
+                signatureImageData: $signatureImageData,
+                clear: clearSignature
             )
             .presentationDetents([.height(390), .large])
             .presentationDragIndicator(.visible)
         }
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
-            exitConsentFlow()
-        }
-        .onChange(of: viewModel.state) { _, state in
-            if state == .finalizing {
-                dismissTextFocus()
-            }
+            declineConsent()
         }
         .accessibilityIdentifier("study_consent_signature")
     }

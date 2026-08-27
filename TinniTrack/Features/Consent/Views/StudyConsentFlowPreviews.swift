@@ -7,16 +7,26 @@ import SwiftUI
 
 #Preview("Reader") {
     StudyConsentReaderView(
-        viewModel: StudyConsentFlowPreviewModel.makeReader(),
-        onEnrollmentCompleted: {}
+        definition: StudyConsentCatalog.studyNo1,
+        visibleSections: StudyConsentCatalog.studyNo1.sections,
+        canContinueToSignature: true,
+        markConsentReviewed: {},
+        continueToSignature: {},
+        declineConsent: {}
     )
 }
 
 #Preview("Signature") {
     StudyConsentSignatureView(
-        viewModel: StudyConsentFlowPreviewModel.makeSignature(),
-        onEnrollmentCompleted: {},
-        exitConsentFlow: {}
+        definition: StudyConsentCatalog.studyNo1,
+        firstName: .constant("Alex"),
+        lastName: .constant("Morgan"),
+        signatureImageData: .constant(nil),
+        canSignAndEnroll: false,
+        isFinalizingEnrollment: false,
+        clearSignature: {},
+        signAndEnroll: {},
+        declineConsent: {}
     )
 }
 
@@ -33,46 +43,24 @@ private struct StudyConsentFlowPreview: View {
             ),
             definition: StudyConsentCatalog.studyNo1,
             consentService: PreviewConsentService(),
-            onCompleted: { false }
-        )
-    }
-}
-
-@MainActor
-private enum StudyConsentFlowPreviewModel {
-    static func makeReader() -> StudyConsentFlowViewModel {
-        let model = base()
-        model.reviewConsent()
-        return model
-    }
-
-    static func makeSignature() -> StudyConsentFlowViewModel {
-        let model = base()
-        model.reviewConsent()
-        model.markConsentScrolledToEnd()
-        model.continueToSignature()
-        model.firstName = "Alex"
-        model.lastName = "Morgan"
-        return model
-    }
-
-    private static func base() -> StudyConsentFlowViewModel {
-        StudyConsentFlowViewModel(
-            study: Study(
-                id: UUID(),
-                slug: "study-no-1",
-                title: "Study No. 1",
-                description: "Baseline tinnitus study",
-                status: .recruiting,
-                createdAt: nil
-            ),
-            definition: StudyConsentCatalog.studyNo1,
-            consentService: PreviewConsentService()
+            onCompleted: { _ in }
         )
     }
 }
 
 private struct PreviewConsentService: ConsentServiceProtocol {
-    func finalizeConsentAndEnroll(study: Study, consent: StudyConsentCompletion) async throws {}
+    func finalizeConsentAndEnroll(
+        study: Study,
+        consent: StudyConsentCompletion
+    ) async throws -> StudyEnrollment {
+        StudyEnrollment(
+            id: UUID(),
+            userID: UUID(),
+            studyID: study.id,
+            status: .enrolled,
+            enrolledAt: Date(),
+            createdAt: Date()
+        )
+    }
 }
 #endif

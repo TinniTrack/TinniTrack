@@ -145,6 +145,7 @@ private struct StudyConsentRecoveryCard: View {
             Label(title, systemImage: "arrow.clockwise.circle.fill")
                 .font(.headline)
                 .foregroundStyle(LoudnessMatchModalColors.primary)
+                .accessibilityIdentifier("study_consent_recovery_card")
 
             Text(message)
                 .font(.subheadline)
@@ -183,7 +184,6 @@ private struct StudyConsentRecoveryCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(LoudnessMatchModalColors.controlStroke, lineWidth: 1)
         }
-        .accessibilityIdentifier("study_consent_recovery_card")
     }
 
     private var title: String {

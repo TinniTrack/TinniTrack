@@ -19,7 +19,7 @@ protocol ConsentPersistenceRemote {
     func uploadPDF(storagePath: String, data: Data) async throws
     func downloadPDF(storagePath: String) async throws -> Data
     func insertConsent(_ payload: ConsentInsertPayload) async throws
-    func enroll(studyID: UUID, consentID: UUID) async throws
+    func enroll(studyID: UUID, consentID: UUID) async throws -> StudyEnrollment
 }
 
 final class SupabaseConsentPersistenceRemote: ConsentPersistenceRemote {
@@ -84,8 +84,8 @@ final class SupabaseConsentPersistenceRemote: ConsentPersistenceRemote {
             .execute()
     }
 
-    func enroll(studyID: UUID, consentID: UUID) async throws {
-        try await client
+    func enroll(studyID: UUID, consentID: UUID) async throws -> StudyEnrollment {
+        let row: StudyEnrollmentRow = try await client
             .rpc(
                 "enroll_in_study_after_consent",
                 params: EnrollAfterConsentParams(
@@ -94,5 +94,8 @@ final class SupabaseConsentPersistenceRemote: ConsentPersistenceRemote {
                 )
             )
             .execute()
+            .value
+
+        return row.toDomain()
     }
 }

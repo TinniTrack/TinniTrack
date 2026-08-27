@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct StudyEnrollment: Identifiable, Equatable {
+nonisolated struct StudyEnrollment: Identifiable, Equatable, Sendable {
     let id: UUID
     let userID: UUID
     let studyID: UUID
@@ -33,7 +33,7 @@ struct StudyEnrollment: Identifiable, Equatable {
     }
 }
 
-enum StudyEnrollmentStatus: Equatable {
+nonisolated enum StudyEnrollmentStatus: Equatable, Sendable {
     case enrolled
     case withdrawn
     case completed

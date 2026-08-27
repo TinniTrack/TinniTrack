@@ -5,6 +5,28 @@ import Testing
 @MainActor
 struct ConsentFinalizationLifecycleTests {
     @Test
+    func freshFinalizationReturnsCanonicalEnrollment() async throws {
+        let fixture = try LifecycleFixture()
+        defer { fixture.remove() }
+        fixture.remote.publishRecordOnInsert = true
+
+        let enrollment = try await fixture.service.finalizeConsentAndEnroll(
+            study: fixture.study,
+            consent: fixture.completion
+        )
+
+        #expect(enrollment == fixture.remote.enrollment)
+        #expect(fixture.remote.events == [
+            .currentUser,
+            .existingConsent,
+            .upload,
+            .insert,
+            .existingConsent,
+            .enroll
+        ])
+    }
+
+    @Test
     func pendingEvidenceIsDurableBeforeUploadAndSurvivesUploadFailure() async throws {
         let fixture = try LifecycleFixture()
         defer { fixture.remove() }
@@ -13,7 +35,7 @@ struct ConsentFinalizationLifecycleTests {
 
         var observedError: LifecycleFailure?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -42,7 +64,7 @@ struct ConsentFinalizationLifecycleTests {
 
         var observedCancellation = false
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -68,7 +90,7 @@ struct ConsentFinalizationLifecycleTests {
         fixture.remote.downloadFailure = .unavailable
         var initialError: LifecycleFailure?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -99,7 +121,7 @@ struct ConsentFinalizationLifecycleTests {
 
         var observedError: ConsentServiceError?
         do {
-            try await relaunchedService.finalizeConsentAndEnroll(
+            _ = try await relaunchedService.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: changedCompletion
             )
@@ -121,7 +143,7 @@ struct ConsentFinalizationLifecycleTests {
         fixture.remote.downloadFailure = .unavailable
         var initialError: LifecycleFailure?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -149,10 +171,11 @@ struct ConsentFinalizationLifecycleTests {
             for: fixture.study
         )
         fixture.remote.events.removeAll()
-        try await relaunchedService.resumeEnrollment(for: fixture.study)
+        let enrollment = try await relaunchedService.resumeEnrollment(for: fixture.study)
         let pending = try await relaunchedStore.load(for: fixture.key)
 
         #expect(recovery == .pendingUpload)
+        #expect(enrollment == fixture.remote.enrollment)
         #expect(pending == nil)
         #expect(fixture.remote.events == [
             .currentUser,
@@ -173,7 +196,7 @@ struct ConsentFinalizationLifecycleTests {
 
         var observedError: ConsentServiceError?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -200,13 +223,14 @@ struct ConsentFinalizationLifecycleTests {
         fixture.remote.publishRecordOnInsert = true
         fixture.remote.insertFailure = .unavailable
 
-        try await fixture.service.finalizeConsentAndEnroll(
+        let enrollment = try await fixture.service.finalizeConsentAndEnroll(
             study: fixture.study,
             consent: fixture.completion
         )
         let pending = try await fixture.store.load(for: fixture.key)
 
         #expect(pending == nil)
+        #expect(enrollment == fixture.remote.enrollment)
         #expect(fixture.remote.events == [
             .currentUser,
             .existingConsent,
@@ -226,7 +250,7 @@ struct ConsentFinalizationLifecycleTests {
 
         var firstError: LifecycleFailure?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -236,12 +260,13 @@ struct ConsentFinalizationLifecycleTests {
         let pendingAfterConfirmation = try await fixture.store.load(for: fixture.key)
         fixture.remote.events.removeAll()
 
-        try await fixture.service.finalizeConsentAndEnroll(
+        let enrollment = try await fixture.service.finalizeConsentAndEnroll(
             study: fixture.study,
             consent: fixture.completion
         )
 
         #expect(firstError == .unavailable)
+        #expect(enrollment == fixture.remote.enrollment)
         #expect(pendingAfterConfirmation == nil)
         #expect(fixture.remote.events == [
             .currentUser,
@@ -258,7 +283,7 @@ struct ConsentFinalizationLifecycleTests {
         fixture.remote.enrollFailuresRemaining = 1
         var initialError: LifecycleFailure?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -283,10 +308,11 @@ struct ConsentFinalizationLifecycleTests {
             for: fixture.study
         )
         fixture.remote.events.removeAll()
-        try await relaunchedService.resumeEnrollment(for: fixture.study)
+        let enrollment = try await relaunchedService.resumeEnrollment(for: fixture.study)
 
         #expect(pending == nil)
         #expect(recovery == .pendingEnrollment)
+        #expect(enrollment == fixture.remote.enrollment)
         #expect(fixture.remote.events == [
             .currentUser,
             .existingConsent,
@@ -302,7 +328,7 @@ struct ConsentFinalizationLifecycleTests {
         fixture.remote.enrollFailuresRemaining = 1
         var initialError: LifecycleFailure?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -320,7 +346,7 @@ struct ConsentFinalizationLifecycleTests {
 
         var observedError: ConsentServiceError?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: changedCompletion
             )
@@ -385,7 +411,7 @@ struct ConsentFinalizationLifecycleTests {
         let fixture = try LifecycleFixture(baseDirectory: blockedDirectory)
         var observedError: ConsentServiceError?
         do {
-            try await fixture.service.finalizeConsentAndEnroll(
+            _ = try await fixture.service.finalizeConsentAndEnroll(
                 study: fixture.study,
                 consent: fixture.completion
             )
@@ -443,7 +469,10 @@ private struct LifecycleFixture {
             signedAt: Date(timeIntervalSince1970: 1_750_000_000)
         )
         store = ProtectedPendingConsentStore(baseDirectory: resolvedDirectory)
-        remote = MockConsentPersistenceRemote(userID: resolvedUserID)
+        remote = MockConsentPersistenceRemote(
+            userID: resolvedUserID,
+            studyID: studyID
+        )
         remote.pendingStore = store
         remote.pendingKey = key
         service = SupabaseConsentService(
@@ -508,6 +537,7 @@ private struct LifecycleFixture {
 @MainActor
 private final class MockConsentPersistenceRemote: ConsentPersistenceRemote {
     let userID: UUID
+    let enrollment: StudyEnrollment
     var events: [ConsentRemoteEvent] = []
     var existingRow: ExistingConsentRow?
     var pendingStore: ProtectedPendingConsentStore?
@@ -520,8 +550,16 @@ private final class MockConsentPersistenceRemote: ConsentPersistenceRemote {
     var publishRecordOnInsert = false
     var enrollFailuresRemaining = 0
 
-    init(userID: UUID) {
+    init(userID: UUID, studyID: UUID) {
         self.userID = userID
+        enrollment = StudyEnrollment(
+            id: UUID(uuidString: "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF")!,
+            userID: userID,
+            studyID: studyID,
+            status: .enrolled,
+            enrolledAt: Date(timeIntervalSince1970: 1_750_000_100),
+            createdAt: Date(timeIntervalSince1970: 1_750_000_100)
+        )
     }
 
     func currentUserID() async throws -> UUID {
@@ -582,12 +620,13 @@ private final class MockConsentPersistenceRemote: ConsentPersistenceRemote {
         }
     }
 
-    func enroll(studyID: UUID, consentID: UUID) async throws {
+    func enroll(studyID: UUID, consentID: UUID) async throws -> StudyEnrollment {
         events.append(.enroll)
         if enrollFailuresRemaining > 0 {
             enrollFailuresRemaining -= 1
             throw LifecycleFailure.unavailable
         }
+        return enrollment
     }
 }
 

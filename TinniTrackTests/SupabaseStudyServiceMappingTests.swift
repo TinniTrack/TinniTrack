@@ -4,6 +4,39 @@ import Testing
 
 struct SupabaseStudyServiceMappingTests {
     @Test
+    @MainActor
+    func enrollmentRowDecodesCanonicalRPCObject() throws {
+        let data = Data(
+            """
+            {
+              "id": "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF",
+              "user_id": "11111111-2222-3333-4444-555555555555",
+              "study_id": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+              "status": "enrolled",
+              "enrolled_at": "2026-08-25T04:05:06.789Z",
+              "created_at": "2026-08-25T04:05:06Z",
+              "onboarding_completed_at": null,
+              "eligibility_snapshot": {
+                "schema_version": 1,
+                "study_slug": "study-no-1"
+              }
+            }
+            """.utf8
+        )
+
+        let row = try JSONDecoder().decode(StudyEnrollmentRow.self, from: data)
+        let enrollment = row.toDomain()
+
+        #expect(enrollment.id == row.id)
+        #expect(enrollment.userID == row.userID)
+        #expect(enrollment.studyID == row.studyID)
+        #expect(enrollment.status == .enrolled)
+        #expect(enrollment.enrolledAt != nil)
+        #expect(enrollment.createdAt != nil)
+        #expect(enrollment.onboardingCompletedAt == nil)
+    }
+
+    @Test
     func scheduledTaskRejectsMalformedRequiredTimestamp() {
         let row = makeRow(scheduledFor: "not-a-timestamp")
 
