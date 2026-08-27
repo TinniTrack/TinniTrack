@@ -5,13 +5,11 @@ struct StudyTaskDashboardView: View {
     let enrollment: StudyEnrollment
     let profileTimezone: String?
 
-    @Environment(\.openURL) private var openURL
     @StateObject private var viewModel: StudyTaskDashboardViewModel
     #if DEBUG
     @StateObject private var developerToolsViewModel: DeveloperToolsViewModel
     #endif
     @State private var isOrientationPresented = false
-    @State private var orientationStep: StudyTaskOrientationStep = .welcome
     @State private var activeLoudnessTask: ScheduledTask?
 
     private let studyService: StudyServiceProtocol
@@ -105,7 +103,6 @@ struct StudyTaskDashboardView: View {
             title: "Welcome. Thanks for choosing to participate in this study!",
             message: "Before tasks can start, complete orientation and import your hearing-test baseline.",
             actionTitle: "Begin Orientation",
-            initialStep: .welcome,
             actionAccessibilityIdentifier: "study_begin_orientation_button",
             accessibilityIdentifier: "study_orientation_required_content"
         )
@@ -116,7 +113,6 @@ struct StudyTaskDashboardView: View {
             title: "Study Tasks Are Temporarily Locked",
             message: "A hearing-test baseline is required before you can run loudness tasks.",
             actionTitle: "Resolve Prerequisites",
-            initialStep: .hearingTest,
             actionAccessibilityIdentifier: "study_resolve_prerequisites_button",
             accessibilityIdentifier: "study_prerequisites_blocked_content"
         )
@@ -126,7 +122,6 @@ struct StudyTaskDashboardView: View {
         title: String,
         message: String,
         actionTitle: String,
-        initialStep: StudyTaskOrientationStep,
         actionAccessibilityIdentifier: String,
         accessibilityIdentifier: String
     ) -> some View {
@@ -147,7 +142,6 @@ struct StudyTaskDashboardView: View {
                 }
 
                 LoudnessMatchModalPrimaryButton(title: actionTitle) {
-                    orientationStep = initialStep
                     isOrientationPresented = true
                 }
                 .padding(.top, 2)
@@ -234,22 +228,13 @@ struct StudyTaskDashboardView: View {
 
     private var orientationSheet: some View {
         StudyTaskOrientationSheet(
-            step: $orientationStep,
             viewModel: viewModel,
             enrollment: enrollment,
-            studyService: studyService,
-            openHealthApp: openHealthApp,
-            close: { isOrientationPresented = false }
+            studyService: studyService
         )
     }
 
-    private func openHealthApp() {
-        guard let healthAppURL = URL(string: "x-apple-health://") else { return }
-        openURL(healthAppURL)
-    }
-
     private func handleOrientationDismissed() {
-        orientationStep = .welcome
         Task { await viewModel.refresh() }
     }
 

@@ -1,14 +1,12 @@
 import SwiftUI
 
-enum StudyTaskOrientationStep: Hashable {
-    case welcome
-    case hearingTest
+enum StudyTaskOrientationRoute: Hashable {
     case taskIntro
     case correctEar
     case quietRoom
     case fit
     case maxVolume
-    case activeTest
+    case thresholdStatus
 }
 
 struct FutureStudyTaskRow: View {

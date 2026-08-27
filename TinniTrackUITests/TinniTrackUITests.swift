@@ -462,16 +462,12 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
-    func testStudyNo1OrientationUsesNativeNavigation() throws {
+    func testStudyNo1OrientationBeginsOnHearingSetup() throws {
         let app = launchEnrolledStudyOrientation()
-        let orientationContinueButton = app.buttons["study_onboarding_primary_button"]
-        XCTAssertTrue(orientationContinueButton.waitForExistence(timeout: 2))
-        XCTAssertEqual(orientationContinueButton.label, "Continue")
-        orientationContinueButton.tap()
 
-        XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].waitForExistence(timeout: 3))
-        swipeBack(in: app)
-        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].exists)
+        XCTAssertFalse(app.staticTexts["Welcome to Study No. 1"].exists)
     }
 
     @MainActor
@@ -485,7 +481,13 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(exitAlert.waitForExistence(timeout: 2))
         XCTAssertTrue(exitAlert.staticTexts["Your current Study No. 1 onboarding progress will be discarded."].exists)
         exitAlert.buttons["Exit Orientation"].tap()
-        XCTAssertTrue(app.buttons["study_begin_orientation_button"].waitForExistence(timeout: 3))
+        let beginOrientationButton = app.buttons["study_begin_orientation_button"]
+        XCTAssertTrue(beginOrientationButton.waitForExistence(timeout: 3))
+
+        beginOrientationButton.tap()
+        XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertFalse(app.otherElements["study_onboarding_loudness_intro_step"].exists)
     }
 
     @MainActor
@@ -643,7 +645,9 @@ final class TinniTrackUITests: XCTestCase {
         beginOrientationButton.tap()
 
         XCTAssertTrue(app.navigationBars["Orientation"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Welcome to Study No. 1"].exists)
+        XCTAssertTrue(app.otherElements["study_onboarding_hearing_test_step"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].exists)
+        XCTAssertFalse(app.staticTexts["Welcome to Study No. 1"].exists)
         return app
     }
 
