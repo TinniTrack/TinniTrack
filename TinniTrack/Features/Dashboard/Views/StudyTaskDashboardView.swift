@@ -29,7 +29,9 @@ struct StudyTaskDashboardView: View {
         #if DEBUG
         if UITestAudioPreflightFixture.isEnabled(processInfo: processInfo) {
             resolvedCoordinator = UITestAudioPreflightFixture.makeAudiogramCoordinator()
-            resolvedLoudnessViewModel = UITestAudioPreflightFixture.makeLoudnessViewModel()
+            resolvedLoudnessViewModel = UITestAudioPreflightFixture.makeLoudnessViewModel(
+                processInfo: processInfo
+            )
         } else {
             resolvedCoordinator = coordinator ?? AudiogramImportCoordinator()
             resolvedLoudnessViewModel = nil

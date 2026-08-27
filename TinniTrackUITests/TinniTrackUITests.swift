@@ -515,6 +515,75 @@ final class TinniTrackUITests: XCTestCase {
     }
 
     @MainActor
+    func testStudyNo1AirPodsConfirmationUsesSimpleConnectedStateAndAdvances() throws {
+        let app = launchEnrolledStudyOrientation(
+            audioPreflightReady: true,
+            requiresAirPodsConfirmation: true
+        )
+        let primaryButton = advanceToAirPodsStep(in: app)
+
+        XCTAssertTrue(app.staticTexts["Place your AirPods in the correct ear"].exists)
+        XCTAssertFalse(app.staticTexts["Place your AirPods in the correct ear."].exists)
+        XCTAssertEqual(
+            app.images.matching(identifier: "loudness_airpod_left_image").count,
+            1
+        )
+        XCTAssertEqual(
+            app.images.matching(identifier: "loudness_airpod_right_image").count,
+            1
+        )
+        XCTAssertTrue(app.staticTexts["AirPods connected"].exists)
+        XCTAssertTrue(app.staticTexts["Please confirm these are AirPods Pro 2"].exists)
+        XCTAssertEqual(primaryButton.label, "Confirm AirPods Pro 2")
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        XCTAssertFalse(app.switches["loudness_airpods_pro2_confirmation"].exists)
+        XCTAssertFalse(
+            app.staticTexts[
+                "iOS cannot identify the AirPods generation. Open Settings, choose Bluetooth, then tap the Info button beside your AirPods. If these are AirPods Pro 2 but the connected name does not include “AirPods Pro,” restore that name there or contact the study team."
+            ].exists
+        )
+
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.otherElements["loudness_noise_gate_step"].waitForExistence(timeout: 3)
+        )
+    }
+
+    @MainActor
+    func testStudyNo1AirPodsWaitingStateShowsTroubleshooting() throws {
+        let app = launchEnrolledStudyOrientation(
+            audioPreflightReady: true,
+            waitingForAirPods: true
+        )
+        let primaryButton = advanceToAirPodsStep(in: app)
+
+        XCTAssertEqual(
+            app.images.matching(identifier: "loudness_airpod_left_image").count,
+            1
+        )
+        XCTAssertEqual(
+            app.images.matching(identifier: "loudness_airpod_right_image").count,
+            1
+        )
+        XCTAssertTrue(app.staticTexts["Waiting for AirPods"].exists)
+        XCTAssertTrue(app.staticTexts["Connect both AirPods to this iPhone."].exists)
+        XCTAssertTrue(
+            app.staticTexts[
+                "Make sure your AirPods are not connected to another device. If your iPhone does not detect them, take them out and put them back in."
+            ].exists
+        )
+        XCTAssertEqual(primaryButton.label, "Confirm AirPods Pro 2")
+        XCTAssertTrue(waitForEnabledState(false, of: primaryButton, timeout: 3))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_airpods_diagnostics"].exists
+        )
+        XCTAssertFalse(
+            app.staticTexts["Waiting for your AirPods Pro 2 playback route."].exists
+        )
+    }
+
+    @MainActor
     func testNativeOrientationThresholdContinuesInOrientationChrome() throws {
         let app = launchEnrolledStudyOrientation(audioPreflightReady: true)
         let primaryButton = app.buttons["study_onboarding_primary_button"]
@@ -876,12 +945,20 @@ final class TinniTrackUITests: XCTestCase {
 
     @MainActor
     private func launchEnrolledStudyOrientation(
-        audioPreflightReady: Bool = false
+        audioPreflightReady: Bool = false,
+        requiresAirPodsConfirmation: Bool = false,
+        waitingForAirPods: Bool = false
     ) -> XCUIApplication {
         let app = makeAuthenticatedStudyApp()
         app.launchEnvironment["UITEST_MOCK_STUDY_ALREADY_ENROLLED"] = "1"
         if audioPreflightReady {
             app.launchEnvironment["UITEST_MOCK_AUDIO_PREFLIGHT_READY"] = "1"
+        }
+        if requiresAirPodsConfirmation {
+            app.launchEnvironment["UITEST_MOCK_AIRPODS_CONFIRMATION_REQUIRED"] = "1"
+        }
+        if waitingForAirPods {
+            app.launchEnvironment["UITEST_MOCK_WAITING_FOR_AIRPODS"] = "1"
         }
         app.launch()
 
@@ -905,6 +982,24 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Take an Apple Hearing Test"].exists)
         XCTAssertFalse(app.otherElements["study_onboarding_welcome_step"].exists)
         return app
+    }
+
+    @MainActor
+    private func advanceToAirPodsStep(in app: XCUIApplication) -> XCUIElement {
+        let primaryButton = app.buttons["study_onboarding_primary_button"]
+        XCTAssertTrue(primaryButton.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForEnabledState(true, of: primaryButton, timeout: 3))
+        primaryButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Test Your Tinnitus"].waitForExistence(timeout: 3))
+        XCTAssertEqual(primaryButton.label, "Get Started")
+        primaryButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["loudness_airpods_step"]
+                .waitForExistence(timeout: 3)
+        )
+        return primaryButton
     }
 
     @MainActor

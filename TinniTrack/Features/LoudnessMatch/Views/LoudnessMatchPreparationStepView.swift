@@ -85,11 +85,20 @@ private struct AirPodsCorrectEarStepView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 52) {
-                airPodGlyph(systemName: "airpodpro.left", label: "L")
-                airPodGlyph(systemName: "airpodpro.right", label: "R")
+                airPodGlyph(
+                    systemName: "airpodpro.left",
+                    label: "L",
+                    accessibilityLabel: "Left AirPod",
+                    accessibilityIdentifier: "loudness_airpod_left_image"
+                )
+                airPodGlyph(
+                    systemName: "airpodpro.right",
+                    label: "R",
+                    accessibilityLabel: "Right AirPod",
+                    accessibilityIdentifier: "loudness_airpod_right_image"
+                )
             }
             .frame(maxWidth: .infinity)
-            .accessibilityHidden(true)
 
             LoudnessMatchModalTitleBlock(
                 title: "Place your AirPods in the correct ear",
@@ -182,14 +191,22 @@ private struct AirPodsCorrectEarStepView: View {
         }
     }
 
-    private func airPodGlyph(systemName: String, label: String) -> some View {
+    private func airPodGlyph(
+        systemName: String,
+        label: String,
+        accessibilityLabel: String,
+        accessibilityIdentifier: String
+    ) -> some View {
         VStack(spacing: 10) {
             Image(systemName: systemName)
                 .font(.system(size: 88, weight: .regular))
                 .foregroundStyle(LoudnessMatchModalColors.graphic)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityIdentifier(accessibilityIdentifier)
             Text(label)
                 .font(.headline)
                 .foregroundStyle(LoudnessMatchModalColors.secondaryText)
+                .accessibilityHidden(true)
         }
     }
 

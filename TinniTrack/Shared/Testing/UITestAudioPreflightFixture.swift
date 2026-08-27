@@ -5,6 +5,8 @@ import Foundation
 enum UITestAudioPreflightFixture {
     static let readinessEnvironmentKey = "UITEST_MOCK_AUDIO_PREFLIGHT_READY"
     static let recurringTaskEnvironmentKey = "UITEST_MOCK_RECURRING_LOUDNESS_TASK"
+    static let confirmationRequiredEnvironmentKey = "UITEST_MOCK_AIRPODS_CONFIRMATION_REQUIRED"
+    static let waitingForAirPodsEnvironmentKey = "UITEST_MOCK_WAITING_FOR_AIRPODS"
 
     static func isEnabled(processInfo: ProcessInfo = .processInfo) -> Bool {
         processInfo.environment[readinessEnvironmentKey] == "1"
@@ -15,9 +17,19 @@ enum UITestAudioPreflightFixture {
     }
 
     @MainActor
-    static func makeLoudnessViewModel() -> LoudnessMatchTaskFlowViewModel {
-        let routeProvider = ReadyAudioSessionRouteProvider()
-        let guardrailValidation = makePassedGuardrailValidation()
+    static func makeLoudnessViewModel(
+        processInfo: ProcessInfo = .processInfo
+    ) -> LoudnessMatchTaskFlowViewModel {
+        let isWaitingForAirPods = processInfo.environment[waitingForAirPodsEnvironmentKey] == "1"
+        let requiresConfirmation = processInfo.environment[confirmationRequiredEnvironmentKey] == "1"
+        let routeProvider: AudioSessionRouteVolumeProviding = isWaitingForAirPods
+            ? WaitingAudioSessionRouteProvider()
+            : ReadyAudioSessionRouteProvider()
+        let guardrailValidation = makePassedGuardrailValidation(
+            verificationSource: requiresConfirmation
+                ? .appCalibrationProfile
+                : .researchProtocol
+        )
         let viewModel = LoudnessMatchTaskFlowViewModel(
             guardrailProvider: { guardrailValidation },
             headphoneRouteProvider: routeProvider,
@@ -25,12 +37,16 @@ enum UITestAudioPreflightFixture {
             environmentGateMonitor: PassingEnvironmentSPLGate(),
             audiogramRepository: ReadyAudiogramRepository()
         )
-        viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        if !requiresConfirmation && !isWaitingForAirPods {
+            viewModel.setAirPodsPro2ConfirmedForCurrentRoute(true)
+        }
         viewModel.clearMessage()
         return viewModel
     }
 
-    private static func makePassedGuardrailValidation() -> CalibratedAudioGuardrailValidation {
+    private static func makePassedGuardrailValidation(
+        verificationSource: CalibratedHeadphoneVerificationSource
+    ) -> CalibratedAudioGuardrailValidation {
         CalibratedAudioGuardrailPolicy().validate(
             route: CalibratedAudioRouteDetails(
                 outputs: [
@@ -40,7 +56,7 @@ enum UITestAudioPreflightFixture {
                         portUID: ReadyAudioSessionRouteProvider.portUID,
                         channelNames: ["Left", "Right"],
                         verifiedCalibratedHeadphoneIdentifier: CalibratedHeadphoneIdentifier.airPodsPro2,
-                        verificationSource: .researchProtocol
+                        verificationSource: verificationSource
                     )
                 ]
             ),
@@ -150,6 +166,26 @@ private final class ReadyAudioSessionRouteProvider: AudioSessionRouteVolumeProvi
                 channelNames: ["Left", "Right"]
             )
         ]
+    }
+
+    func currentOutputVolume() -> Double? {
+        1.0
+    }
+
+    func observeRouteChanges(_ handler: @escaping () -> Void) -> AudioSessionObservation {
+        FixtureAudioSessionObservation()
+    }
+
+    func observeOutputVolumeChanges(_ handler: @escaping () -> Void) -> AudioSessionObservation {
+        FixtureAudioSessionObservation()
+    }
+}
+
+private final class WaitingAudioSessionRouteProvider: AudioSessionRouteVolumeProviding {
+    func refreshRouteAndVolume() {}
+
+    func currentRouteOutputs() -> [AudioSessionRouteOutputSnapshot] {
+        []
     }
 
     func currentOutputVolume() -> Double? {
