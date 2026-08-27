@@ -88,16 +88,81 @@ nonisolated struct StudyNo1VolumeContext: Codable, Equatable {
     let policy: String
 }
 
+/// A persistence-specific view of one accepted environment window.
+///
+/// The field names carry their units so future DSP changes cannot silently
+/// reinterpret a stored value. This type deliberately does not store raw PCM or
+/// accessory names/identifiers.
+nonisolated struct StudyNo1EnvironmentSPLMeasurementContext: Codable, Equatable {
+    let schemaVersion: Int
+    let windowStartedAt: Date
+    let windowEndedAt: Date
+    let durationSeconds: TimeInterval
+    let aWeightedDigitalLevelDBFS: Double?
+    let provisionalEstimatedDBA: Double?
+    let validity: String
+    let failureReason: String?
+    let sampleRateHz: Double
+    let channelCount: Int
+    let inputRoute: String
+    let dataSourceOrientation: String?
+    let inputGain: Double
+    let isInputGainSettable: Bool
+    let algorithmVersion: String
+    let calibrationProfileIdentifier: String
+    let calibrationStatus: String
+    let calibrationEstimatedDBAOffset: Double?
+    let calibrationReferenceSensitivityOffsetDB: Double?
+    let calibrationProvenance: String
+    let calibrationUncertaintyDB: Double?
+
+    init(_ measurement: TinnitusEnvironmentSPLMeasurement) {
+        schemaVersion = measurement.schemaVersion
+        windowStartedAt = measurement.windowStartedAt
+        windowEndedAt = measurement.windowEndedAt
+        durationSeconds = measurement.duration
+        aWeightedDigitalLevelDBFS = measurement.aWeightedDigitalLevelDBFS
+        provisionalEstimatedDBA = measurement.provisionalEstimatedDBA
+
+        switch measurement.validity {
+        case .valid:
+            validity = "valid"
+            failureReason = nil
+        case .invalid(let reason):
+            validity = "invalid"
+            failureReason = reason.rawValue
+        }
+
+        sampleRateHz = measurement.input.sampleRate
+        channelCount = measurement.input.channelCount
+        inputRoute = measurement.input.route.rawValue
+        dataSourceOrientation = measurement.input.dataSourceOrientation?.rawValue
+        inputGain = Double(measurement.input.inputGain)
+        isInputGainSettable = measurement.input.isInputGainSettable
+        algorithmVersion = measurement.algorithmVersion
+        calibrationProfileIdentifier = measurement.calibration.identifier
+        calibrationStatus = measurement.calibration.status.rawValue
+        calibrationEstimatedDBAOffset = measurement.calibration.estimatedDBAOffset
+        calibrationReferenceSensitivityOffsetDB = measurement.calibration.referenceSensitivityOffsetDB
+        calibrationProvenance = measurement.calibration.provenance
+        calibrationUncertaintyDB = measurement.calibration.uncertaintyDB
+    }
+}
+
 nonisolated struct StudyNo1EnvironmentSPLContext: Codable, Equatable {
+    static let currentLevelSemantics = "provisional_estimated_dba_screening"
+
     let thresholdDBA: Double
     let requiredContiguousSamples: Int
     let samplingInterval: TimeInterval
     let sensitivityOffsetDB: Double?
+    /// Legacy screening estimates retained for payload compatibility. This field
+    /// must never contain A-weighted digital dBFS values.
     let samplesDBA: [Double]
     let gateResult: StudyNo1GateResult
     let measurementSchemaVersion: Int?
     let levelSemantics: String?
-    let measurements: [TinnitusEnvironmentSPLMeasurement]?
+    let measurements: [StudyNo1EnvironmentSPLMeasurementContext]?
 
     init(
         thresholdDBA: Double,
@@ -110,15 +175,60 @@ nonisolated struct StudyNo1EnvironmentSPLContext: Codable, Equatable {
         levelSemantics: String? = nil,
         measurements: [TinnitusEnvironmentSPLMeasurement]? = nil
     ) {
+        let provisionalEstimates = measurements?.compactMap(\.screeningLevelDBA) ?? []
+
         self.thresholdDBA = thresholdDBA
         self.requiredContiguousSamples = requiredContiguousSamples
         self.samplingInterval = samplingInterval
         self.sensitivityOffsetDB = sensitivityOffsetDB
-        self.samplesDBA = samplesDBA
+        self.samplesDBA = measurements == nil ? samplesDBA : provisionalEstimates
         self.gateResult = gateResult
         self.measurementSchemaVersion = measurementSchemaVersion
+            ?? measurements?.map(\.schemaVersion).max()
         self.levelSemantics = levelSemantics
-        self.measurements = measurements
+            ?? (measurements == nil ? nil : Self.currentLevelSemantics)
+        self.measurements = measurements?.map(StudyNo1EnvironmentSPLMeasurementContext.init)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case thresholdDBA
+        case requiredContiguousSamples
+        case samplingInterval
+        case sensitivityOffsetDB
+        case samplesDBA
+        case gateResult
+        case measurementSchemaVersion
+        case levelSemantics
+        case measurements
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        thresholdDBA = try container.decode(Double.self, forKey: .thresholdDBA)
+        requiredContiguousSamples = try container.decode(Int.self, forKey: .requiredContiguousSamples)
+        samplingInterval = try container.decode(TimeInterval.self, forKey: .samplingInterval)
+        sensitivityOffsetDB = try container.decodeIfPresent(Double.self, forKey: .sensitivityOffsetDB)
+        samplesDBA = try container.decode([Double].self, forKey: .samplesDBA)
+        gateResult = try container.decode(StudyNo1GateResult.self, forKey: .gateResult)
+        measurementSchemaVersion = try container.decodeIfPresent(Int.self, forKey: .measurementSchemaVersion)
+        levelSemantics = try container.decodeIfPresent(String.self, forKey: .levelSemantics)
+        measurements = try container.decodeIfPresent(
+            [StudyNo1EnvironmentSPLMeasurementContext].self,
+            forKey: .measurements
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(thresholdDBA, forKey: .thresholdDBA)
+        try container.encode(requiredContiguousSamples, forKey: .requiredContiguousSamples)
+        try container.encode(samplingInterval, forKey: .samplingInterval)
+        try container.encodeIfPresent(sensitivityOffsetDB, forKey: .sensitivityOffsetDB)
+        try container.encode(samplesDBA, forKey: .samplesDBA)
+        try container.encode(gateResult, forKey: .gateResult)
+        try container.encodeIfPresent(measurementSchemaVersion, forKey: .measurementSchemaVersion)
+        try container.encodeIfPresent(levelSemantics, forKey: .levelSemantics)
+        try container.encodeIfPresent(measurements, forKey: .measurements)
     }
 }
 
@@ -212,7 +322,8 @@ nonisolated struct StudyNo1RefusalContext: Codable, Equatable {
 }
 
 nonisolated struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
-    static let payloadVersion = "study-no-1-loudness-match-v2"
+    static let payloadVersion = "study-no-1-loudness-match-v3"
+    static let legacyPayloadVersion = "study-no-1-loudness-match-v2"
     static let modelCalibratedOutputLimitation = "Estimated model-calibrated output from ResearchKit AirPods Pro 2 tables, route, and system output volume. This is not exact patient-specific in-ear SPL."
 
     let payloadVersion: String
@@ -263,6 +374,17 @@ nonisolated struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
         }
         if environment.samplesDBA.isEmpty {
             missing.append("environment.samplesDBA")
+        }
+        if payloadVersion == Self.payloadVersion {
+            if environment.measurementSchemaVersion == nil {
+                missing.append("environment.measurementSchemaVersion")
+            }
+            if environment.levelSemantics != StudyNo1EnvironmentSPLContext.currentLevelSemantics {
+                missing.append("environment.levelSemantics")
+            }
+            if environment.measurements?.isEmpty != false {
+                missing.append("environment.measurements")
+            }
         }
         if safety.acknowledgedAt == nil {
             missing.append("safety.acknowledgedAt")

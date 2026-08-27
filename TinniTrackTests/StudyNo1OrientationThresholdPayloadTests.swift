@@ -12,7 +12,7 @@ struct StudyNo1OrientationThresholdPayloadTests {
 
         let submission = try exporter.makeSubmission(from: payload)
 
-        #expect(payload.payloadVersion == "study-no-1-orientation-threshold-v1")
+        #expect(payload.payloadVersion == "study-no-1-orientation-threshold-v2")
         #expect(payload.protocolKind == "studyNo1OrientationThresholdOneKilohertz")
         #expect(payload.rightEar.thresholdDBHL == 18)
         #expect(payload.leftEar.thresholdDBHL == 12)
@@ -21,10 +21,40 @@ struct StudyNo1OrientationThresholdPayloadTests {
         #expect(submission.startedAt == timestamp)
         #expect(submission.completedAt == timestamp.addingTimeInterval(120))
         #expect(submission.appVersion == "1.2.3")
-        #expect(submission.rawPayload["payloadVersion"] == .string("study-no-1-orientation-threshold-v1"))
+        #expect(submission.rawPayload["payloadVersion"] == .string("study-no-1-orientation-threshold-v2"))
         #expect(submission.gating["environment"] != nil)
         #expect(submission.deviceInfo["model"] == .string("iPhone17,2"))
         #expect(submission.headphoneInfo["model_identifier"] == .string("AIRPODSPROV2"))
+
+        guard case .object(let environment)? = submission.gating["environment"],
+              case .array(let measurements)? = environment["measurements"],
+              case .object(let firstMeasurement)? = measurements.first
+        else {
+            Issue.record("Expected versioned environment measurements in orientation gating JSON")
+            return
+        }
+        #expect(environment["measurement_schema_version"] == .number(2))
+        #expect(environment["samples_dba"] == .array([32, 33, 34, 35, 36].map(JSONValue.number)))
+        #expect(firstMeasurement["a_weighted_digital_level_dbfs"] == .number(-85.3))
+        #expect(firstMeasurement["provisional_estimated_dba"] == .number(32))
+
+        let encoded = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(StudyNo1OrientationThresholdRunPayload.self, from: encoded)
+        #expect(decoded == payload)
+    }
+
+    @Test
+    func legacyV1PayloadWithoutVersionedEnvironmentMeasurementsStillDecodes() throws {
+        let current = try makePayload()
+        let data = try legacyV1PayloadData(from: current)
+
+        let decoded = try JSONDecoder().decode(StudyNo1OrientationThresholdRunPayload.self, from: data)
+
+        #expect(decoded.payloadVersion == StudyNo1OrientationThresholdRunPayload.legacyPayloadVersion)
+        #expect(decoded.environment.samplesDBA == [32, 33, 34, 35, 36])
+        #expect(decoded.environment.measurementSchemaVersion == nil)
+        #expect(decoded.environment.levelSemantics == nil)
+        #expect(decoded.environment.measurements == nil)
     }
 
     @Test
@@ -83,13 +113,9 @@ struct StudyNo1OrientationThresholdPayloadTests {
                 sampleRate: 44_100,
                 bufferSize: 512
             ),
-            environment: StudyNo1EnvironmentSPLContext(
-                thresholdDBA: 45,
-                requiredContiguousSamples: 5,
-                samplingInterval: 1,
-                sensitivityOffsetDB: -23.3,
-                samplesDBA: [32, 33, 34, 35, 36],
-                gateResult: .passed
+            environment: StudyNo1EnvironmentPayloadTestFixture.currentContext(
+                timestamp: timestamp,
+                provisionalEstimatesDBA: [32, 33, 34, 35, 36]
             ),
             rightEar: ear(channel: .right, threshold: 18),
             leftEar: ear(channel: .left, threshold: 12)
@@ -143,5 +169,25 @@ struct StudyNo1OrientationThresholdPayloadTests {
             outputVolume: 1.0,
             timestamp: timestamp
         )
+    }
+
+    private func legacyV1PayloadData(
+        from payload: StudyNo1OrientationThresholdRunPayload
+    ) throws -> Data {
+        let encoded = try JSONEncoder().encode(payload)
+        guard var object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any],
+              var environment = object["environment"] as? [String: Any]
+        else {
+            throw StudyNo1OrientationThresholdPayloadValidationError.incompleteThresholdRun(
+                reason: "Could not construct legacy payload fixture."
+            )
+        }
+
+        object["payloadVersion"] = StudyNo1OrientationThresholdRunPayload.legacyPayloadVersion
+        environment.removeValue(forKey: "measurementSchemaVersion")
+        environment.removeValue(forKey: "levelSemantics")
+        environment.removeValue(forKey: "measurements")
+        object["environment"] = environment
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
 }

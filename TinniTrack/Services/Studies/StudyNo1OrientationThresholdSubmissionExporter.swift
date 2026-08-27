@@ -62,14 +62,7 @@ struct StudyNo1OrientationThresholdSubmissionExporter {
 
     private func gatingJSON(from payload: StudyNo1OrientationThresholdRunPayload) -> [String: JSONValue] {
         [
-            "environment": .object([
-                "threshold_dba": .number(payload.environment.thresholdDBA),
-                "required_contiguous_samples": .number(Double(payload.environment.requiredContiguousSamples)),
-                "sampling_interval": .number(payload.environment.samplingInterval),
-                "sensitivity_offset_db": payload.environment.sensitivityOffsetDB.map(JSONValue.number) ?? .null,
-                "samples_dba": .array(payload.environment.samplesDBA.map(JSONValue.number)),
-                "gate_result": .string(payload.environment.gateResult.rawValue)
-            ]),
+            "environment": StudyNo1EnvironmentSubmissionEncoding.json(payload.environment),
             "volume": .object([
                 "output_volume": .number(payload.volume.outputVolume),
                 "bucketed_output_volume": payload.volume.bucketedOutputVolume.map(JSONValue.number) ?? .null,

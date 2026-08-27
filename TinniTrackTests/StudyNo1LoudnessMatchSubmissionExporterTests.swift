@@ -23,8 +23,44 @@ struct StudyNo1LoudnessMatchSubmissionExporterTests {
         #expect(submission.gating["environment"] != nil)
         #expect(submission.gating["fit_seal"] != nil)
         #expect(submission.gating["safety"] != nil)
-        #expect(submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v2"))
+        #expect(submission.rawPayload["payloadVersion"] == .string("study-no-1-loudness-match-v3"))
         #expect(submission.rawPayload["protocolKind"] == .string("studyNo1FixedOneKilohertz"))
+
+        guard case .object(let environment)? = submission.gating["environment"],
+              case .array(let measurements)? = environment["measurements"],
+              case .object(let firstMeasurement)? = measurements.first,
+              case .object(let input)? = firstMeasurement["input"],
+              case .object(let calibration)? = firstMeasurement["calibration"]
+        else {
+            Issue.record("Expected unit-explicit environment measurements in gating JSON")
+            return
+        }
+        #expect(environment["screening_threshold_estimated_dba"] == .number(45))
+        #expect(environment["window_duration_seconds"] == .number(1))
+        #expect(environment["measurement_schema_version"] == .number(2))
+        #expect(environment["level_semantics"] == .string("provisional_estimated_dba_screening"))
+        #expect(environment["samples_dba"] == .array([32, 33, 34, 35, 36].map(JSONValue.number)))
+        #expect(firstMeasurement["schema_version"] == .number(2))
+        #expect(firstMeasurement["duration_seconds"] == .number(1))
+        #expect(firstMeasurement["a_weighted_digital_level_dbfs"] == .number(-85.3))
+        #expect(firstMeasurement["provisional_estimated_dba"] == .number(32))
+        #expect(firstMeasurement["validity"] == .string("valid"))
+        #expect(input["route"] == .string("builtInMicrophone"))
+        #expect(input["sample_rate_hz"] == .number(48_000))
+        #expect(input["channel_count"] == .number(1))
+        #expect(calibration["profile_identifier"] == .string("researchkit-generic-iphone-built-in-mic-v1"))
+        #expect(calibration["status"] == .string("provisional"))
+
+        guard case .object(let rawEnvironment)? = submission.rawPayload["environment"],
+              case .array(let rawMeasurements)? = rawEnvironment["measurements"],
+              case .object(let rawFirstMeasurement)? = rawMeasurements.first
+        else {
+            Issue.record("Expected versioned environment measurements in raw payload")
+            return
+        }
+        #expect(rawEnvironment["samplesDBA"] == .array([32, 33, 34, 35, 36].map(JSONValue.number)))
+        #expect(rawFirstMeasurement["aWeightedDigitalLevelDBFS"] == .number(-85.3))
+        #expect(rawFirstMeasurement["provisionalEstimatedDBA"] == .number(32))
 
         guard case .object(let summary)? = submission.rawPayload["summary"] else {
             Issue.record("Expected summary object in raw payload")
@@ -138,13 +174,9 @@ struct StudyNo1LoudnessMatchSubmissionExporterTests {
                 volumeCurveOffsetDB: 0,
                 policy: CalibratedAudioVolumePolicy.maximum.description
             ),
-            environment: StudyNo1EnvironmentSPLContext(
-                thresholdDBA: 45,
-                requiredContiguousSamples: 5,
-                samplingInterval: 1,
-                sensitivityOffsetDB: -23.3,
-                samplesDBA: [32, 33, 34, 35, 36],
-                gateResult: .passed
+            environment: StudyNo1EnvironmentPayloadTestFixture.currentContext(
+                timestamp: timestamp,
+                provisionalEstimatesDBA: [32, 33, 34, 35, 36]
             ),
             fitSeal: StudyNo1FitSealContext(
                 status: .confirmedPassed,

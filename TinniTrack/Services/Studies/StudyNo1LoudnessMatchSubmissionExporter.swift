@@ -50,14 +50,7 @@ struct StudyNo1LoudnessMatchSubmissionExporter {
 
     private func gatingJSON(from payload: StudyNo1LoudnessMatchRunPayload) -> [String: JSONValue] {
         [
-            "environment": .object([
-                "threshold_dba": .number(payload.environment.thresholdDBA),
-                "required_contiguous_samples": .number(Double(payload.environment.requiredContiguousSamples)),
-                "sampling_interval": .number(payload.environment.samplingInterval),
-                "sensitivity_offset_db": payload.environment.sensitivityOffsetDB.map(JSONValue.number) ?? .null,
-                "samples_dba": .array(payload.environment.samplesDBA.map(JSONValue.number)),
-                "gate_result": .string(payload.environment.gateResult.rawValue)
-            ]),
+            "environment": StudyNo1EnvironmentSubmissionEncoding.json(payload.environment),
             "fit_seal": .object([
                 "status": .string(payload.fitSeal.status.rawValue),
                 "limitations": .string(payload.fitSeal.limitations)
@@ -125,5 +118,76 @@ struct StudyNo1LoudnessMatchSubmissionExporter {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         return encoder
+    }
+}
+
+/// Shared JSONB representation used by both Study No. 1 submission paths.
+/// Legacy keys remain available for existing queries, while new window records
+/// carry explicit units and their own schema version.
+nonisolated enum StudyNo1EnvironmentSubmissionEncoding {
+    static func json(_ environment: StudyNo1EnvironmentSPLContext) -> JSONValue {
+        .object([
+            // Legacy compatibility fields. `samples_dba` contains provisional
+            // screening estimates only, never digital dBFS values.
+            "threshold_dba": .number(environment.thresholdDBA),
+            "required_contiguous_samples": .number(Double(environment.requiredContiguousSamples)),
+            "sampling_interval": .number(environment.samplingInterval),
+            "sensitivity_offset_db": environment.sensitivityOffsetDB.map(JSONValue.number) ?? .null,
+            "samples_dba": .array(environment.samplesDBA.map(JSONValue.number)),
+            "gate_result": .string(environment.gateResult.rawValue),
+
+            // Unit-explicit current policy and measurement fields.
+            "screening_threshold_estimated_dba": .number(environment.thresholdDBA),
+            "window_duration_seconds": .number(environment.samplingInterval),
+            "legacy_samples_dba_semantics": environment.levelSemantics.map(JSONValue.string) ?? .null,
+            "measurement_schema_version": environment.measurementSchemaVersion
+                .map { .number(Double($0)) } ?? .null,
+            "level_semantics": environment.levelSemantics.map(JSONValue.string) ?? .null,
+            "measurements": .array((environment.measurements ?? []).map(measurementJSON))
+        ])
+    }
+
+    private static func measurementJSON(
+        _ measurement: StudyNo1EnvironmentSPLMeasurementContext
+    ) -> JSONValue {
+        .object([
+            "schema_version": .number(Double(measurement.schemaVersion)),
+            "window_started_at": .string(iso8601String(measurement.windowStartedAt)),
+            "window_ended_at": .string(iso8601String(measurement.windowEndedAt)),
+            "duration_seconds": .number(measurement.durationSeconds),
+            "a_weighted_digital_level_dbfs": measurement.aWeightedDigitalLevelDBFS
+                .map(JSONValue.number) ?? .null,
+            "provisional_estimated_dba": measurement.provisionalEstimatedDBA
+                .map(JSONValue.number) ?? .null,
+            "validity": .string(measurement.validity),
+            "failure_reason": measurement.failureReason.map(JSONValue.string) ?? .null,
+            "input": .object([
+                "route": .string(measurement.inputRoute),
+                "data_source_orientation": measurement.dataSourceOrientation
+                    .map(JSONValue.string) ?? .null,
+                "sample_rate_hz": .number(measurement.sampleRateHz),
+                "channel_count": .number(Double(measurement.channelCount)),
+                "input_gain": .number(measurement.inputGain),
+                "is_input_gain_settable": .bool(measurement.isInputGainSettable)
+            ]),
+            "algorithm_version": .string(measurement.algorithmVersion),
+            "calibration": .object([
+                "profile_identifier": .string(measurement.calibrationProfileIdentifier),
+                "status": .string(measurement.calibrationStatus),
+                "estimated_dba_offset": measurement.calibrationEstimatedDBAOffset
+                    .map(JSONValue.number) ?? .null,
+                "reference_sensitivity_offset_db": measurement.calibrationReferenceSensitivityOffsetDB
+                    .map(JSONValue.number) ?? .null,
+                "provenance": .string(measurement.calibrationProvenance),
+                "uncertainty_db": measurement.calibrationUncertaintyDB
+                    .map(JSONValue.number) ?? .null
+            ])
+        ])
+    }
+
+    private static func iso8601String(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 }
