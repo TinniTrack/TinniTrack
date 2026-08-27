@@ -21,6 +21,8 @@ final class HomeDashboardViewModel: ObservableObject {
 
     private let studyService: StudyServiceProtocol
     private var hasLoadedOnce = false
+    private var locallyConfirmedEnrollments: [UUID: StudyEnrollment] = [:]
+    private var isEnrollmentReconciliationPending = false
 
     init(studyService: StudyServiceProtocol) {
         self.studyService = studyService
@@ -36,8 +38,26 @@ final class HomeDashboardViewModel: ObservableObject {
         await refresh(retainingCurrentContent: true)
     }
 
+    func confirmEnrollment(_ enrollment: StudyEnrollment) {
+        locallyConfirmedEnrollments[enrollment.studyID] = enrollment
+
+        let updatedStudies = applyingLocallyConfirmedEnrollments(to: studies)
+        guard updatedStudies != studies else { return }
+
+        studies = updatedStudies
+        state = .loaded
+        hasLoadedOnce = true
+    }
+
+    func reconcileAfterEnrollment() async {
+        isEnrollmentReconciliationPending = true
+        guard !isRefreshing else { return }
+        await refresh(retainingCurrentContent: true)
+    }
+
     func refresh(retainingCurrentContent: Bool = false) async {
         guard !isRefreshing else { return }
+        isEnrollmentReconciliationPending = false
 
         let previousStudies = studies
         let previousState = state
@@ -47,7 +67,6 @@ final class HomeDashboardViewModel: ObservableObject {
         }
 
         isRefreshing = true
-        defer { isRefreshing = false }
 
         do {
             async let studiesTask = studyService.fetchStudies()
@@ -55,9 +74,8 @@ final class HomeDashboardViewModel: ObservableObject {
 
             let studyRows = try await studiesTask
             let enrollmentRows = try await enrollmentsTask
-            let enrollmentByStudyID = Dictionary(
-                enrollmentRows.map { ($0.studyID, $0) },
-                uniquingKeysWith: { first, _ in first }
+            let enrollmentByStudyID = reconciledEnrollmentByStudyID(
+                authoritativeEnrollments: enrollmentRows
             )
 
             studies = studyRows.map {
@@ -67,30 +85,72 @@ final class HomeDashboardViewModel: ObservableObject {
             state = studies.isEmpty ? .empty : .loaded
             hasLoadedOnce = true
         } catch {
+            let restoredStudies = applyingLocallyConfirmedEnrollments(to: previousStudies)
             if Self.isCancellation(error) {
-                studies = previousStudies
-                state = previousState
-                return
-            }
-
-            hasLoadedOnce = true
-            if previousStudies.isEmpty {
-                studies = []
-                state = .failed(message: Self.userFacingErrorMessage(for: error))
+                studies = restoredStudies
+                state = restoredStudies == previousStudies ? previousState : .loaded
             } else {
-                studies = previousStudies
-                state = .loaded
+                hasLoadedOnce = true
+                if restoredStudies.isEmpty {
+                    studies = []
+                    state = .failed(message: Self.userFacingErrorMessage(for: error))
+                } else {
+                    studies = restoredStudies
+                    state = .loaded
+                }
             }
+        }
+
+        isRefreshing = false
+        if isEnrollmentReconciliationPending, !Task.isCancelled {
+            await refresh(retainingCurrentContent: true)
         }
     }
 
-    func refreshAfterEnrollment() async {
-        while isRefreshing && !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 100_000_000)
+    private func reconciledEnrollmentByStudyID(
+        authoritativeEnrollments: [StudyEnrollment]
+    ) -> [UUID: StudyEnrollment] {
+        var enrollmentByStudyID = Dictionary(
+            authoritativeEnrollments.map { ($0.studyID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        let reconciledStudyIDs: [UUID] = locallyConfirmedEnrollments.compactMap { entry -> UUID? in
+            let (studyID, confirmedEnrollment) = entry
+            guard let authoritativeEnrollment = enrollmentByStudyID[studyID],
+                  Self.hasMatchingIdentity(authoritativeEnrollment, confirmedEnrollment) else {
+                return nil
+            }
+            return studyID
+        }
+        for studyID in reconciledStudyIDs {
+            locallyConfirmedEnrollments.removeValue(forKey: studyID)
         }
 
-        guard !Task.isCancelled else { return }
-        await refresh(retainingCurrentContent: true)
+        for (studyID, confirmedEnrollment) in locallyConfirmedEnrollments {
+            enrollmentByStudyID[studyID] = confirmedEnrollment
+        }
+        return enrollmentByStudyID
+    }
+
+    private func applyingLocallyConfirmedEnrollments(
+        to studyCards: [DashboardStudyCard]
+    ) -> [DashboardStudyCard] {
+        studyCards.map { studyCard in
+            guard let enrollment = locallyConfirmedEnrollments[studyCard.study.id] else {
+                return studyCard
+            }
+            return DashboardStudyCard(study: studyCard.study, enrollment: enrollment)
+        }
+    }
+
+    private static func hasMatchingIdentity(
+        _ lhs: StudyEnrollment,
+        _ rhs: StudyEnrollment
+    ) -> Bool {
+        lhs.id == rhs.id
+            && lhs.userID == rhs.userID
+            && lhs.studyID == rhs.studyID
     }
 
     private static func userFacingErrorMessage(for error: Error) -> String {

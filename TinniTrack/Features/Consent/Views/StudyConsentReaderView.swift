@@ -2,10 +2,12 @@ import SwiftUI
 import UIKit
 
 struct StudyConsentReaderView: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject var viewModel: StudyConsentFlowViewModel
-    let onEnrollmentCompleted: @MainActor () async -> Void
-    @State private var isSignaturePresented = false
+    let definition: StudyConsentDefinition
+    let visibleSections: [StudyConsentSection]
+    let canContinueToSignature: Bool
+    let markConsentReviewed: () -> Void
+    let continueToSignature: () -> Void
+    let declineConsent: () -> Void
     @State private var isDeclineConfirmationPresented = false
     private let topAnchorID = "study_consent_reader_top"
     private let scrollCoordinateSpaceName = "study_consent_reader_scroll_space"
@@ -19,13 +21,13 @@ struct StudyConsentReaderView: View {
                             stepText: "Step 1 of 2",
                             progress: 0.5,
                             title: "Informed Consent",
-                            subtitle: viewModel.definition.landing.title
+                            subtitle: definition.landing.title
                         )
                         .id(topAnchorID)
 
-                        StudyConsentKeyInfoCard(keyInformation: viewModel.definition.keyInformation)
+                        StudyConsentKeyInfoCard(keyInformation: definition.keyInformation)
 
-                        ForEach(viewModel.visibleSections) { section in
+                        ForEach(visibleSections) { section in
                             StudyConsentSectionView(section: section)
                                 .id(section.id)
                         }
@@ -54,62 +56,29 @@ struct StudyConsentReaderView: View {
             StudyConsentBottomActionBar(
                 secondaryTitle: "I do not agree",
                 primaryTitle: "I agree, continue to signature",
-                isPrimaryEnabled: viewModel.canContinueToSignature,
+                isPrimaryEnabled: canContinueToSignature,
                 secondaryAction: { isDeclineConfirmationPresented = true },
                 primaryAction: {
-                    guard viewModel.canContinueToSignature else { return }
-                    viewModel.continueToSignature()
-                    isSignaturePresented = true
+                    guard canContinueToSignature else { return }
+                    continueToSignature()
                 }
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationDestination(isPresented: $isSignaturePresented) {
-            StudyConsentSignatureView(
-                viewModel: viewModel,
-                onEnrollmentCompleted: handleCompletedEnrollment,
-                exitConsentFlow: {
-                    viewModel.exitConsentFlowToStudyDetails()
-                    isSignaturePresented = false
-                    dismiss()
-                }
-            )
-            .navigationTitle("Sign Consent")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .tabBar)
-            .foregroundStyle(LoudnessMatchModalColors.text)
-            .background(LoudnessMatchModalColors.background)
-        }
-        .onChange(of: isSignaturePresented) { wasPresented, isPresented in
-            guard wasPresented, !isPresented else { return }
-            viewModel.returnToReviewAfterSignatureNavigationPop()
-        }
         .background(LoudnessMatchModalColors.background)
         .declineConsentConfirmation(isPresented: $isDeclineConfirmationPresented) {
-            viewModel.exitConsentFlowToStudyDetails()
-            dismiss()
+            declineConsent()
         }
-    }
-
-    @MainActor
-    private func handleCompletedEnrollment() async {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            isSignaturePresented = false
-        }
-        await Task.yield()
-        await onEnrollmentCompleted()
     }
 
     private func markConsentReviewedIfBottomIsVisible(bottomY: CGFloat, viewportHeight: CGFloat) {
-        guard !viewModel.canContinueToSignature,
+        guard !canContinueToSignature,
               viewportHeight > 0,
               bottomY > 0,
               bottomY <= viewportHeight + 16 else {
             return
         }
-        viewModel.markConsentScrolledToEnd()
+        markConsentReviewed()
     }
 }
 

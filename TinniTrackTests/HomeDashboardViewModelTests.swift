@@ -76,35 +76,133 @@ struct HomeDashboardViewModelTests {
     }
 
     @Test
-    func enrollmentRefreshWaitsForInFlightRefreshThenReloadsLatestEnrollment() async {
+    func confirmedEnrollmentUpdatesDashboardSynchronously() async {
         let study = Self.sampleStudy()
         let enrollment = Self.sampleEnrollment(studyID: study.id)
         let service = MockStudyService(
             studies: [study],
-            enrollments: [],
-            enrollmentResponses: [
-                [],
-                [],
-                [enrollment]
-            ]
+            enrollments: []
         )
         let viewModel = HomeDashboardViewModel(studyService: service)
 
         await viewModel.loadIfNeeded()
         #expect(viewModel.studies.first?.isEnrolledActive == false)
 
-        await service.setFetchDelay(nanoseconds: 200_000_000)
+        viewModel.confirmEnrollment(enrollment)
+
+        #expect(viewModel.state == .loaded)
+        #expect(viewModel.studies.first?.enrollment == enrollment)
+        #expect(await service.fetchMyEnrollmentsCallCount() == 1)
+    }
+
+    @Test
+    func staleDelayedRefreshCannotRemoveConfirmedEnrollment() async {
+        let study = Self.sampleStudy()
+        let enrollment = Self.sampleEnrollment(studyID: study.id)
+        let service = MockStudyService(
+            studies: [study],
+            enrollments: [],
+            enrollmentResponses: [[], [], [enrollment]]
+        )
+        let viewModel = HomeDashboardViewModel(studyService: service)
+
+        await viewModel.loadIfNeeded()
+        await service.suspendNextEnrollmentFetch()
         let inFlightRefresh = Task {
             await viewModel.refresh(retainingCurrentContent: true)
         }
-        await service.waitForFetchMyEnrollmentsCallCount(2)
+        #expect(await service.waitForFetchMyEnrollmentsCallCount(2))
 
-        await service.setFetchDelay(nanoseconds: nil)
-        await viewModel.refreshAfterEnrollment()
+        viewModel.confirmEnrollment(enrollment)
+        await viewModel.reconcileAfterEnrollment()
+        #expect(viewModel.studies.first?.enrollment == enrollment)
+        #expect(viewModel.isRefreshing)
+
+        await service.resumeEnrollmentFetch()
         await inFlightRefresh.value
 
-        #expect(viewModel.studies.first?.isEnrolledActive == true)
+        #expect(viewModel.state == .loaded)
+        #expect(viewModel.studies.first?.enrollment == enrollment)
         #expect(await service.fetchMyEnrollmentsCallCount() == 3)
+    }
+
+    @Test
+    func cancelledRefreshStartedBeforeConfirmationPreservesEnrollment() async {
+        let study = Self.sampleStudy()
+        let enrollment = Self.sampleEnrollment(studyID: study.id)
+        let service = MockStudyService(studies: [study], enrollments: [])
+        let viewModel = HomeDashboardViewModel(studyService: service)
+
+        await viewModel.loadIfNeeded()
+        await service.setEnrollmentsError(URLError(.cancelled))
+        await service.suspendNextEnrollmentFetch()
+        let inFlightRefresh = Task {
+            await viewModel.refresh(retainingCurrentContent: true)
+        }
+        #expect(await service.waitForFetchMyEnrollmentsCallCount(2))
+
+        viewModel.confirmEnrollment(enrollment)
+        await service.resumeEnrollmentFetch()
+        await inFlightRefresh.value
+
+        #expect(viewModel.state == .loaded)
+        #expect(viewModel.studies.first?.enrollment == enrollment)
+    }
+
+    @Test
+    func failedRefreshStartedBeforeConfirmationPreservesEnrollment() async {
+        let study = Self.sampleStudy()
+        let enrollment = Self.sampleEnrollment(studyID: study.id)
+        let service = MockStudyService(studies: [study], enrollments: [])
+        let viewModel = HomeDashboardViewModel(studyService: service)
+
+        await viewModel.loadIfNeeded()
+        await service.setEnrollmentsError(MockFailure(message: "Network unavailable"))
+        await service.suspendNextEnrollmentFetch()
+        let inFlightRefresh = Task {
+            await viewModel.refresh(retainingCurrentContent: true)
+        }
+        #expect(await service.waitForFetchMyEnrollmentsCallCount(2))
+
+        viewModel.confirmEnrollment(enrollment)
+        await service.resumeEnrollmentFetch()
+        await inFlightRefresh.value
+
+        #expect(viewModel.state == .loaded)
+        #expect(viewModel.studies.first?.enrollment == enrollment)
+    }
+
+    @Test
+    func localConfirmationClearsOnlyAfterMatchingAuthoritativeEnrollment() async {
+        let study = Self.sampleStudy()
+        let confirmedEnrollment = Self.sampleEnrollment(studyID: study.id)
+        let conflictingEnrollment = Self.sampleEnrollment(studyID: study.id)
+        let reconciledEnrollment = StudyEnrollment(
+            id: confirmedEnrollment.id,
+            userID: confirmedEnrollment.userID,
+            studyID: confirmedEnrollment.studyID,
+            status: .enrolled,
+            enrolledAt: confirmedEnrollment.enrolledAt,
+            createdAt: confirmedEnrollment.createdAt,
+            onboardingCompletedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        let service = MockStudyService(studies: [study], enrollments: [])
+        let viewModel = HomeDashboardViewModel(studyService: service)
+
+        await viewModel.loadIfNeeded()
+        viewModel.confirmEnrollment(confirmedEnrollment)
+
+        await service.setEnrollments([conflictingEnrollment])
+        await viewModel.reconcileAfterEnrollment()
+        #expect(viewModel.studies.first?.enrollment == confirmedEnrollment)
+
+        await service.setEnrollments([reconciledEnrollment])
+        await viewModel.reconcileAfterEnrollment()
+        #expect(viewModel.studies.first?.enrollment == reconciledEnrollment)
+
+        await service.setEnrollments([])
+        await viewModel.refresh(retainingCurrentContent: true)
+        #expect(viewModel.studies.first?.enrollment == nil)
     }
 
     private static func sampleStudy() -> Study {
@@ -136,7 +234,8 @@ private actor MockStudyService: StudyServiceProtocol {
     private var enrollmentResponses: [[StudyEnrollment]]
     private var studiesError: Error?
     private var enrollmentsError: Error?
-    private var fetchDelayNanoseconds: UInt64?
+    private var shouldSuspendNextEnrollmentFetch = false
+    private var enrollmentFetchContinuation: CheckedContinuation<Void, Never>?
     private var fetchStudiesCount = 0
     private var fetchEnrollmentsCount = 0
 
@@ -145,22 +244,17 @@ private actor MockStudyService: StudyServiceProtocol {
         enrollments: [StudyEnrollment],
         enrollmentResponses: [[StudyEnrollment]] = [],
         studiesError: Error? = nil,
-        enrollmentsError: Error? = nil,
-        fetchDelayNanoseconds: UInt64? = nil
+        enrollmentsError: Error? = nil
     ) {
         self.studies = studies
         self.enrollments = enrollments
         self.enrollmentResponses = enrollmentResponses
         self.studiesError = studiesError
         self.enrollmentsError = enrollmentsError
-        self.fetchDelayNanoseconds = fetchDelayNanoseconds
     }
 
     func fetchStudies() async throws -> [Study] {
         fetchStudiesCount += 1
-        if let fetchDelayNanoseconds {
-            try? await Task.sleep(nanoseconds: fetchDelayNanoseconds)
-        }
         if let studiesError {
             throw studiesError
         }
@@ -170,11 +264,15 @@ private actor MockStudyService: StudyServiceProtocol {
     func fetchMyEnrollments() async throws -> [StudyEnrollment] {
         fetchEnrollmentsCount += 1
         let response = enrollmentResponses.isEmpty ? enrollments : enrollmentResponses.removeFirst()
-        if let fetchDelayNanoseconds {
-            try? await Task.sleep(nanoseconds: fetchDelayNanoseconds)
+        let error = enrollmentsError
+        if shouldSuspendNextEnrollmentFetch {
+            shouldSuspendNextEnrollmentFetch = false
+            await withCheckedContinuation { continuation in
+                enrollmentFetchContinuation = continuation
+            }
         }
-        if let enrollmentsError {
-            throw enrollmentsError
+        if let error {
+            throw error
         }
         return response
     }
@@ -209,8 +307,21 @@ private actor MockStudyService: StudyServiceProtocol {
         studiesError = error
     }
 
-    func setFetchDelay(nanoseconds: UInt64?) {
-        fetchDelayNanoseconds = nanoseconds
+    func setEnrollmentsError(_ error: Error?) {
+        enrollmentsError = error
+    }
+
+    func setEnrollments(_ enrollments: [StudyEnrollment]) {
+        self.enrollments = enrollments
+    }
+
+    func suspendNextEnrollmentFetch() {
+        shouldSuspendNextEnrollmentFetch = true
+    }
+
+    func resumeEnrollmentFetch() {
+        enrollmentFetchContinuation?.resume()
+        enrollmentFetchContinuation = nil
     }
 
     func fetchStudiesCallCount() -> Int {
@@ -221,10 +332,21 @@ private actor MockStudyService: StudyServiceProtocol {
         fetchEnrollmentsCount
     }
 
-    func waitForFetchMyEnrollmentsCallCount(_ count: Int) async {
-        while fetchEnrollmentsCount < count {
-            try? await Task.sleep(nanoseconds: 10_000_000)
+    func waitForFetchMyEnrollmentsCallCount(
+        _ count: Int,
+        attempts: Int = 200
+    ) async -> Bool {
+        for _ in 0..<attempts {
+            if fetchEnrollmentsCount >= count {
+                return true
+            }
+            do {
+                try await Task.sleep(nanoseconds: 10_000_000)
+            } catch {
+                return false
+            }
         }
+        return fetchEnrollmentsCount >= count
     }
 }
 
