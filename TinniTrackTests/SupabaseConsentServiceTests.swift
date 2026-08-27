@@ -4,6 +4,110 @@ import Testing
 
 struct SupabaseConsentServiceTests {
     @Test
+    func consentIDIsStableForOneUserStudyAndVersion() {
+        let userID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let studyID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+
+        let first = SupabaseConsentService.consentID(
+            userID: userID,
+            studyID: studyID,
+            consentVersion: "study-no-1-consent-v2"
+        )
+        let retry = SupabaseConsentService.consentID(
+            userID: userID,
+            studyID: studyID,
+            consentVersion: "study-no-1-consent-v2"
+        )
+        let nextVersion = SupabaseConsentService.consentID(
+            userID: userID,
+            studyID: studyID,
+            consentVersion: "study-no-1-consent-v3"
+        )
+
+        #expect(first == retry)
+        #expect(first != nextVersion)
+        #expect(first.uuidString.split(separator: "-")[2].first == "8")
+    }
+
+    @Test
+    func consentHashUsesCanonicalLowercaseSHA256() {
+        let digest = SupabaseConsentService.sha256Hex(for: Data("abc".utf8))
+
+        #expect(digest == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    }
+
+    @Test
+    func recordedConsentMustMatchTheExactPendingEvidenceBeforeCleanup() {
+        let userID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let studyID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        let key = PendingConsentKey(
+            userID: userID,
+            studyID: studyID,
+            consentVersion: StudyConsentCatalog.studyNo1ConsentVersion
+        )
+        let pdfData = Data("signed consent".utf8)
+        let pdfSHA256 = SupabaseConsentService.sha256Hex(for: pdfData)
+        let completion = StudyConsentCompletion(
+            taskIdentifier: StudyConsentCatalog.studyNo1ConsentVersion,
+            studySlug: StudyConsentCatalog.studyNo1.studySlug,
+            consentVersion: StudyConsentCatalog.studyNo1ConsentVersion,
+            consented: true,
+            signerGivenName: "Taylor",
+            signerFamilyName: "Rivers",
+            signedAt: Date(timeIntervalSince1970: 1_750_000_000),
+            artifact: StudyConsentArtifact(
+                pdfData: pdfData,
+                pdfSHA256Hex: pdfSHA256,
+                storageBucket: StudyConsentCatalog.consentStorageBucket,
+                storagePath: ""
+            ),
+            researchKitFinishState: nil,
+            consentContentSHA256Hex: StudyConsentCatalog.studyNo1.contentSHA256Hex,
+            signatureImageSHA256Hex: String(repeating: "c", count: 64),
+            collectionMethod: StudyConsentCatalog.nativeCollectionMethod,
+            attestationText: StudyConsentCatalog.studyNo1.attestation.text,
+            attestationVersion: StudyConsentCatalog.studyNo1.attestation.version
+        )
+        let storagePath = SupabaseConsentService.storagePath(
+            userID: userID,
+            studyID: studyID,
+            consentVersion: key.consentVersion,
+            consentID: key.attemptID
+        )
+        let recorded = ExistingConsentRow(
+            id: key.attemptID,
+            userID: userID,
+            studyID: studyID,
+            consentVersion: key.consentVersion,
+            consentPDFBucket: StudyConsentCatalog.consentStorageBucket,
+            consentPDFPath: storagePath,
+            consentPDFSHA256: pdfSHA256,
+            consentContentSHA256: completion.consentContentSHA256Hex,
+            signatureImageSHA256: completion.signatureImageSHA256Hex!,
+            collectionMethod: completion.collectionMethod,
+            attestationText: completion.attestationText,
+            attestationVersion: completion.attestationVersion
+        )
+        let conflicting = ExistingConsentRow(
+            id: key.attemptID,
+            userID: userID,
+            studyID: studyID,
+            consentVersion: key.consentVersion,
+            consentPDFBucket: StudyConsentCatalog.consentStorageBucket,
+            consentPDFPath: storagePath,
+            consentPDFSHA256: String(repeating: "d", count: 64),
+            consentContentSHA256: completion.consentContentSHA256Hex,
+            signatureImageSHA256: completion.signatureImageSHA256Hex!,
+            collectionMethod: completion.collectionMethod,
+            attestationText: completion.attestationText,
+            attestationVersion: completion.attestationVersion
+        )
+
+        #expect(recorded.matches(completion, key: key, storagePath: storagePath))
+        #expect(conflicting.matches(completion, key: key, storagePath: storagePath) == false)
+    }
+
+    @Test
     func storagePathUsesOwnUserFolderStudyVersionAndConsentPDFName() {
         let userID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
         let studyID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!

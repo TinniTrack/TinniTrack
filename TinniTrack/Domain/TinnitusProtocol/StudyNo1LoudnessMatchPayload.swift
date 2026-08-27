@@ -1,36 +1,36 @@
 import Foundation
 
-enum StudyNo1PayloadValidationError: Error, Equatable {
+nonisolated enum StudyNo1PayloadValidationError: Error, Equatable {
     case missingRequiredFields([String])
     case incompleteStudyNo1(reason: String)
 }
 
-enum StudyNo1GateResult: String, Codable, Equatable {
+nonisolated enum StudyNo1GateResult: String, Codable, Equatable {
     case passed
     case failed
     case recordedOnly
 }
 
-enum StudyNo1FitSealStatus: String, Codable, Equatable {
+nonisolated enum StudyNo1FitSealStatus: String, Codable, Equatable {
     case confirmedPassed
     case confirmedNotPassed
     case unavailable
 }
 
-enum StudyNo1ThresholdSource: String, Codable, Equatable {
+nonisolated enum StudyNo1ThresholdSource: String, Codable, Equatable {
     case measured
     case manualScaffold
     case healthKitAudiogram
 }
 
-struct StudyNo1IdentifierContext: Codable, Equatable {
+nonisolated struct StudyNo1IdentifierContext: Codable, Equatable {
     let participantId: String?
     let studySessionId: String?
     let enrollmentId: String?
     let scheduledTaskId: String?
 }
 
-struct StudyNo1RunLifecycle: Codable, Equatable {
+nonisolated struct StudyNo1RunLifecycle: Codable, Equatable {
     let startedAt: Date
     let completedAt: Date?
     let submittedAt: Date?
@@ -38,19 +38,19 @@ struct StudyNo1RunLifecycle: Codable, Equatable {
     let interruptedAt: [Date]
 }
 
-struct StudyNo1DeviceContext: Codable, Equatable {
+nonisolated struct StudyNo1DeviceContext: Codable, Equatable {
     let deviceModel: String
     let systemName: String
     let systemVersion: String
 }
 
-struct StudyNo1AirPodsContext: Codable, Equatable {
+nonisolated struct StudyNo1AirPodsContext: Codable, Equatable {
     let modelIdentifier: String?
     let firmwareVersion: String?
     let unavailableReason: String?
 }
 
-struct StudyNo1ResearchKitCalibrationContext: Codable, Equatable {
+nonisolated struct StudyNo1ResearchKitCalibrationContext: Codable, Equatable {
     let sourceRepositoryURL: String
     let vendoredResearchKitCommit: String
     let designDocumentResearchKitCommit: String
@@ -60,7 +60,7 @@ struct StudyNo1ResearchKitCalibrationContext: Codable, Equatable {
     let limitation: String
 }
 
-struct StudyNo1RouteOutputContext: Codable, Equatable {
+nonisolated struct StudyNo1RouteOutputContext: Codable, Equatable {
     let portType: String
     let portName: String
     let portUID: String?
@@ -69,11 +69,11 @@ struct StudyNo1RouteOutputContext: Codable, Equatable {
     let verificationSource: String?
 }
 
-struct StudyNo1AudioRouteContext: Codable, Equatable {
+nonisolated struct StudyNo1AudioRouteContext: Codable, Equatable {
     let outputs: [StudyNo1RouteOutputContext]
 }
 
-struct StudyNo1AudioSessionContext: Codable, Equatable {
+nonisolated struct StudyNo1AudioSessionContext: Codable, Equatable {
     let category: String
     let mode: String
     let options: [String]
@@ -81,14 +81,14 @@ struct StudyNo1AudioSessionContext: Codable, Equatable {
     let bufferSize: Double
 }
 
-struct StudyNo1VolumeContext: Codable, Equatable {
+nonisolated struct StudyNo1VolumeContext: Codable, Equatable {
     let outputVolume: Double
     let bucketedOutputVolume: Double?
     let volumeCurveOffsetDB: Double?
     let policy: String
 }
 
-struct StudyNo1EnvironmentSPLContext: Codable, Equatable {
+nonisolated struct StudyNo1EnvironmentSPLContext: Codable, Equatable {
     let thresholdDBA: Double
     let requiredContiguousSamples: Int
     let samplingInterval: TimeInterval
@@ -97,20 +97,20 @@ struct StudyNo1EnvironmentSPLContext: Codable, Equatable {
     let gateResult: StudyNo1GateResult
 }
 
-struct StudyNo1FitSealContext: Codable, Equatable {
+nonisolated struct StudyNo1FitSealContext: Codable, Equatable {
     let status: StudyNo1FitSealStatus
     let confirmedAt: Date?
     let limitations: String
 }
 
-struct StudyNo1SafetyContext: Codable, Equatable {
+nonisolated struct StudyNo1SafetyContext: Codable, Equatable {
     let acknowledgedAt: Date?
     let stopControlVisibleBeforePlayback: Bool
     let maximumLevelDBHL: Double
     let limitation: String
 }
 
-struct StudyNo1StimulusContext: Codable, Equatable {
+nonisolated struct StudyNo1StimulusContext: Codable, Equatable {
     let kind: String
     let frequencyHz: Double
     let channel: String
@@ -119,7 +119,7 @@ struct StudyNo1StimulusContext: Codable, Equatable {
     let rampDuration: TimeInterval
 }
 
-struct StudyNo1ThresholdContext: Codable, Equatable {
+nonisolated struct StudyNo1ThresholdContext: Codable, Equatable {
     let frequencyHz: Double
     let levelDBHL: Double
     let source: StudyNo1ThresholdSource
@@ -127,7 +127,7 @@ struct StudyNo1ThresholdContext: Codable, Equatable {
     let limitation: String?
 }
 
-struct StudyNo1LoudnessTrialContext: Codable, Equatable {
+nonisolated struct StudyNo1LoudnessTrialContext: Codable, Equatable {
     let trialIndex: Int
     let acceptedLevelDBHL: Double
     let estimatedDBSPL: Double
@@ -136,7 +136,7 @@ struct StudyNo1LoudnessTrialContext: Codable, Equatable {
     let acceptedAt: Date
 }
 
-struct StudyNo1LoudnessSummaryContext: Codable, Equatable {
+nonisolated struct StudyNo1LoudnessSummaryContext: Codable, Equatable {
     let medianMatchedDBHL: Double
     let medianEstimatedDBSPL: Double
     let medianDBSL: Double
@@ -145,7 +145,7 @@ struct StudyNo1LoudnessSummaryContext: Codable, Equatable {
     let completedAt: Date
 }
 
-struct StudyNo1ProtocolEventContext: Codable, Equatable {
+nonisolated struct StudyNo1ProtocolEventContext: Codable, Equatable {
     let timestamp: Date
     let kind: String
     let frequencyHz: Double?
@@ -163,7 +163,7 @@ struct StudyNo1ProtocolEventContext: Codable, Equatable {
     let guardrailRouteOutputs: [StudyNo1RouteOutputContext]
 }
 
-struct StudyNo1PlaybackEventContext: Codable, Equatable {
+nonisolated struct StudyNo1PlaybackEventContext: Codable, Equatable {
     let timestamp: Date
     let frequencyHz: Double
     let channel: String
@@ -179,14 +179,14 @@ struct StudyNo1PlaybackEventContext: Codable, Equatable {
     let stoppedAt: Date?
 }
 
-struct StudyNo1RefusalContext: Codable, Equatable {
+nonisolated struct StudyNo1RefusalContext: Codable, Equatable {
     let timestamp: Date
     let reason: String
     let presentedLevelDBHL: Double?
     let guardrailState: String?
 }
 
-struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
+nonisolated struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
     static let payloadVersion = "study-no-1-loudness-match-v2"
     static let modelCalibratedOutputLimitation = "Estimated model-calibrated output from ResearchKit AirPods Pro 2 tables, route, and system output volume. This is not exact patient-specific in-ear SPL."
 
@@ -280,7 +280,7 @@ struct StudyNo1LoudnessMatchRunPayload: Codable, Equatable {
     }
 }
 
-struct StudyNo1PreflightContext: Equatable {
+nonisolated struct StudyNo1PreflightContext: Equatable {
     let identifiers: StudyNo1IdentifierContext
     let startedAt: Date
     let submittedAt: Date?
@@ -294,7 +294,7 @@ struct StudyNo1PreflightContext: Equatable {
     let thresholdSource: StudyNo1ThresholdSource
 }
 
-struct StudyNo1LoudnessMatchPayloadBuilder {
+nonisolated struct StudyNo1LoudnessMatchPayloadBuilder {
     private let calibrationMetadata: CalibratedAudioCalibrationMetadata
 
     init(calibrationMetadata: CalibratedAudioCalibrationMetadata = CalibratedHeadphoneProfile.airPodsPro2.metadata) {
@@ -389,7 +389,7 @@ struct StudyNo1LoudnessMatchPayloadBuilder {
     }
 }
 
-private extension StudyNo1LoudnessTrialContext {
+nonisolated private extension StudyNo1LoudnessTrialContext {
     init(_ trial: TinnitusLoudnessMatchTrial) {
         trialIndex = trial.trialIndex
         acceptedLevelDBHL = trial.acceptedLevelDBHL
@@ -400,7 +400,7 @@ private extension StudyNo1LoudnessTrialContext {
     }
 }
 
-private extension StudyNo1ProtocolEventContext {
+nonisolated private extension StudyNo1ProtocolEventContext {
     init(_ event: TinnitusProtocolEvent) {
         timestamp = event.timestamp
         kind = event.kind.rawValue
@@ -420,7 +420,7 @@ private extension StudyNo1ProtocolEventContext {
     }
 }
 
-private extension StudyNo1PlaybackEventContext {
+nonisolated private extension StudyNo1PlaybackEventContext {
     init?(_ event: TinnitusProtocolEvent) {
         guard let metadata = event.playbackMetadata else {
             return nil
@@ -442,7 +442,7 @@ private extension StudyNo1PlaybackEventContext {
     }
 }
 
-private extension StudyNo1RefusalContext {
+nonisolated private extension StudyNo1RefusalContext {
     init?(_ event: TinnitusProtocolEvent) {
         guard event.kind == .playbackRefused || event.kind == .stopRequested || event.kind == .abortRecorded else {
             return nil

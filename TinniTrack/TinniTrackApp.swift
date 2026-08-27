@@ -33,7 +33,9 @@ struct TinniTrackApp: App {
 enum SessionStoreFactory {
     static func makeAppStore(processInfo: ProcessInfo = .processInfo) -> SessionStore {
         let pendingStore = EmailVerificationPendingStore()
+        let signupDraftStore = SignupDraftStore()
 
+        #if DEBUG
         let isUITestLaunch = processInfo.environment["XCTestConfigurationFilePath"] != nil
             || processInfo.environment.keys.contains { $0.hasPrefix("UITEST_") }
 
@@ -43,18 +45,15 @@ enum SessionStoreFactory {
                 pendingStore.clear()
             }
             if env["UITEST_CLEAR_SIGNUP_DRAFT"] == "1" {
-                let draftStore = SignupDraftStore()
-                draftStore.clear()
+                signupDraftStore.clear()
             }
-            if env["UITEST_SEED_SIGNUP_DRAFT_STEP_TWO"] == "1" {
+            if env["UITEST_SEED_SIGNUP_DRAFT"] == "1" {
                 let defaultDateOfBirth = Calendar(identifier: .gregorian)
                     .date(byAdding: .year, value: -30, to: Date()) ?? Date()
-                SignupDraftStore().save(SignupDraft(
-                    currentStep: 2,
+                signupDraftStore.save(SignupDraft(
                     email: "draft@example.com",
-                    password: "password123",
-                    firstName: "",
-                    lastName: "",
+                    firstName: "Draft",
+                    lastName: "Participant",
                     dateOfBirth: defaultDateOfBirth,
                     updatedAt: Date()
                 ))
@@ -76,6 +75,10 @@ enum SessionStoreFactory {
                 emailVerificationPendingStore: pendingStore
             )
         }
+        #endif
+
+        // Store initialization removes expired drafts and scrubs the legacy password payload.
+        _ = signupDraftStore
 
         return SessionStore(
             authService: SupabaseAuthService(),
@@ -161,6 +164,7 @@ enum SessionStoreFactory {
     #endif
 }
 
+#if DEBUG
 private final class NoopAuthService: AuthServiceProtocol {
     private var currentSessionCallCount = 0
     private let verifyAfterSessionChecks: Int?
@@ -285,7 +289,6 @@ private final class NoopProfileService: ProfileServiceProtocol {
     }
 }
 
-#if DEBUG
 private final class PreviewAuthService: AuthServiceProtocol {
     private var session: AuthSession?
 

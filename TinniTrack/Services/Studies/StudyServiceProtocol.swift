@@ -9,7 +9,6 @@ protocol StudyServiceProtocol {
     func fetchStudies() async throws -> [Study]
     func fetchMyEnrollments() async throws -> [StudyEnrollment]
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask]
-    func enroll(studyID: UUID) async throws
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws
     func submitStudyNo1OrientationThreshold(

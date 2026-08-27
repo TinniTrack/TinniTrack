@@ -10,7 +10,6 @@ import Combine
 final class HomeDashboardViewModel: ObservableObject {
     @Published private(set) var state: State = .loading
     @Published private(set) var studies: [DashboardStudyCard] = []
-    @Published private(set) var enrollingStudyID: UUID?
     @Published private(set) var isRefreshing = false
 
     enum State: Equatable {
@@ -92,13 +91,6 @@ final class HomeDashboardViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
         await refresh(retainingCurrentContent: true)
-    }
-
-    func enroll(studyID: UUID) async throws {
-        enrollingStudyID = studyID
-        defer { enrollingStudyID = nil }
-        try await studyService.enroll(studyID: studyID)
-        await refresh()
     }
 
     private static func userFacingErrorMessage(for error: Error) -> String {

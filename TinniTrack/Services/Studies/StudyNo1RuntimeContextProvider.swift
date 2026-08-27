@@ -47,7 +47,7 @@ struct SystemStudyNo1RuntimeContextProvider: StudyNo1RuntimeContextProviding {
         var values: [String] = []
         if options.contains(.mixWithOthers) { values.append("mixWithOthers") }
         if options.contains(.duckOthers) { values.append("duckOthers") }
-        if options.contains(.allowBluetooth) { values.append("allowBluetooth") }
+        if options.contains(.allowBluetoothHFP) { values.append("allowBluetoothHFP") }
         if options.contains(.defaultToSpeaker) { values.append("defaultToSpeaker") }
         if options.contains(.interruptSpokenAudioAndMixWithOthers) { values.append("interruptSpokenAudioAndMixWithOthers") }
         if options.contains(.allowBluetoothA2DP) { values.append("allowBluetoothA2DP") }

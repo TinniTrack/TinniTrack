@@ -90,7 +90,7 @@ struct HeadphoneRouteAssessment: Equatable {
             .joined(separator: "\n")
     }
 
-    private static func stableFingerprint(_ value: String) -> String {
+    nonisolated private static func stableFingerprint(_ value: String) -> String {
         var hash: UInt64 = 14_695_981_039_346_656_037
         for byte in value.utf8 {
             hash ^= UInt64(byte)

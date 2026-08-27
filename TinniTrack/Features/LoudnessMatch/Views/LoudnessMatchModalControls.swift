@@ -177,6 +177,8 @@ struct LoudnessMatchModalContentLayout<Content: View, Footer: View>: View {
 struct LoudnessMatchModalTitleBlock: View {
     let title: String
     var bodyText: String?
+    var bodyFont: Font = .title2
+    var bodyLineSpacing: CGFloat = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -185,14 +187,16 @@ struct LoudnessMatchModalTitleBlock: View {
                 .foregroundStyle(LoudnessMatchModalColors.text)
                 .lineLimit(4)
                 .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
 
             if let bodyText {
                 Text(bodyText)
-                    .font(.title2)
-                    .lineSpacing(5)
+                    .font(bodyFont)
+                    .lineSpacing(bodyLineSpacing)
                     .foregroundStyle(LoudnessMatchModalColors.secondaryText)
                     .lineLimit(6)
                     .minimumScaleFactor(0.82)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .multilineTextAlignment(.leading)

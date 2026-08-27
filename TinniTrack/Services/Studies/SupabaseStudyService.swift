@@ -48,47 +48,7 @@ final class SupabaseStudyService: StudyServiceProtocol {
             .execute()
             .value
 
-        return rows.map { $0.toDomain() }
-    }
-
-    func enroll(studyID: UUID) async throws {
-        guard let userID = try await currentUserID() else {
-            throw NSError(
-                domain: "StudyService",
-                code: 401,
-                userInfo: [NSLocalizedDescriptionKey: "No active session."]
-            )
-        }
-
-        let existing: [EnrollmentLookupRow] = try await client
-            .from("study_enrollments")
-            .select("id")
-            .eq("user_id", value: userID.uuidString)
-            .eq("study_id", value: studyID.uuidString)
-            .limit(1)
-            .execute()
-            .value
-
-        if let enrollmentID = existing.first?.id {
-            try await client
-                .from("study_enrollments")
-                .update(EnrollmentStatusPayload(
-                    status: "enrolled",
-                    enrolledAt: Self.iso8601Formatter.string(from: Date())
-                ))
-                .eq("id", value: enrollmentID.uuidString)
-                .execute()
-        } else {
-            try await client
-                .from("study_enrollments")
-                .insert(NewEnrollmentPayload(
-                    userID: userID,
-                    studyID: studyID,
-                    status: "enrolled",
-                    enrolledAt: Self.iso8601Formatter.string(from: Date())
-                ))
-                .execute()
-        }
+        return try rows.map { try $0.toDomain() }
     }
 
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {
@@ -112,7 +72,7 @@ final class SupabaseStudyService: StudyServiceProtocol {
             )
         }
 
-        return row.toDomain()
+        return try row.toDomain()
     }
 
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {
@@ -187,7 +147,7 @@ final class SupabaseStudyService: StudyServiceProtocol {
         do {
             let session = try await client.auth.session
             return session.user.id
-        } catch {
+        } catch AuthError.sessionMissing {
             return nil
         }
     }
@@ -277,7 +237,7 @@ private struct StudyEnrollmentRow: Decodable {
     }
 }
 
-private struct ScheduledTaskRow: Decodable {
+struct ScheduledTaskRow: Decodable {
     let id: UUID
     let enrollmentID: UUID
     let taskKey: String
@@ -304,20 +264,52 @@ private struct ScheduledTaskRow: Decodable {
         case completedAt = "completed_at"
     }
 
-    func toDomain() -> ScheduledTask {
+    func toDomain() throws -> ScheduledTask {
         ScheduledTask(
             id: id,
             enrollmentID: enrollmentID,
             taskKey: taskKey,
             taskVersion: taskVersion,
-            scheduledFor: Self.parseTimestamp(scheduledFor) ?? Date.distantPast,
-            windowStart: Self.parseTimestamp(windowStart) ?? Date.distantPast,
-            windowEnd: Self.parseTimestamp(windowEnd) ?? Date.distantFuture,
+            scheduledFor: try Self.parseRequiredTimestamp(
+                scheduledFor,
+                field: "scheduled_for"
+            ),
+            windowStart: try Self.parseRequiredTimestamp(
+                windowStart,
+                field: "window_start"
+            ),
+            windowEnd: try Self.parseRequiredTimestamp(
+                windowEnd,
+                field: "window_end"
+            ),
             status: ScheduledTaskStatus(rawValue: status),
             dayIndex: dayIndex,
             slotIndex: slotIndex,
-            completedAt: Self.parseTimestamp(completedAt)
+            completedAt: try Self.parseOptionalTimestamp(
+                completedAt,
+                field: "completed_at"
+            )
         )
+    }
+
+    private static func parseRequiredTimestamp(
+        _ value: String,
+        field: String
+    ) throws -> Date {
+        guard let date = parseTimestamp(value) else {
+            throw SupabaseStudyDataError.invalidTimestamp(field: field, value: value)
+        }
+        return date
+    }
+
+    private static func parseOptionalTimestamp(
+        _ value: String?,
+        field: String
+    ) throws -> Date? {
+        guard let value else {
+            return nil
+        }
+        return try parseRequiredTimestamp(value, field: field)
     }
 
     private static func parseTimestamp(_ value: String?) -> Date? {
@@ -331,30 +323,13 @@ private struct ScheduledTaskRow: Decodable {
     }
 }
 
-private struct EnrollmentLookupRow: Decodable {
-    let id: UUID
-}
+enum SupabaseStudyDataError: LocalizedError, Equatable {
+    case invalidTimestamp(field: String, value: String)
 
-private struct EnrollmentStatusPayload: Encodable {
-    let status: String
-    let enrolledAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case enrolledAt = "enrolled_at"
-    }
-}
-
-private struct NewEnrollmentPayload: Encodable {
-    let userID: UUID
-    let studyID: UUID
-    let status: String
-    let enrolledAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case userID = "user_id"
-        case studyID = "study_id"
-        case status
-        case enrolledAt = "enrolled_at"
+    var errorDescription: String? {
+        switch self {
+        case let .invalidTimestamp(field, value):
+            return "The scheduled task contains an invalid \(field) timestamp: \(value)"
+        }
     }
 }

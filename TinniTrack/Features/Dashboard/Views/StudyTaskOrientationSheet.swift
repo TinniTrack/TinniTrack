@@ -351,7 +351,7 @@ struct StudyTaskOrientationSheet: View {
 
     private var topControls: some View {
         HStack {
-            if step != .welcome {
+            if step != .welcome, step != .activeTest {
                 LoudnessMatchModalIconButton(
                     systemName: "chevron.left",
                     accessibilityLabel: "Back",
@@ -563,7 +563,6 @@ struct StudyTaskOrientationSheet: View {
             guard loudnessViewModel.environmentGateResult?.passed == true else {
                 return
             }
-            loudnessViewModel.cancelEnvironmentGate()
             step = .fit
         case .fit:
             loudnessViewModel.completeFitConfirmation()
@@ -586,6 +585,10 @@ struct StudyTaskOrientationSheet: View {
     }
 
     private func goBack() {
+        guard step != .activeTest else {
+            return
+        }
+
         if loudnessViewModel.isPlaying {
             loudnessViewModel.stopTone()
         }
@@ -610,7 +613,7 @@ struct StudyTaskOrientationSheet: View {
             loudnessViewModel.stopVolumeGateMonitoring()
             step = .fit
         case .activeTest:
-            step = .maxVolume
+            break
         }
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-struct CalibratedToneRenderConfiguration: Equatable {
+nonisolated struct CalibratedToneRenderConfiguration: Equatable {
     let frequencyHz: Double
     let amplitude: Double
     let channel: CalibratedTonePlaybackChannel
@@ -36,7 +36,7 @@ struct CalibratedToneRenderConfiguration: Equatable {
     }
 }
 
-struct CalibratedTonePCMBuffer: Equatable {
+nonisolated struct CalibratedTonePCMBuffer: Equatable {
     let left: [Float]
     let right: [Float]
     let sampleRate: Double
@@ -46,12 +46,12 @@ struct CalibratedTonePCMBuffer: Equatable {
     }
 }
 
-enum CalibratedToneRendererError: Error, Equatable {
+nonisolated enum CalibratedToneRendererError: Error, Equatable {
     case invalidConfiguration
     case unsafeAmplitude(Double)
 }
 
-struct CalibratedToneRenderer {
+nonisolated struct CalibratedToneRenderer {
     private var phase = 0.0
     private(set) var renderedFrameCount = 0
 

@@ -79,10 +79,10 @@ struct LoudnessMatchTaskModalFlowView: View {
         .onAppear {
             handleStepEntered(step)
         }
-        .onChange(of: step) { newStep in
+        .onChange(of: step) { _, newStep in
             handleStepEntered(newStep)
         }
-        .onChange(of: viewModel.isAirPodsRouteInterrupted) { isInterrupted in
+        .onChange(of: viewModel.isAirPodsRouteInterrupted) { _, isInterrupted in
             if !isInterrupted {
                 resumeCurrentStepAfterAirPodsReconnect()
             }
@@ -125,7 +125,7 @@ struct LoudnessMatchTaskModalFlowView: View {
 
     private var topControls: some View {
         HStack {
-            if step != .intro {
+            if step != .intro, step != .activeTest {
                 LoudnessMatchModalIconButton(
                     systemName: "chevron.left",
                     accessibilityLabel: "Back",
@@ -320,7 +320,6 @@ struct LoudnessMatchTaskModalFlowView: View {
             guard viewModel.environmentGateResult?.passed == true else {
                 return
             }
-            viewModel.cancelEnvironmentGate()
             step = .fit
         case .fit:
             viewModel.completeFitConfirmation()
@@ -348,6 +347,10 @@ struct LoudnessMatchTaskModalFlowView: View {
     }
 
     private func goBack() {
+        guard step != .activeTest else {
+            return
+        }
+
         if viewModel.isPlaying {
             viewModel.stopTone()
         }
@@ -370,8 +373,7 @@ struct LoudnessMatchTaskModalFlowView: View {
         case .tinnitusLocation:
             step = .maxVolume
         case .activeTest:
-            selectedLaterality = viewModel.selectedLaterality ?? selectedLaterality
-            step = .tinnitusLocation
+            break
         }
     }
 

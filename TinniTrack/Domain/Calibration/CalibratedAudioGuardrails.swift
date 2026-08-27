@@ -1,6 +1,6 @@
 import Foundation
 
-enum CalibratedAudioRoutePortKind: Equatable {
+nonisolated enum CalibratedAudioRoutePortKind: Equatable {
     case builtInSpeaker
     case builtInReceiver
     case wiredHeadphones
@@ -18,14 +18,14 @@ enum CalibratedAudioRoutePortKind: Equatable {
     }
 }
 
-enum CalibratedHeadphoneVerificationSource: String, Equatable {
+nonisolated enum CalibratedHeadphoneVerificationSource: String, Equatable {
     case appCalibrationProfile
     case routeNameHeuristic
     case researchProtocol
     case externalDeviceRegistry
 }
 
-struct CalibratedAudioRouteOutput: Equatable {
+nonisolated struct CalibratedAudioRouteOutput: Equatable {
     let portName: String
     let portType: CalibratedAudioRoutePortKind
     let portUID: String?
@@ -50,7 +50,7 @@ struct CalibratedAudioRouteOutput: Equatable {
     }
 }
 
-struct CalibratedAudioRouteDetails: Equatable {
+nonisolated struct CalibratedAudioRouteDetails: Equatable {
     let outputs: [CalibratedAudioRouteOutput]
 
     init(outputs: [CalibratedAudioRouteOutput]) {
@@ -58,8 +58,8 @@ struct CalibratedAudioRouteDetails: Equatable {
     }
 }
 
-struct CalibratedAudioVolumePolicy: Equatable {
-    enum Kind: String, Equatable {
+nonisolated struct CalibratedAudioVolumePolicy: Equatable {
+    nonisolated enum Kind: String, Equatable {
         case maximum
     }
 
@@ -88,14 +88,14 @@ struct CalibratedAudioVolumePolicy: Equatable {
     }
 }
 
-enum CalibratedAudioGuardrailState: Equatable {
+nonisolated enum CalibratedAudioGuardrailState: Equatable {
     case notEvaluated
     case passed
     case failed
     case restartRequired
 }
 
-enum CalibratedAudioGuardrailError: Error, Equatable {
+nonisolated enum CalibratedAudioGuardrailError: Error, Equatable {
     case unsupportedRoute(route: CalibratedAudioRouteDetails, supportedPortTypes: [CalibratedAudioRoutePortKind])
     case unverifiedHeadphoneProfile(route: CalibratedAudioRouteDetails, requiredIdentifier: String)
     case invalidVolume(Double, policy: CalibratedAudioVolumePolicy)
@@ -105,7 +105,7 @@ enum CalibratedAudioGuardrailError: Error, Equatable {
     case missingCalibrationProfile(String)
 }
 
-struct CalibratedAudioGuardrailMetadata: Equatable {
+nonisolated struct CalibratedAudioGuardrailMetadata: Equatable {
     let routeDetails: CalibratedAudioRouteDetails?
     let supportedHeadphoneIdentifier: String?
     let validationState: CalibratedAudioGuardrailState
@@ -115,13 +115,13 @@ struct CalibratedAudioGuardrailMetadata: Equatable {
     let volumePolicyDescription: String
 }
 
-struct CalibratedAudioGuardrailValidation: Equatable {
+nonisolated struct CalibratedAudioGuardrailValidation: Equatable {
     let state: CalibratedAudioGuardrailState
     let metadata: CalibratedAudioGuardrailMetadata
     let error: CalibratedAudioGuardrailError?
 }
 
-struct CalibratedAudioGuardrailPolicy {
+nonisolated struct CalibratedAudioGuardrailPolicy {
     let requiredHeadphoneIdentifier: String
     let supportedHeadphoneIdentifiers: Set<String>
     let volumePolicy: CalibratedAudioVolumePolicy
@@ -283,7 +283,7 @@ struct CalibratedAudioGuardrailPolicy {
     }
 }
 
-struct CalibratedAudioGuardrailSession {
+nonisolated struct CalibratedAudioGuardrailSession {
     private let policy: CalibratedAudioGuardrailPolicy
     private(set) var validation: CalibratedAudioGuardrailValidation
 

@@ -381,23 +381,70 @@ struct LoudnessMatchTaskFlowViewModelTests {
     }
 
     @Test
-    func playbackPausesPassedContinuousEnvironmentGateWithoutClearingPreflight() async throws {
+    func immediateEnvironmentGateRestartKeepsNewMonitorRunningAfterOldTaskTerminates() async throws {
+        let environmentGateMonitor = RestartTrackingEnvironmentSPLGateMonitor()
+        let viewModel = LoudnessMatchTaskFlowViewModel(
+            engine: makeEngine(),
+            guardrailProvider: { passedGuardrails() },
+            environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
+            environmentGateMonitor: environmentGateMonitor
+        )
+
+        viewModel.startContinuousEnvironmentGate()
+        await Task.yield()
+
+        viewModel.cancelEnvironmentGate()
+        viewModel.startContinuousEnvironmentGate()
+
+        #expect(viewModel.isRunningEnvironmentGate)
+        #expect(environmentGateMonitor.monitorCallCount == 2)
+        #expect(try await waitUntil {
+            environmentGateMonitor.hasTerminated(streamID: 0)
+        })
+        for _ in 0..<3 {
+            await Task.yield()
+        }
+
+        #expect(viewModel.isRunningEnvironmentGate)
+        #expect(environmentGateMonitor.monitorCallCount == 2)
+
+        environmentGateMonitor.yieldToLatest(samplesDBA: [40, 41, 42, 43, 44])
+        #expect(try await waitUntil {
+            viewModel.environmentGateResult?.passed == true
+        })
+        #expect(viewModel.isRunningEnvironmentGate)
+        viewModel.cancelEnvironmentGate()
+    }
+
+    @Test
+    func environmentGateTaskGenerationRejectsCompletionFromMonitorBeforeImmediateRestart() {
+        var generation = EnvironmentGateTaskGeneration()
+        let cancelledMonitor = generation.begin()
+
+        generation.invalidate()
+        let restartedMonitor = generation.begin()
+
+        #expect(generation.isCurrent(cancelledMonitor) == false)
+        #expect(generation.isCurrent(restartedMonitor))
+    }
+
+    @Test
+    func playbackSuspendsEnvironmentGateAndResumesMonitoringAfterStop() async throws {
         let player = MockCalibratedTonePlayer()
+        let environmentGateMonitor = ControllableEnvironmentSPLGateMonitor()
         let viewModel = LoudnessMatchTaskFlowViewModel(
             engine: makeEngine(),
             player: player,
             guardrailProvider: { passedGuardrails() },
             environmentMeter: MockEnvironmentSPLMeter(samplesDBA: []),
-            environmentGateMonitor: MockEnvironmentSPLGateMonitor(
-                samplesByUpdate: [[40, 41, 42, 43, 44]],
-                finishAfterUpdates: false
-            ),
+            environmentGateMonitor: environmentGateMonitor,
             audiogramRepository: MockAudiogramRepository(
                 audiogram: sampleAudiogram(leftThreshold: 10, rightThreshold: 20)
             )
         )
 
         viewModel.startContinuousEnvironmentGate()
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44])
         #expect(try await waitUntil {
             viewModel.isRunningEnvironmentGate
                 && viewModel.environmentGateResult?.passed == true
@@ -409,10 +456,32 @@ struct LoudnessMatchTaskFlowViewModelTests {
         await completeAudiogramThreshold(viewModel, laterality: .left)
         viewModel.playTone()
 
-        #expect(player.playedRequests.count == 1)
-        #expect(viewModel.isRunningEnvironmentGate == false)
+        #expect(try await waitUntil {
+            player.playedRequests.count == 1
+                && viewModel.isRunningEnvironmentGate == false
+        })
+        #expect(viewModel.isPlaying)
         #expect(viewModel.environmentGateResult?.passed == true)
         #expect(viewModel.preflightReady)
+
+        viewModel.stopTone()
+        #expect(try await waitUntil {
+            viewModel.isRunningEnvironmentGate
+                && viewModel.environmentGateResult == nil
+        })
+
+        #expect(player.stopCallCount == 1)
+        #expect(viewModel.isEnvironmentQuietnessInterrupted)
+
+        environmentGateMonitor.yield(samplesDBA: [40, 41, 42, 43, 44, 50])
+        #expect(try await waitUntil {
+            viewModel.environmentGateUpdate?.status == .tooLoud
+        })
+
+        #expect(viewModel.environmentGateResult == nil)
+        #expect(viewModel.preflightReady == false)
+        #expect(viewModel.canPlayTone == false)
+        viewModel.cancelEnvironmentGate()
     }
 
     @Test
@@ -1086,6 +1155,98 @@ private struct MockEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
     }
 }
 
+private final class ControllableEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring {
+    private var continuation: AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error>.Continuation?
+    private var configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1
+
+    func monitorGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+        self.configuration = configuration
+        return AsyncThrowingStream { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func yield(samplesDBA: [Double]) {
+        continuation?.yield(
+            TinnitusEnvironmentSPLGateEvaluator().update(
+                samplesDBA: samplesDBA,
+                configuration: configuration
+            )
+        )
+    }
+
+    func finish() {
+        continuation?.finish()
+    }
+}
+
+private final class RestartTrackingEnvironmentSPLGateMonitor: EnvironmentSPLGateMonitoring, @unchecked Sendable {
+    private typealias Continuation = AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error>.Continuation
+
+    private let lock = NSLock()
+    private var nextStreamID = 0
+    private var continuations: [Int: Continuation] = [:]
+    private var configurations: [Int: TinnitusEnvironmentSPLGateConfiguration] = [:]
+    private var terminatedStreamIDs: Set<Int> = []
+
+    var monitorCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return nextStreamID
+    }
+
+    func monitorGate(
+        configuration: TinnitusEnvironmentSPLGateConfiguration
+    ) -> AsyncThrowingStream<TinnitusEnvironmentSPLGateUpdate, Error> {
+        lock.lock()
+        let streamID = nextStreamID
+        nextStreamID += 1
+        configurations[streamID] = configuration
+        lock.unlock()
+
+        return AsyncThrowingStream { continuation in
+            lock.lock()
+            continuations[streamID] = continuation
+            lock.unlock()
+
+            continuation.onTermination = { [weak self] _ in
+                self?.recordTermination(streamID: streamID)
+            }
+        }
+    }
+
+    func hasTerminated(streamID: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return terminatedStreamIDs.contains(streamID)
+    }
+
+    func yieldToLatest(samplesDBA: [Double]) {
+        lock.lock()
+        let streamID = nextStreamID - 1
+        let continuation = continuations[streamID]
+        let configuration = configurations[streamID] ?? .studyNo1
+        lock.unlock()
+
+        continuation?.yield(
+            TinnitusEnvironmentSPLGateEvaluator().update(
+                samplesDBA: samplesDBA,
+                configuration: configuration
+            )
+        )
+    }
+
+    private func recordTermination(streamID: Int) {
+        lock.lock()
+        terminatedStreamIDs.insert(streamID)
+        continuations[streamID] = nil
+        configurations[streamID] = nil
+        lock.unlock()
+    }
+}
+
 private final class MockAudioSessionRouteVolumeProvider: AudioSessionRouteVolumeProviding {
     var outputs: [AudioSessionRouteOutputSnapshot]
     var outputVolume: Double?
@@ -1229,7 +1390,6 @@ private final class MockStudyService: StudyServiceProtocol {
     func fetchStudies() async throws -> [Study] { [] }
     func fetchMyEnrollments() async throws -> [StudyEnrollment] { [] }
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] { [] }
-    func enroll(studyID: UUID) async throws {}
     func completeStudyNo1Onboarding(enrollmentID: UUID, timezone: String) async throws {}
 
     func beginStudyNo1OrientationThresholdTask(enrollmentID: UUID) async throws -> ScheduledTask {

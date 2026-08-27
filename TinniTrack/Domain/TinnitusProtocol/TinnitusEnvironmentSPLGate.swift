@@ -1,6 +1,6 @@
 import Foundation
 
-struct TinnitusEnvironmentSPLGateConfiguration: Equatable {
+nonisolated struct TinnitusEnvironmentSPLGateConfiguration: Equatable {
     let thresholdDBA: Double
     let requiredContiguousSamples: Int
     let samplingInterval: TimeInterval
@@ -16,7 +16,7 @@ struct TinnitusEnvironmentSPLGateConfiguration: Equatable {
     )
 }
 
-struct TinnitusEnvironmentSPLGateResult: Equatable {
+nonisolated struct TinnitusEnvironmentSPLGateResult: Equatable {
     let configuration: TinnitusEnvironmentSPLGateConfiguration
     let samplesDBA: [Double]
     let gateResult: StudyNo1GateResult
@@ -37,13 +37,13 @@ struct TinnitusEnvironmentSPLGateResult: Equatable {
     }
 }
 
-enum TinnitusEnvironmentSPLGateStatus: Equatable {
+nonisolated enum TinnitusEnvironmentSPLGateStatus: Equatable {
     case measuring
     case tooLoud
     case passed
 }
 
-struct TinnitusEnvironmentSPLGateUpdate: Equatable {
+nonisolated struct TinnitusEnvironmentSPLGateUpdate: Equatable {
     let samplesDBA: [Double]
     let latestSampleDBA: Double?
     let contiguousPassingSamples: Int
@@ -55,7 +55,7 @@ struct TinnitusEnvironmentSPLGateUpdate: Equatable {
     }
 }
 
-struct TinnitusEnvironmentSPLGateEvaluator {
+nonisolated struct TinnitusEnvironmentSPLGateEvaluator {
     func evaluate(
         samplesDBA: [Double],
         configuration: TinnitusEnvironmentSPLGateConfiguration = .studyNo1

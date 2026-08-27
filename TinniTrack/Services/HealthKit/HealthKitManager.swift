@@ -193,28 +193,3 @@ final class HealthKitManager: HealthKitAudiogramServiceProtocol {
         return (left, right)
     }
 }
-
-final class MockHealthKitManager: HealthKitAudiogramServiceProtocol {
-    var status: HealthKitReadAuthorizationStatus = .notDetermined
-    var samples: [HealthKitAudiogramSample] = []
-    var requestAuthorizationError: Error?
-    var fetchError: Error?
-
-    func readAuthorizationStatus() -> HealthKitReadAuthorizationStatus {
-        status
-    }
-
-    func requestReadAuthorization() async throws {
-        if let requestAuthorizationError {
-            throw requestAuthorizationError
-        }
-        status = .authorized
-    }
-
-    func fetchAudiogramSamples() async throws -> [HealthKitAudiogramSample] {
-        if let fetchError {
-            throw fetchError
-        }
-        return samples
-    }
-}

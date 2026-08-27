@@ -14,6 +14,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
     @Published var firstName = ""
     @Published var lastName = ""
     @Published var signatureImageData: Data?
+    @Published private(set) var enrollmentRecoveryStatus: EnrollmentRecoveryStatus = .notChecked
 
     enum State: Equatable {
         case landing
@@ -25,11 +26,20 @@ final class StudyConsentFlowViewModel: ObservableObject {
         case failed
     }
 
+    enum EnrollmentRecoveryStatus {
+        case notChecked
+        case checking
+        case unavailable
+        case available(ConsentEnrollmentRecovery)
+        case failed(message: String)
+    }
+
     private let study: Study
     let definition: StudyConsentDefinition
     private let consentService: ConsentServiceProtocol
     private let artifactGenerator: ConsentArtifactGenerating
     private let now: () -> Date
+    private var pendingConsentCompletion: StudyConsentCompletion?
 
     init(
         study: Study,
@@ -51,6 +61,25 @@ final class StudyConsentFlowViewModel: ObservableObject {
 
     var canContinueToSignature: Bool {
         hasScrolledToConsentEnd
+    }
+
+    var canReviewConsent: Bool {
+        guard state == .landing else { return false }
+        guard case .unavailable = enrollmentRecoveryStatus else { return false }
+        return true
+    }
+
+    var hasAvailableEnrollmentRecovery: Bool {
+        guard case .available = enrollmentRecoveryStatus else { return false }
+        return true
+    }
+
+    var canResumeEnrollment: Bool {
+        state == .landing && hasAvailableEnrollmentRecovery
+    }
+
+    var shouldRetryEnrollmentRecoveryFromAlert: Bool {
+        errorMessage != nil && state == .landing && hasAvailableEnrollmentRecovery
     }
 
     var trimmedFirstName: String {
@@ -75,9 +104,60 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     func reviewConsent() {
-        guard state != .finalizing else { return }
+        guard canReviewConsent || state == .reviewingConsent || state == .signing else { return }
         resetConsentReviewProgress()
         state = .reviewingConsent
+    }
+
+    func probeEnrollmentRecoveryIfNeeded() async {
+        guard case .notChecked = enrollmentRecoveryStatus else { return }
+        await probeEnrollmentRecovery()
+    }
+
+    func probeEnrollmentRecovery() async {
+        guard state == .landing else { return }
+        enrollmentRecoveryStatus = .checking
+
+        do {
+            let recovery = try await consentService.availableEnrollmentRecovery(for: study)
+            guard !Task.isCancelled, state == .landing else { return }
+            if let recovery {
+                enrollmentRecoveryStatus = .available(recovery)
+            } else {
+                enrollmentRecoveryStatus = .unavailable
+            }
+        } catch is CancellationError {
+            guard state == .landing else { return }
+            enrollmentRecoveryStatus = .notChecked
+        } catch {
+            guard state == .landing else { return }
+            enrollmentRecoveryStatus = .failed(
+                message: Self.userFacingErrorMessage(for: error)
+            )
+        }
+    }
+
+    func retryEnrollmentRecoveryProbe() async {
+        guard case .failed = enrollmentRecoveryStatus else { return }
+        await probeEnrollmentRecovery()
+    }
+
+    func resumeEnrollment() async {
+        guard canResumeEnrollment else { return }
+        guard case .available(let recovery) = enrollmentRecoveryStatus else { return }
+
+        errorMessage = nil
+        state = .finalizing
+
+        do {
+            try await consentService.resumeEnrollment(for: study)
+            enrollmentRecoveryStatus = .unavailable
+            state = .completed
+        } catch {
+            enrollmentRecoveryStatus = .available(recovery)
+            state = .landing
+            errorMessage = Self.userFacingErrorMessage(for: error)
+        }
     }
 
     func returnToLandingAfterNavigationPop() {
@@ -105,6 +185,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     func exitConsentFlowToStudyDetails() {
+        pendingConsentCompletion = nil
         resetConsentReviewProgress()
         state = .landing
     }
@@ -134,10 +215,12 @@ final class StudyConsentFlowViewModel: ObservableObject {
     }
 
     func declineOrCancel() {
+        pendingConsentCompletion = nil
         state = .dismissed
     }
 
     func clearSignature() {
+        pendingConsentCompletion = nil
         signatureImageData = nil
     }
 
@@ -152,39 +235,49 @@ final class StudyConsentFlowViewModel: ObservableObject {
             return
         }
 
-        let signedAt = now()
         guard let signatureImageData else {
             fail(message: "Draw your signature before enrolling.")
             return
         }
+        let signatureImageSHA256Hex = artifactGenerator.sha256Hex(for: signatureImageData)
 
         state = .finalizing
 
         do {
-            let artifact = try artifactGenerator.generateSignedConsentArtifact(
-                definition: definition,
-                signerGivenName: trimmedFirstName,
-                signerFamilyName: trimmedLastName,
-                signedAt: signedAt,
-                signatureImageData: signatureImageData
-            )
+            let consentCompletion: StudyConsentCompletion
+            if let pending = pendingConsentCompletion,
+               pending.signerGivenName == trimmedFirstName,
+               pending.signerFamilyName == trimmedLastName,
+               pending.signatureImageSHA256Hex == signatureImageSHA256Hex {
+                consentCompletion = pending
+            } else {
+                let signedAt = now()
+                let artifact = try artifactGenerator.generateSignedConsentArtifact(
+                    definition: definition,
+                    signerGivenName: trimmedFirstName,
+                    signerFamilyName: trimmedLastName,
+                    signedAt: signedAt,
+                    signatureImageData: signatureImageData
+                )
 
-            let consentCompletion = StudyConsentCompletion(
-                taskIdentifier: definition.consentVersion,
-                studySlug: definition.studySlug,
-                consentVersion: definition.consentVersion,
-                consented: true,
-                signerGivenName: trimmedFirstName,
-                signerFamilyName: trimmedLastName,
-                signedAt: signedAt,
-                artifact: artifact,
-                researchKitFinishState: nil,
-                consentContentSHA256Hex: definition.contentSHA256Hex,
-                signatureImageSHA256Hex: artifactGenerator.sha256Hex(for: signatureImageData),
-                collectionMethod: StudyConsentCatalog.nativeCollectionMethod,
-                attestationText: definition.attestation.text,
-                attestationVersion: definition.attestation.version
-            )
+                consentCompletion = StudyConsentCompletion(
+                    taskIdentifier: definition.consentVersion,
+                    studySlug: definition.studySlug,
+                    consentVersion: definition.consentVersion,
+                    consented: true,
+                    signerGivenName: trimmedFirstName,
+                    signerFamilyName: trimmedLastName,
+                    signedAt: signedAt,
+                    artifact: artifact,
+                    researchKitFinishState: nil,
+                    consentContentSHA256Hex: definition.contentSHA256Hex,
+                    signatureImageSHA256Hex: signatureImageSHA256Hex,
+                    collectionMethod: StudyConsentCatalog.nativeCollectionMethod,
+                    attestationText: definition.attestation.text,
+                    attestationVersion: definition.attestation.version
+                )
+                pendingConsentCompletion = consentCompletion
+            }
 
             guard consentCompletion.isValidSignedConsent else {
                 fail(message: "Consent must include your name, signature, signed PDF, and consent metadata.")
@@ -195,6 +288,7 @@ final class StudyConsentFlowViewModel: ObservableObject {
                 study: study,
                 consent: consentCompletion
             )
+            pendingConsentCompletion = nil
             state = .completed
         } catch {
             fail(message: Self.userFacingErrorMessage(for: error))
@@ -204,6 +298,10 @@ final class StudyConsentFlowViewModel: ObservableObject {
     func retryAfterFailure() {
         errorMessage = nil
         state = .signing
+    }
+
+    func dismissEnrollmentRecoveryError() {
+        errorMessage = nil
     }
 
     private func fail(message: String) {

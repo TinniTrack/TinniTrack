@@ -1,11 +1,11 @@
 import Foundation
 
-enum TinnitusStudyProtocolKind: Equatable {
+nonisolated enum TinnitusStudyProtocolKind: Equatable {
     case studyNo1FixedOneKilohertz
     case studyNo2TablePitchMatched
 }
 
-enum TinnitusLaterality: String, CaseIterable, Equatable {
+nonisolated enum TinnitusLaterality: String, CaseIterable, Equatable {
     case left
     case right
     case bilateral
@@ -13,18 +13,18 @@ enum TinnitusLaterality: String, CaseIterable, Equatable {
     case unclear
 }
 
-enum TinnitusStimulusKind: String, Equatable {
+nonisolated enum TinnitusStimulusKind: String, Equatable {
     case pureTone
     case narrowbandNoise
 }
 
-enum TinnitusPitchMatchStatus: Equatable {
+nonisolated enum TinnitusPitchMatchStatus: Equatable {
     case notRequiredFixedFrequency
     case deferred
     case tableFrequency(Double)
 }
 
-enum TinnitusThresholdStatus: Equatable {
+nonisolated enum TinnitusThresholdStatus: Equatable {
     case pending
     case measured(levelDBHL: Double)
     case unavailable(reason: String)
@@ -37,13 +37,13 @@ enum TinnitusThresholdStatus: Equatable {
     }
 }
 
-enum TinnitusConfidenceRating: String, CaseIterable, Equatable {
+nonisolated enum TinnitusConfidenceRating: String, CaseIterable, Equatable {
     case low
     case medium
     case high
 }
 
-enum TinnitusLoudnessAdjustment: Equatable {
+nonisolated enum TinnitusLoudnessAdjustment: Equatable {
     case muchSofter
     case softer
     case louder
@@ -63,7 +63,7 @@ enum TinnitusLoudnessAdjustment: Equatable {
     }
 }
 
-enum TinnitusProtocolQualityFlag: String, Equatable {
+nonisolated enum TinnitusProtocolQualityFlag: String, Equatable {
     case thresholdUnavailable
     case dbSLInvalid
     case highWithinSessionSpread
@@ -76,7 +76,7 @@ enum TinnitusProtocolQualityFlag: String, Equatable {
     case unsupportedFrequency
 }
 
-enum TinnitusProtocolAbortReason: Equatable {
+nonisolated enum TinnitusProtocolAbortReason: Equatable {
     case participantStopped
     case guardrailNotEvaluated
     case guardrailFailed(String)
@@ -86,7 +86,7 @@ enum TinnitusProtocolAbortReason: Equatable {
     case invalidState(String)
 }
 
-struct TinnitusProtocolConfiguration: Equatable {
+nonisolated struct TinnitusProtocolConfiguration: Equatable {
     let kind: TinnitusStudyProtocolKind
     let stimulusKind: TinnitusStimulusKind
     let frequencyHz: Double
@@ -114,7 +114,7 @@ struct TinnitusProtocolConfiguration: Equatable {
     )
 }
 
-struct TinnitusLoudnessMatchTrial: Equatable {
+nonisolated struct TinnitusLoudnessMatchTrial: Equatable {
     let trialIndex: Int
     let acceptedLevelDBHL: Double
     let estimatedDBSPL: Double?
@@ -123,7 +123,7 @@ struct TinnitusLoudnessMatchTrial: Equatable {
     let acceptedAt: Date
 }
 
-struct TinnitusLoudnessMatchSummary: Equatable {
+nonisolated struct TinnitusLoudnessMatchSummary: Equatable {
     let frequencyHz: Double
     let channel: CalibratedTonePlaybackChannel
     let thresholdStatus: TinnitusThresholdStatus
@@ -136,7 +136,7 @@ struct TinnitusLoudnessMatchSummary: Equatable {
     let completedAt: Date
 }
 
-enum TinnitusProtocolEventKind: String, Equatable {
+nonisolated enum TinnitusProtocolEventKind: String, Equatable {
     case sessionStarted
     case lateralitySelected
     case pitchMatched
@@ -158,7 +158,7 @@ enum TinnitusProtocolEventKind: String, Equatable {
     case sessionCompleted
 }
 
-struct TinnitusProtocolEvent: Equatable {
+nonisolated struct TinnitusProtocolEvent: Equatable {
     let timestamp: Date
     let kind: TinnitusProtocolEventKind
     let frequencyHz: Double?
@@ -175,7 +175,7 @@ struct TinnitusProtocolEvent: Equatable {
     let qualityFlags: [TinnitusProtocolQualityFlag]
 }
 
-enum TinnitusProtocolState: Equatable {
+nonisolated enum TinnitusProtocolState: Equatable {
     case collectingLaterality
     case awaitingThreshold(laterality: TinnitusLaterality, channel: CalibratedTonePlaybackChannel)
     case readyForTrial(index: Int, candidateLevelDBHL: Double)
@@ -185,7 +185,7 @@ enum TinnitusProtocolState: Equatable {
     case restartRequired(TinnitusProtocolAbortReason)
 }
 
-struct PendingTinnitusLoudnessMatchTrial: Equatable {
+nonisolated struct PendingTinnitusLoudnessMatchTrial: Equatable {
     let trialIndex: Int
     let acceptedLevelDBHL: Double
     let estimatedDBSPL: Double?
@@ -193,7 +193,7 @@ struct PendingTinnitusLoudnessMatchTrial: Equatable {
     let acceptedAt: Date
 }
 
-struct TinnitusProtocolPlaybackAttempt: Equatable {
+nonisolated struct TinnitusProtocolPlaybackAttempt: Equatable {
     let request: CalibratedTonePlaybackRequest?
     let plan: CalibratedTonePlaybackPlan?
     let refusalReason: TinnitusProtocolAbortReason?

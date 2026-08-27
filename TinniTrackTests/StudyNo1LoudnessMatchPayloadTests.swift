@@ -170,7 +170,7 @@ struct StudyNo1LoudnessMatchPayloadTests {
 
     @Test
     func builderRefusesNonStudyNo1Frequency() {
-        var summary = TinnitusLoudnessMatchSummary(
+        let summary = TinnitusLoudnessMatchSummary(
             frequencyHz: 2_000,
             channel: .both,
             thresholdStatus: .measured(levelDBHL: 10),

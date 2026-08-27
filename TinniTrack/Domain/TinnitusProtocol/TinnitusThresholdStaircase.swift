@@ -1,17 +1,17 @@
 import Foundation
 
-enum TinnitusThresholdResponse: String, Equatable {
+nonisolated enum TinnitusThresholdResponse: String, Equatable {
     case heard
     case notHeard
 }
 
-struct TinnitusThresholdPresentation: Equatable {
+nonisolated struct TinnitusThresholdPresentation: Equatable {
     let index: Int
     let levelDBHL: Double
     let response: TinnitusThresholdResponse?
 }
 
-struct TinnitusThresholdStaircaseConfiguration: Equatable {
+nonisolated struct TinnitusThresholdStaircaseConfiguration: Equatable {
     let frequencyHz: Double
     let initialLevelDBHL: Double
     let minimumLevelDBHL: Double
@@ -31,7 +31,7 @@ struct TinnitusThresholdStaircaseConfiguration: Equatable {
     )
 }
 
-struct TinnitusThresholdStaircase: Equatable {
+nonisolated struct TinnitusThresholdStaircase: Equatable {
     private(set) var configuration: TinnitusThresholdStaircaseConfiguration
     private(set) var currentLevelDBHL: Double
     private(set) var presentations: [TinnitusThresholdPresentation] = []

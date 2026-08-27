@@ -389,7 +389,8 @@ private struct EnrollmentUnavailableView: View {
 }
 
 #if DEBUG
-private actor UITestEnrollmentServices: StudyServiceProtocol, ConsentServiceProtocol {
+@MainActor
+private final class UITestEnrollmentServices: StudyServiceProtocol, ConsentServiceProtocol {
     private let studyID = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
     private let enrollmentID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
     private let userID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
@@ -424,10 +425,6 @@ private actor UITestEnrollmentServices: StudyServiceProtocol, ConsentServiceProt
     }
 
     func finalizeConsentAndEnroll(study: Study, consent: StudyConsentCompletion) async throws {
-        isEnrolled = true
-    }
-
-    func enroll(studyID: UUID) async throws {
         isEnrolled = true
     }
 

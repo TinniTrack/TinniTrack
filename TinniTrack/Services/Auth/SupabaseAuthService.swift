@@ -61,12 +61,10 @@ final class SupabaseAuthService: AuthServiceProtocol {
         do {
             let session = try await client.auth.session
             return AuthSession(userID: session.user.id, email: session.user.email)
+        } catch AuthError.sessionMissing {
+            return nil
         } catch {
-            let mapped = Self.mapAuthError(error)
-            if case .noActiveSession = mapped {
-                return nil
-            }
-            throw mapped
+            throw Self.mapAuthError(error)
         }
     }
 

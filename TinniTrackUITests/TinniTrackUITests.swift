@@ -8,49 +8,46 @@
 import XCTest
 
 final class TinniTrackUITests: XCTestCase {
-
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
-        let app = XCUIApplication()
-        app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-    }
-
-    @MainActor
-    func testSignupDraftResumesOnStepTwoAfterRelaunch() throws {
+    func testSignupDraftRelaunchRequiresPasswordAndRestoresProfileFields() throws {
         let app = makeApp()
-        app.launchEnvironment["UITEST_SEED_SIGNUP_DRAFT_STEP_TWO"] = "1"
+        app.launchEnvironment["UITEST_SEED_SIGNUP_DRAFT"] = "1"
         app.launch()
 
         app.buttons["Sign Up"].tap()
-        XCTAssertTrue(app.textFields["signup_first_name_field"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.textFields["signup_email_field"].waitForExistence(timeout: 2))
 
         app.terminate()
         app.launchEnvironment.removeValue(forKey: "UITEST_CLEAR_SIGNUP_DRAFT")
-        app.launchEnvironment.removeValue(forKey: "UITEST_SEED_SIGNUP_DRAFT_STEP_TWO")
+        app.launchEnvironment.removeValue(forKey: "UITEST_SEED_SIGNUP_DRAFT")
         app.launch()
         app.buttons["Sign Up"].tap()
 
-        XCTAssertTrue(app.textFields["signup_first_name_field"].waitForExistence(timeout: 2))
+        let emailField = app.textFields["signup_email_field"]
+        XCTAssertTrue(emailField.waitForExistence(timeout: 2))
+        XCTAssertEqual(emailField.value as? String, "draft@example.com")
+
+        let continueButton = app.buttons["signup_continue_button"]
+        XCTAssertFalse(continueButton.isEnabled)
+
+        let passwordField = app.secureTextFields["signup_password_field"]
+        passwordField.tap()
+        passwordField.typeText("replacement-password")
+        XCTAssertTrue(continueButton.isEnabled)
+        continueButton.tap()
+
+        let firstNameField = app.textFields["signup_first_name_field"]
+        XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))
+        XCTAssertEqual(firstNameField.value as? String, "Draft")
+        XCTAssertEqual(app.textFields["signup_last_name_field"].value as? String, "Participant")
     }
 
     @MainActor
-    func testSignupSubmitFlowAndDOBToolbarDoneDismissesKeyboard() throws {
+    func testSignupProfileStepAndDOBToolbarDoneDismissesKeyboard() throws {
         let app = makeApp()
         app.launch()
 
@@ -66,11 +63,7 @@ final class TinniTrackUITests: XCTestCase {
         XCTAssertTrue(passwordField.waitForExistence(timeout: 2))
         passwordField.tap()
         passwordField.typeText("password123")
-
-        app.terminate()
-        app.launchEnvironment["UITEST_SEED_SIGNUP_DRAFT_STEP_TWO"] = "1"
-        app.launch()
-        app.buttons["Sign Up"].tap()
+        app.buttons["signup_continue_button"].tap()
 
         let firstNameField = app.textFields["signup_first_name_field"]
         XCTAssertTrue(firstNameField.waitForExistence(timeout: 2))

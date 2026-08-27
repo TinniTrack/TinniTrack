@@ -136,7 +136,6 @@ private actor MockStudyService: StudyServiceProtocol {
     private var enrollmentResponses: [[StudyEnrollment]]
     private var studiesError: Error?
     private var enrollmentsError: Error?
-    private var enrollError: Error?
     private var fetchDelayNanoseconds: UInt64?
     private var fetchStudiesCount = 0
     private var fetchEnrollmentsCount = 0
@@ -147,7 +146,6 @@ private actor MockStudyService: StudyServiceProtocol {
         enrollmentResponses: [[StudyEnrollment]] = [],
         studiesError: Error? = nil,
         enrollmentsError: Error? = nil,
-        enrollError: Error? = nil,
         fetchDelayNanoseconds: UInt64? = nil
     ) {
         self.studies = studies
@@ -155,7 +153,6 @@ private actor MockStudyService: StudyServiceProtocol {
         self.enrollmentResponses = enrollmentResponses
         self.studiesError = studiesError
         self.enrollmentsError = enrollmentsError
-        self.enrollError = enrollError
         self.fetchDelayNanoseconds = fetchDelayNanoseconds
     }
 
@@ -180,12 +177,6 @@ private actor MockStudyService: StudyServiceProtocol {
             throw enrollmentsError
         }
         return response
-    }
-
-    func enroll(studyID: UUID) async throws {
-        if let enrollError {
-            throw enrollError
-        }
     }
 
     func fetchScheduledTasks(enrollmentID: UUID) async throws -> [ScheduledTask] {
